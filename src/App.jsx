@@ -8,8 +8,11 @@ import {
   Link2,
   PencilLine,
   Plus,
+  ZoomIn,
+  ZoomOut,
   SquarePen,
   Trash2,
+  RotateCcw,
   Wand2,
   CircleDot,
   FileText,
@@ -19,6 +22,9 @@ import {
 const STORAGE_KEY = 'jimicanvas.documents.v1';
 const DEFAULT_NODE_WIDTH = 260;
 const DEFAULT_NODE_HEIGHT = 180;
+const MIN_CANVAS_SCALE = 0.6;
+const MAX_CANVAS_SCALE = 1.4;
+const CANVAS_SCALE_STEP = 0.1;
 const DEFAULT_VIDEO_URL = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
 
 const PLACEHOLDER_IMAGE = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
@@ -170,6 +176,10 @@ function clampValue(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function snapScale(value) {
+  return Math.round(value * 10) / 10;
+}
+
 function getConnectionPath(source, target) {
   const x1 = source.x + source.width;
   const y1 = source.y + source.height / 2;
@@ -195,6 +205,7 @@ function App() {
   const [linkFromNodeId, setLinkFromNodeId] = useState(null);
   const [hoverLinkNodeId, setHoverLinkNodeId] = useState(null);
   const [pointerPos, setPointerPos] = useState({ x: 0, y: 0 });
+  const [canvasScale, setCanvasScale] = useState(1);
   const [importError, setImportError] = useState('');
   const [showCanvasPanel, setShowCanvasPanel] = useState(false);
 
@@ -235,6 +246,29 @@ function App() {
   const nodes = activeCanvas?.nodes || [];
   const connections = activeCanvas?.connections || [];
   const activeNode = nodes.find((node) => node.id === selectedNodeId) || null;
+  const canvasScalePercent = Math.round(canvasScale * 100);
+
+  function setCanvasScaleClamped(nextScale) {
+    setCanvasScale(snapScale(clampValue(nextScale, MIN_CANVAS_SCALE, MAX_CANVAS_SCALE)));
+  }
+
+  function zoomCanvas(delta) {
+    setCanvasScaleClamped(canvasScale + delta);
+  }
+
+  function resetCanvasScale() {
+    setCanvasScale(1);
+  }
+
+  function getStagePoint(event) {
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+
+    return {
+      x: (event.clientX - rect.left) / canvasScale,
+      y: (event.clientY - rect.top) / canvasScale,
+    };
+  }
 
   function updateActiveCanvas(updater) {
     setDocuments((prev) =>
@@ -330,9 +364,9 @@ function App() {
     setLinkFromNodeId(nodeId);
     setHoverLinkNodeId(null);
 
-    const rect = stageRef.current?.getBoundingClientRect();
-    if (rect) {
-      setPointerPos({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+    const point = getStagePoint(event);
+    if (point) {
+      setPointerPos(point);
     }
   }
 
@@ -371,11 +405,9 @@ function App() {
   }
 
   function getNodeAtPointer(event, sourceNodeId) {
-    const rect = stageRef.current?.getBoundingClientRect();
-    if (!rect) return null;
-
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const point = getStagePoint(event);
+    if (!point) return null;
+    const { x, y } = point;
 
     return nodes.find(
       (node) =>
@@ -388,9 +420,9 @@ function App() {
   }
 
   function handleStagePointerMove(event) {
-    const rect = stageRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    setPointerPos({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+    const point = getStagePoint(event);
+    if (!point) return;
+    setPointerPos(point);
 
     if (linkFromNodeId) {
       const target = getNodeAtPointer(event, linkFromNodeId);
@@ -680,12 +712,34 @@ function App() {
               <span className="meta-pill">{connections.length} 连线</span>
             </div>
 
-            <div className="toolbar-row">
-              <span className="save-chip">本地自动保存</span>
-              <button className={`icon-button ${linkFromNodeId ? 'primary' : ''}`} onClick={() => setLinkFromNodeId(null)}>
-                <Link2 size={16} />
-                {linkFromNodeId ? '取消连线' : '等待连线'}
+          <div className="toolbar-row">
+            <span className="save-chip">本地自动保存</span>
+            <div className="zoom-control" aria-label="画布缩放">
+              <button className="icon-mini" onClick={() => zoomCanvas(-CANVAS_SCALE_STEP)} title="缩小画布">
+                <ZoomOut size={14} />
               </button>
+              <input
+                className="zoom-slider"
+                type="range"
+                min={MIN_CANVAS_SCALE * 100}
+                max={MAX_CANVAS_SCALE * 100}
+                step={CANVAS_SCALE_STEP * 100}
+                value={canvasScalePercent}
+                onChange={(event) => setCanvasScaleClamped(Number(event.target.value) / 100)}
+                aria-label="画布缩放比例"
+              />
+              <button className="icon-mini" onClick={() => zoomCanvas(CANVAS_SCALE_STEP)} title="放大画布">
+                <ZoomIn size={14} />
+              </button>
+              <button className="icon-mini" onClick={resetCanvasScale} title="重置比例">
+                <RotateCcw size={14} />
+              </button>
+              <span className="meta-pill zoom-label">{canvasScalePercent}%</span>
+            </div>
+            <button className={`icon-button ${linkFromNodeId ? 'primary' : ''}`} onClick={() => setLinkFromNodeId(null)}>
+              <Link2 size={16} />
+              {linkFromNodeId ? '取消连线' : '等待连线'}
+            </button>
             </div>
           </div>
         </header>
@@ -693,171 +747,182 @@ function App() {
         <section
           className={`stage ${linkFromNodeId ? 'link-mode' : ''}`}
           ref={stageRef}
+          style={{ '--canvas-scale': canvasScale }}
           onPointerMove={handleStagePointerMove}
           onPointerUp={handleStagePointerUp}
           onPointerDown={handleStagePointerDown}
         >
-          <div className="grid-layer" />
-          <svg className="connection-layer" width="100%" height="100%">
-            <defs>
-              <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
-                <path d="M0,0 L0,6 L9,3 z" fill="#60a5fa" />
-              </marker>
-            </defs>
-            {connections.map((link) => {
-              const source = nodes.find((node) => node.id === link.fromNodeId);
-              const target = nodes.find((node) => node.id === link.toNodeId);
-              if (!source || !target) return null;
-              return (
-                <path
-                  key={link.id}
-                  d={getConnectionPath(source, target)}
-                  fill="none"
-                  stroke="#60a5fa"
-                  strokeWidth="3"
-                  markerEnd="url(#arrow)"
-                />
-              );
-            })}
-            {linkFromNodeId ? (() => {
-              const source = nodes.find((node) => node.id === linkFromNodeId);
-              if (!source) return null;
-              const x1 = source.x + source.width;
-              const y1 = source.y + source.height / 2;
-              const x2 = pointerPos.x;
-              const y2 = pointerPos.y;
-              const bend = Math.max(80, Math.abs(x2 - x1) * 0.35);
-              const previewPath = `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
-              return (
-                <path
-                  d={previewPath}
-                  fill="none"
-                  stroke="#38bdf8"
-                  strokeWidth="2"
-                  strokeDasharray="8 8"
-                />
-              );
-            })() : null}
-          </svg>
-
-          {nodes.map((node) => (
-            <article
-              key={node.id}
-              className={`node ${node.id === selectedNodeId ? 'selected' : ''} ${node.type}`}
-              style={{
-                transform: `translate(${node.x}px, ${node.y}px)`,
-                width: node.width,
-                height: node.height,
-              }}
-              onPointerDown={() => setSelectedNodeId(node.id)}
-            >
-              <header className="node-header" onPointerDown={(event) => beginDrag(event, node)}>
-                <div className="node-title">
-                  {node.type === 'image' ? <ImageIcon size={14} /> : node.type === 'video' ? <Film size={14} /> : <FileText size={14} />}
-                  <input
-                    value={node.title}
-                    onChange={(event) => updateNode(node.id, { title: event.target.value })}
-                    onPointerDown={(event) => event.stopPropagation()}
+          <div className="stage-content">
+            <div className="grid-layer" />
+            <svg className="connection-layer" width="100%" height="100%">
+              <defs>
+                <marker
+                  id="arrow"
+                  markerWidth="6"
+                  markerHeight="6"
+                  refX="5"
+                  refY="3"
+                  orient="auto"
+                  markerUnits="userSpaceOnUse"
+                >
+                  <path d="M0,0 L0,6 L6,3 z" fill="#60a5fa" />
+                </marker>
+              </defs>
+              {connections.map((link) => {
+                const source = nodes.find((node) => node.id === link.fromNodeId);
+                const target = nodes.find((node) => node.id === link.toNodeId);
+                if (!source || !target) return null;
+                return (
+                  <path
+                    key={link.id}
+                    d={getConnectionPath(source, target)}
+                    fill="none"
+                    stroke="#60a5fa"
+                    strokeWidth="2.5"
+                    markerEnd="url(#arrow)"
                   />
-                </div>
-                <div className="node-header-actions">
-                  <button
-                    className={`icon-mini ${linkFromNodeId === node.id ? 'active' : ''}`}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      startLink(node.id);
-                    }}
-                    title="发起连线"
-                  >
-                    <Link2 size={14} />
-                  </button>
-                  <button
-                    className="icon-mini danger"
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      removeNode(node.id);
-                    }}
-                    title="删除节点"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </header>
+                );
+              })}
+              {linkFromNodeId ? (() => {
+                const source = nodes.find((node) => node.id === linkFromNodeId);
+                if (!source) return null;
+                const x1 = source.x + source.width;
+                const y1 = source.y + source.height / 2;
+                const x2 = pointerPos.x;
+                const y2 = pointerPos.y;
+                const bend = Math.max(80, Math.abs(x2 - x1) * 0.35);
+                const previewPath = `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
+                return (
+                  <path
+                    d={previewPath}
+                    fill="none"
+                    stroke="#38bdf8"
+                    strokeWidth="2"
+                    strokeDasharray="8 8"
+                  />
+                );
+              })() : null}
+            </svg>
 
-              <div className="node-body">
-                {node.type === 'image' ? (
-                  <>
+            {nodes.map((node) => (
+              <article
+                key={node.id}
+                className={`node ${node.id === selectedNodeId ? 'selected' : ''} ${node.type}`}
+                style={{
+                  transform: `translate(${node.x}px, ${node.y}px)`,
+                  width: node.width,
+                  height: node.height,
+                }}
+                onPointerDown={() => setSelectedNodeId(node.id)}
+              >
+                <header className="node-header" onPointerDown={(event) => beginDrag(event, node)}>
+                  <div className="node-title">
+                    {node.type === 'image' ? <ImageIcon size={14} /> : node.type === 'video' ? <Film size={14} /> : <FileText size={14} />}
                     <input
-                      className="node-content-input"
+                      value={node.title}
+                      onChange={(event) => updateNode(node.id, { title: event.target.value })}
+                      onPointerDown={(event) => event.stopPropagation()}
+                    />
+                  </div>
+                  <div className="node-header-actions">
+                    <button
+                      className={`icon-mini ${linkFromNodeId === node.id ? 'active' : ''}`}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        startLink(node.id);
+                      }}
+                      title="发起连线"
+                    >
+                      <Link2 size={14} />
+                    </button>
+                    <button
+                      className="icon-mini danger"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        removeNode(node.id);
+                      }}
+                      title="删除节点"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </header>
+
+                <div className="node-body">
+                  {node.type === 'image' ? (
+                    <>
+                      <input
+                        className="node-content-input"
+                        value={node.content}
+                        onChange={(event) => updateNode(node.id, { content: event.target.value })}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        placeholder="粘贴图片 URL 或 data URL"
+                      />
+                      <div className="image-preview">
+                        {isImageContent(node.content) ? (
+                          <img src={node.content} alt={node.title} />
+                        ) : (
+                          <div className="image-empty">无可预览内容</div>
+                        )}
+                      </div>
+                    </>
+                  ) : node.type === 'video' ? (
+                    <>
+                      <input
+                        className="node-content-input"
+                        value={node.content}
+                        onChange={(event) => updateNode(node.id, { content: event.target.value })}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        placeholder="粘贴视频 URL 或 data URL"
+                      />
+                      <div className="image-preview video-preview">
+                        {isVideoContent(node.content) ? (
+                          <video src={node.content} controls playsInline />
+                        ) : (
+                          <div className="image-empty">无可预览内容</div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <textarea
                       value={node.content}
                       onChange={(event) => updateNode(node.id, { content: event.target.value })}
                       onPointerDown={(event) => event.stopPropagation()}
-                      placeholder="粘贴图片 URL 或 data URL"
+                      placeholder="输入文本内容"
                     />
-                    <div className="image-preview">
-                      {isImageContent(node.content) ? (
-                        <img src={node.content} alt={node.title} />
-                      ) : (
-                        <div className="image-empty">无可预览内容</div>
-                      )}
-                    </div>
-                  </>
-                ) : node.type === 'video' ? (
-                  <>
-                    <input
-                      className="node-content-input"
-                      value={node.content}
-                      onChange={(event) => updateNode(node.id, { content: event.target.value })}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      placeholder="粘贴视频 URL 或 data URL"
-                    />
-                    <div className="image-preview video-preview">
-                      {isVideoContent(node.content) ? (
-                        <video src={node.content} controls playsInline />
-                      ) : (
-                        <div className="image-empty">无可预览内容</div>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <textarea
-                    value={node.content}
-                    onChange={(event) => updateNode(node.id, { content: event.target.value })}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    placeholder="输入文本内容"
-                  />
-                )}
-              </div>
+                  )}
+                </div>
 
-              <button
-                className={`port output ${linkFromNodeId === node.id ? 'active' : ''}`}
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                  startLink(node.id);
-                }}
-                title="输出端口"
-              >
-                <ArrowRight size={12} />
-              </button>
+                <button
+                  className={`port output ${linkFromNodeId === node.id ? 'active' : ''}`}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    startLink(node.id);
+                  }}
+                  title="输出端口"
+                >
+                  <ArrowRight size={12} />
+                </button>
 
-              <button
-                className="port input"
-                onPointerUp={(event) => {
-                  event.stopPropagation();
-                  finishLink(node.id);
-                }}
-                title="输入端口"
-              >
-                <CircleDot size={12} />
-              </button>
-            </article>
-          ))}
+                <button
+                  className="port input"
+                  onPointerUp={(event) => {
+                    event.stopPropagation();
+                    finishLink(node.id);
+                  }}
+                  title="输入端口"
+                >
+                  <CircleDot size={12} />
+                </button>
+              </article>
+            ))}
 
-          <div className="empty-hint">
-            <PencilLine size={14} />
-            拖动节点，点击右侧圆点发起连线，再点另一个节点的左侧圆点完成连接。
+            <div className="empty-hint">
+              <PencilLine size={14} />
+              拖动节点，点击右侧圆点发起连线，再点另一个节点的左侧圆点完成连接。
+            </div>
           </div>
         </section>
       </main>
