@@ -202,6 +202,7 @@ function App() {
   const [documents, setDocuments] = useState(initial.documents);
   const [activeCanvasId, setActiveCanvasId] = useState(initial.activeCanvasId);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
+  const [selectedConnectionId, setSelectedConnectionId] = useState(null);
   const [linkFromNodeId, setLinkFromNodeId] = useState(null);
   const [hoverLinkNodeId, setHoverLinkNodeId] = useState(null);
   const [pointerPos, setPointerPos] = useState({ x: 0, y: 0 });
@@ -221,6 +222,7 @@ function App() {
     if (!documents.some((doc) => doc.id === activeCanvasId)) {
       setActiveCanvasId(documents[0]?.id || null);
       setSelectedNodeId(null);
+      setSelectedConnectionId(null);
       setHoverLinkNodeId(null);
     }
   }, [documents, activeCanvasId]);
@@ -230,9 +232,16 @@ function App() {
       if (event.key === 'Escape') {
         setLinkFromNodeId(null);
         setHoverLinkNodeId(null);
+        setSelectedConnectionId(null);
       }
 
-      if (event.key === 'Delete' && selectedNodeId) {
+      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedConnectionId) {
+        event.preventDefault();
+        removeConnection(selectedConnectionId);
+        return;
+      }
+
+      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedNodeId) {
         event.preventDefault();
         removeNode(selectedNodeId);
       }
@@ -240,7 +249,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNodeId]);
+  }, [selectedConnectionId, selectedNodeId]);
 
   const activeCanvas = documents.find((doc) => doc.id === activeCanvasId) || documents[0];
   const nodes = activeCanvas?.nodes || [];
@@ -286,6 +295,7 @@ function App() {
     setDocuments((prev) => [canvas, ...prev]);
     setActiveCanvasId(canvas.id);
     setSelectedNodeId(null);
+    setSelectedConnectionId(null);
     setLinkFromNodeId(null);
     setHoverLinkNodeId(null);
   }
@@ -300,6 +310,7 @@ function App() {
       setDocuments([replacement]);
       setActiveCanvasId(replacement.id);
       setSelectedNodeId(null);
+      setSelectedConnectionId(null);
       setLinkFromNodeId(null);
       setHoverLinkNodeId(null);
       return;
@@ -310,6 +321,7 @@ function App() {
     if (canvasId === activeCanvasId) {
       setActiveCanvasId(next[0]?.id || null);
       setSelectedNodeId(null);
+      setSelectedConnectionId(null);
       setLinkFromNodeId(null);
       setHoverLinkNodeId(null);
     }
@@ -326,6 +338,7 @@ function App() {
       nodes: [...doc.nodes, node],
     }));
     setSelectedNodeId(node.id);
+    setSelectedConnectionId(null);
   }
 
   function updateNode(nodeId, patch) {
@@ -346,13 +359,30 @@ function App() {
     if (selectedNodeId === nodeId) {
       setSelectedNodeId(null);
     }
+    if (selectedConnectionId) {
+      const selectedLink = connections.find((link) => link.id === selectedConnectionId);
+      if (selectedLink && (selectedLink.fromNodeId === nodeId || selectedLink.toNodeId === nodeId)) {
+        setSelectedConnectionId(null);
+      }
+    }
     if (linkFromNodeId === nodeId) {
       setLinkFromNodeId(null);
       setHoverLinkNodeId(null);
     }
   }
 
+  function removeConnection(connectionId) {
+    updateActiveCanvas((doc) => ({
+      ...doc,
+      connections: doc.connections.filter((link) => link.id !== connectionId),
+    }));
+    if (selectedConnectionId === connectionId) {
+      setSelectedConnectionId(null);
+    }
+  }
+
   function startLink(nodeId) {
+    setSelectedConnectionId(null);
     setLinkFromNodeId((current) => (current === nodeId ? null : nodeId));
     setHoverLinkNodeId(null);
   }
@@ -361,6 +391,7 @@ function App() {
     event.preventDefault();
     event.stopPropagation();
     setSelectedNodeId(nodeId);
+    setSelectedConnectionId(null);
     setLinkFromNodeId(nodeId);
     setHoverLinkNodeId(null);
 
@@ -456,6 +487,7 @@ function App() {
     event.preventDefault();
     event.stopPropagation();
     setSelectedNodeId(node.id);
+    setSelectedConnectionId(null);
     dragRef.current = {
       nodeId: node.id,
       startX: event.clientX,
@@ -466,8 +498,15 @@ function App() {
   }
 
   function handleStagePointerDown(event) {
-    if (event.target === event.currentTarget) {
+    const isCanvasBackground =
+      event.target === event.currentTarget ||
+      (typeof SVGSVGElement !== 'undefined' &&
+        event.target instanceof SVGSVGElement &&
+        event.target.classList.contains('connection-layer'));
+
+    if (isCanvasBackground) {
       setSelectedNodeId(null);
+      setSelectedConnectionId(null);
       if (linkFromNodeId) clearLinkDraft();
     }
   }
@@ -502,6 +541,7 @@ function App() {
         setDocuments(parsed);
         setActiveCanvasId(parsed[0].id);
         setSelectedNodeId(null);
+        setSelectedConnectionId(null);
         clearLinkDraft();
         setImportError('');
       } catch (error) {
@@ -584,6 +624,7 @@ function App() {
                   onClick={() => {
                     setActiveCanvasId(doc.id);
                     setSelectedNodeId(null);
+                    setSelectedConnectionId(null);
                     setLinkFromNodeId(null);
                     setHoverLinkNodeId(null);
                     setShowCanvasPanel(false);
@@ -712,34 +753,34 @@ function App() {
               <span className="meta-pill">{connections.length} 连线</span>
             </div>
 
-          <div className="toolbar-row">
-            <span className="save-chip">本地自动保存</span>
-            <div className="zoom-control" aria-label="画布缩放">
-              <button className="icon-mini" onClick={() => zoomCanvas(-CANVAS_SCALE_STEP)} title="缩小画布">
-                <ZoomOut size={14} />
+            <div className="toolbar-row">
+              <span className="save-chip">本地自动保存</span>
+              <div className="zoom-control" aria-label="画布缩放">
+                <button className="icon-mini" onClick={() => zoomCanvas(-CANVAS_SCALE_STEP)} title="缩小画布">
+                  <ZoomOut size={14} />
+                </button>
+                <input
+                  className="zoom-slider"
+                  type="range"
+                  min={MIN_CANVAS_SCALE * 100}
+                  max={MAX_CANVAS_SCALE * 100}
+                  step={CANVAS_SCALE_STEP * 100}
+                  value={canvasScalePercent}
+                  onChange={(event) => setCanvasScaleClamped(Number(event.target.value) / 100)}
+                  aria-label="画布缩放比例"
+                />
+                <button className="icon-mini" onClick={() => zoomCanvas(CANVAS_SCALE_STEP)} title="放大画布">
+                  <ZoomIn size={14} />
+                </button>
+                <button className="icon-mini" onClick={resetCanvasScale} title="重置比例">
+                  <RotateCcw size={14} />
+                </button>
+                <span className="meta-pill zoom-label">{canvasScalePercent}%</span>
+              </div>
+              <button className={`icon-button ${linkFromNodeId ? 'primary' : ''}`} onClick={() => setLinkFromNodeId(null)}>
+                <Link2 size={16} />
+                {linkFromNodeId ? '取消连线' : '等待连线'}
               </button>
-              <input
-                className="zoom-slider"
-                type="range"
-                min={MIN_CANVAS_SCALE * 100}
-                max={MAX_CANVAS_SCALE * 100}
-                step={CANVAS_SCALE_STEP * 100}
-                value={canvasScalePercent}
-                onChange={(event) => setCanvasScaleClamped(Number(event.target.value) / 100)}
-                aria-label="画布缩放比例"
-              />
-              <button className="icon-mini" onClick={() => zoomCanvas(CANVAS_SCALE_STEP)} title="放大画布">
-                <ZoomIn size={14} />
-              </button>
-              <button className="icon-mini" onClick={resetCanvasScale} title="重置比例">
-                <RotateCcw size={14} />
-              </button>
-              <span className="meta-pill zoom-label">{canvasScalePercent}%</span>
-            </div>
-            <button className={`icon-button ${linkFromNodeId ? 'primary' : ''}`} onClick={() => setLinkFromNodeId(null)}>
-              <Link2 size={16} />
-              {linkFromNodeId ? '取消连线' : '等待连线'}
-            </button>
             </div>
           </div>
         </header>
@@ -772,15 +813,28 @@ function App() {
                 const source = nodes.find((node) => node.id === link.fromNodeId);
                 const target = nodes.find((node) => node.id === link.toNodeId);
                 if (!source || !target) return null;
+                const isSelected = link.id === selectedConnectionId;
+                const pathData = getConnectionPath(source, target);
                 return (
-                  <path
-                    key={link.id}
-                    d={getConnectionPath(source, target)}
-                    fill="none"
-                    stroke="#60a5fa"
-                    strokeWidth="2.5"
-                    markerEnd="url(#arrow)"
-                  />
+                  <g key={link.id}>
+                    <path
+                      className="connection-hit-area"
+                      d={pathData}
+                      fill="none"
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                        setSelectedNodeId(null);
+                        setSelectedConnectionId(link.id);
+                        clearLinkDraft();
+                      }}
+                    />
+                    <path
+                      className={`connection-path ${isSelected ? 'selected' : ''}`}
+                      d={pathData}
+                      fill="none"
+                      markerEnd="url(#arrow)"
+                    />
+                  </g>
                 );
               })}
               {linkFromNodeId ? (() => {
@@ -813,7 +867,10 @@ function App() {
                   width: node.width,
                   height: node.height,
                 }}
-                onPointerDown={() => setSelectedNodeId(node.id)}
+                onPointerDown={() => {
+                  setSelectedNodeId(node.id);
+                  setSelectedConnectionId(null);
+                }}
               >
                 <header className="node-header" onPointerDown={(event) => beginDrag(event, node)}>
                   <div className="node-title">

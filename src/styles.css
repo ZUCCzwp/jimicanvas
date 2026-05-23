@@ -646,6 +646,7 @@ button {
 .grid-layer {
   position: absolute;
   inset: 0;
+  pointer-events: none;
   background-image:
     linear-gradient(rgba(148, 163, 184, 0.09) 1px, transparent 1px),
     linear-gradient(90deg, rgba(148, 163, 184, 0.09) 1px, transparent 1px);
@@ -657,7 +658,27 @@ button {
 .connection-layer {
   position: absolute;
   inset: 0;
+  pointer-events: auto;
+}
+
+.connection-hit-area {
+  pointer-events: stroke;
+  stroke: transparent;
+  stroke-width: 18;
+  cursor: pointer;
+}
+
+.connection-path {
   pointer-events: none;
+  stroke: #60a5fa;
+  stroke-width: 2.5;
+  transition: stroke 0.15s ease, stroke-width 0.15s ease, filter 0.15s ease;
+}
+
+.connection-path.selected {
+  stroke: #f59e0b;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.35));
 }
 
 .node {
