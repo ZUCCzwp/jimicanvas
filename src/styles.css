@@ -663,6 +663,8 @@ button {
 .node {
   position: absolute;
   border-radius: 16px;
+  display: flex;
+  flex-direction: column;
   background: rgba(15, 23, 42, 0.96);
   border: 1px solid rgba(148, 163, 184, 0.18);
   box-shadow: 0 18px 40px rgba(2, 6, 23, 0.48);
@@ -679,7 +681,8 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 10px 8px;
+  min-height: 48px;
+  padding: 12px 12px 10px;
   cursor: grab;
   user-select: none;
   background: rgba(15, 23, 42, 0.94);
@@ -710,8 +713,9 @@ button {
 }
 
 .node-body {
-  height: calc(100% - 56px);
-  padding: 0 10px 12px;
+  flex: 1;
+  min-height: 0;
+  padding: 0 12px 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
