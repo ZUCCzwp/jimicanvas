@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowRight,
   Download,
   FileUp,
   Image as ImageIcon,
@@ -8,18 +7,21 @@ import {
   Link2,
   PencilLine,
   Plus,
+  Play,
+  LoaderCircle,
   ZoomIn,
   ZoomOut,
   SquarePen,
   Trash2,
   RotateCcw,
   Wand2,
-  CircleDot,
   FileText,
   X,
 } from 'lucide-react';
 
 const STORAGE_KEY = 'jimicanvas.documents.v1';
+const JIMIAIGO_TOKEN_STORAGE_KEY = 'jimicanvas.jimiaigo.token';
+const DEFAULT_CHAT_API_URL = 'http://localhost:27355';
 const DEFAULT_NODE_WIDTH = 260;
 const DEFAULT_NODE_HEIGHT = 180;
 const MIN_CANVAS_SCALE = 0.6;
@@ -197,17 +199,40 @@ function isVideoContent(content) {
   return typeof content === 'string' && (content.startsWith('data:video') || /^https?:\/\//.test(content));
 }
 
+function getChatApiBaseUrl() {
+  if (typeof import.meta !== 'undefined') {
+    return import.meta.env.VITE_API_URL || import.meta.env.VITE_JIMIAIGO_API_URL || DEFAULT_CHAT_API_URL;
+  }
+  return DEFAULT_CHAT_API_URL;
+}
+
+function getStoredChatToken() {
+  if (typeof window === 'undefined') return '';
+
+  const envToken = import.meta.env.VITE_API_TOKEN || import.meta.env.VITE_JIMIAIGO_TOKEN;
+  if (envToken) return String(envToken).trim();
+
+  return (
+    window.localStorage.getItem(JIMIAIGO_TOKEN_STORAGE_KEY) ||
+    window.localStorage.getItem('token') ||
+    window.localStorage.getItem('access_token') ||
+    ''
+  ).trim();
+}
+
 function App() {
   const initial = useMemo(() => loadInitialState(), []);
   const [documents, setDocuments] = useState(initial.documents);
   const [activeCanvasId, setActiveCanvasId] = useState(initial.activeCanvasId);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [selectedConnectionId, setSelectedConnectionId] = useState(null);
+  const [editingNodeId, setEditingNodeId] = useState(null);
   const [linkFromNodeId, setLinkFromNodeId] = useState(null);
   const [hoverLinkNodeId, setHoverLinkNodeId] = useState(null);
   const [pointerPos, setPointerPos] = useState({ x: 0, y: 0 });
   const [canvasScale, setCanvasScale] = useState(1);
   const [importError, setImportError] = useState('');
+  const [runningNodeId, setRunningNodeId] = useState(null);
   const [showCanvasPanel, setShowCanvasPanel] = useState(false);
 
   const stageRef = useRef(null);
@@ -223,15 +248,24 @@ function App() {
       setActiveCanvasId(documents[0]?.id || null);
       setSelectedNodeId(null);
       setSelectedConnectionId(null);
+      setEditingNodeId(null);
       setHoverLinkNodeId(null);
     }
   }, [documents, activeCanvasId]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
+      const target = event.target;
+      const isEditableTarget =
+        target instanceof HTMLElement &&
+        (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+
+      if (isEditableTarget) return;
+
       if (event.key === 'Escape') {
         setLinkFromNodeId(null);
         setHoverLinkNodeId(null);
+        setEditingNodeId(null);
         setSelectedConnectionId(null);
       }
 
@@ -254,8 +288,8 @@ function App() {
   const activeCanvas = documents.find((doc) => doc.id === activeCanvasId) || documents[0];
   const nodes = activeCanvas?.nodes || [];
   const connections = activeCanvas?.connections || [];
-  const activeNode = nodes.find((node) => node.id === selectedNodeId) || null;
   const canvasScalePercent = Math.round(canvasScale * 100);
+  const toastError = importError;
 
   function setCanvasScaleClamped(nextScale) {
     setCanvasScale(snapScale(clampValue(nextScale, MIN_CANVAS_SCALE, MAX_CANVAS_SCALE)));
@@ -296,6 +330,7 @@ function App() {
     setActiveCanvasId(canvas.id);
     setSelectedNodeId(null);
     setSelectedConnectionId(null);
+    setEditingNodeId(null);
     setLinkFromNodeId(null);
     setHoverLinkNodeId(null);
   }
@@ -311,6 +346,7 @@ function App() {
       setActiveCanvasId(replacement.id);
       setSelectedNodeId(null);
       setSelectedConnectionId(null);
+      setEditingNodeId(null);
       setLinkFromNodeId(null);
       setHoverLinkNodeId(null);
       return;
@@ -322,6 +358,7 @@ function App() {
       setActiveCanvasId(next[0]?.id || null);
       setSelectedNodeId(null);
       setSelectedConnectionId(null);
+      setEditingNodeId(null);
       setLinkFromNodeId(null);
       setHoverLinkNodeId(null);
     }
@@ -339,6 +376,7 @@ function App() {
     }));
     setSelectedNodeId(node.id);
     setSelectedConnectionId(null);
+    setEditingNodeId(null);
   }
 
   function updateNode(nodeId, patch) {
@@ -358,6 +396,9 @@ function App() {
     }));
     if (selectedNodeId === nodeId) {
       setSelectedNodeId(null);
+    }
+    if (editingNodeId === nodeId) {
+      setEditingNodeId(null);
     }
     if (selectedConnectionId) {
       const selectedLink = connections.find((link) => link.id === selectedConnectionId);
@@ -381,10 +422,88 @@ function App() {
     }
   }
 
+  async function runTextGeneration(node) {
+    const promptText = String(node.content || node.title || '').trim();
+    if (!promptText) {
+      updateNode(node.id, { content: '文本节点内容为空', status: 'error' });
+      return;
+    }
+
+    let token = getStoredChatToken();
+    if (!token && typeof window !== 'undefined') {
+      const input = window.prompt('请输入 Jimiaigo 的 token');
+      if (input) {
+        token = String(input).trim();
+        window.localStorage.setItem(JIMIAIGO_TOKEN_STORAGE_KEY, token);
+      }
+    }
+
+    if (!token) {
+      updateNode(node.id, { content: '缺少 token', status: 'error' });
+      return;
+    }
+
+    const baseUrl = getChatApiBaseUrl().replace(/\/$/, '');
+
+    setRunningNodeId(node.id);
+
+    try {
+      const response = await fetch(`${baseUrl}/api/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: token,
+        },
+        body: JSON.stringify({
+          model: 'gpt-5.4-mini',
+          stream: false,
+          messages: [{ role: 'user', content: promptText }],
+        }),
+      });
+
+      const rawText = await response.text();
+      let parsed = null;
+      try {
+        parsed = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        parsed = null;
+      }
+
+      if (!response.ok) {
+        throw new Error(parsed?.msg || parsed?.message || rawText || '生成失败');
+      }
+
+      const generated = parsed?.choices?.[0]?.message?.content;
+      if (typeof generated !== 'string' || !generated.trim()) {
+        throw new Error('返回内容为空');
+      }
+
+      updateNode(node.id, { content: generated.trim(), status: 'idle' });
+      setSelectedNodeId(node.id);
+      setEditingNodeId(node.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '生成失败';
+      updateNode(node.id, { content: message, status: 'error' });
+      setSelectedNodeId(node.id);
+      setEditingNodeId(null);
+    } finally {
+      setRunningNodeId(null);
+    }
+  }
+
   function startLink(nodeId) {
     setSelectedConnectionId(null);
     setLinkFromNodeId((current) => (current === nodeId ? null : nodeId));
     setHoverLinkNodeId(null);
+  }
+
+  function handlePortPointerDown(event, nodeId) {
+    event.stopPropagation();
+    if (linkFromNodeId && linkFromNodeId !== nodeId) {
+      finishLink(nodeId);
+      return;
+    }
+    startLink(nodeId);
   }
 
   function beginLinkDrag(event, nodeId) {
@@ -488,6 +607,7 @@ function App() {
     event.stopPropagation();
     setSelectedNodeId(node.id);
     setSelectedConnectionId(null);
+    setEditingNodeId(null);
     dragRef.current = {
       nodeId: node.id,
       startX: event.clientX,
@@ -507,6 +627,7 @@ function App() {
     if (isCanvasBackground) {
       setSelectedNodeId(null);
       setSelectedConnectionId(null);
+      setEditingNodeId(null);
       if (linkFromNodeId) clearLinkDraft();
     }
   }
@@ -542,6 +663,7 @@ function App() {
         setActiveCanvasId(parsed[0].id);
         setSelectedNodeId(null);
         setSelectedConnectionId(null);
+        setEditingNodeId(null);
         clearLinkDraft();
         setImportError('');
       } catch (error) {
@@ -625,6 +747,7 @@ function App() {
                     setActiveCanvasId(doc.id);
                     setSelectedNodeId(null);
                     setSelectedConnectionId(null);
+                    setEditingNodeId(null);
                     setLinkFromNodeId(null);
                     setHoverLinkNodeId(null);
                     setShowCanvasPanel(false);
@@ -655,79 +778,7 @@ function App() {
         </section>
       ) : null}
 
-      {activeNode ? (
-        <section className="node-inspector-panel" onPointerDown={(event) => event.stopPropagation()}>
-          <header className="panel-header">
-            <div className="panel-title">
-              <PencilLine size={15} />
-              节点详情
-            </div>
-            <button className="panel-icon" onClick={() => setSelectedNodeId(null)} title="关闭">
-              <X size={15} />
-            </button>
-          </header>
-
-          <div className="inspector">
-            <label>
-              标题
-              <input
-                value={activeNode.title}
-                onChange={(event) => updateNode(activeNode.id, { title: event.target.value })}
-              />
-            </label>
-            <label>
-              类型
-              <div className="toggle-row">
-                <button
-                  className={`toggle ${activeNode.type === 'note' ? 'active' : ''}`}
-                  onClick={() => updateNode(activeNode.id, { type: 'note' })}
-                >
-                  <FileText size={14} />
-                  文本
-                </button>
-                <button
-                  className={`toggle ${activeNode.type === 'image' ? 'active' : ''}`}
-                  onClick={() =>
-                    updateNode(activeNode.id, {
-                      type: 'image',
-                      content: isImageContent(activeNode.content) ? activeNode.content : PLACEHOLDER_IMAGE,
-                    })
-                  }
-                >
-                  <ImageIcon size={14} />
-                  图片
-                </button>
-                <button
-                  className={`toggle ${activeNode.type === 'video' ? 'active' : ''}`}
-                  onClick={() =>
-                    updateNode(activeNode.id, {
-                      type: 'video',
-                      content: isVideoContent(activeNode.content) ? activeNode.content : DEFAULT_VIDEO_URL,
-                    })
-                  }
-                >
-                  <Film size={14} />
-                  视频
-                </button>
-              </div>
-            </label>
-            <label>
-              内容
-              <textarea
-                rows={7}
-                value={activeNode.content}
-                onChange={(event) => updateNode(activeNode.id, { content: event.target.value })}
-              />
-            </label>
-            <button className="icon-button danger-button" onClick={() => removeNode(activeNode.id)}>
-              <Trash2 size={16} />
-              删除节点
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {importError ? <div className="toast-error">{importError}</div> : null}
+      {toastError ? <div className="toast-error">{toastError}</div> : null}
 
       <main className="workspace">
         <header className="topbar">
@@ -867,12 +918,27 @@ function App() {
                   width: node.width,
                   height: node.height,
                 }}
-                onPointerDown={() => {
+                onPointerDown={(event) => {
                   setSelectedNodeId(node.id);
                   setSelectedConnectionId(null);
+                  if (node.type === 'note') {
+                    beginDrag(event, node);
+                  }
+                }}
+                onDoubleClick={() => {
+                  if (node.type === 'note') {
+                    setEditingNodeId(node.id);
+                  }
                 }}
               >
-                <header className="node-header" onPointerDown={(event) => beginDrag(event, node)}>
+                <div
+                  className="node-floating-header"
+                  onPointerDown={(event) => {
+                    if (node.type !== 'note') {
+                      beginDrag(event, node);
+                    }
+                  }}
+                >
                   <div className="node-title">
                     {node.type === 'image' ? <ImageIcon size={14} /> : node.type === 'video' ? <Film size={14} /> : <FileText size={14} />}
                     <input
@@ -882,17 +948,24 @@ function App() {
                     />
                   </div>
                   <div className="node-header-actions">
-                    <button
-                      className={`icon-mini ${linkFromNodeId === node.id ? 'active' : ''}`}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        startLink(node.id);
-                      }}
-                      title="发起连线"
-                    >
-                      <Link2 size={14} />
-                    </button>
+                    {node.type === 'note' ? (
+                      <button
+                        className="icon-mini"
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          runTextGeneration(node);
+                        }}
+                        title="运行文本生成"
+                        disabled={runningNodeId === node.id}
+                      >
+                        {runningNodeId === node.id ? (
+                          <LoaderCircle size={14} className="spin-icon" />
+                        ) : (
+                          <Play size={14} />
+                        )}
+                      </button>
+                    ) : null}
                     <button
                       className="icon-mini danger"
                       onPointerDown={(event) => event.stopPropagation()}
@@ -905,7 +978,7 @@ function App() {
                       <Trash2 size={14} />
                     </button>
                   </div>
-                </header>
+                </div>
 
                 <div className="node-body">
                   {node.type === 'image' ? (
@@ -942,37 +1015,75 @@ function App() {
                         )}
                       </div>
                     </>
-                  ) : (
+                  ) : runningNodeId === node.id ? (
+                    <div className="node-run-state">
+                      <LoaderCircle size={22} className="spin-icon" />
+                      <span>正在运行</span>
+                    </div>
+                  ) : node.status === 'error' && editingNodeId !== node.id ? (
+                    <div
+                      className="node-error-display"
+                      onPointerDown={(event) => beginDrag(event, node)}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation();
+                        setEditingNodeId(node.id);
+                      }}
+                    >
+                      <strong>运行失败</strong>
+                      <span>{node.content || '生成失败'}</span>
+                    </div>
+                  ) : editingNodeId === node.id ? (
                     <textarea
+                      autoFocus
                       value={node.content}
-                      onChange={(event) => updateNode(node.id, { content: event.target.value })}
+                      onChange={(event) => updateNode(node.id, { content: event.target.value, status: 'idle' })}
+                      onBlur={() => setEditingNodeId(null)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          event.preventDefault();
+                          setEditingNodeId(null);
+                        }
+                      }}
                       onPointerDown={(event) => event.stopPropagation()}
                       placeholder="输入文本内容"
                     />
+                  ) : (
+                    <div
+                      className="node-text-display"
+                      onPointerDown={(event) => beginDrag(event, node)}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation();
+                        setEditingNodeId(node.id);
+                      }}
+                    >
+                      {node.content || '双击编辑文字'}
+                    </div>
                   )}
                 </div>
 
                 <button
                   className={`port output ${linkFromNodeId === node.id ? 'active' : ''}`}
                   onPointerDown={(event) => {
-                    event.stopPropagation();
-                    startLink(node.id);
+                    handlePortPointerDown(event, node.id);
                   }}
-                  title="输出端口"
-                >
-                  <ArrowRight size={12} />
-                </button>
-
-                <button
-                  className="port input"
                   onPointerUp={(event) => {
                     event.stopPropagation();
-                    finishLink(node.id);
+                    if (linkFromNodeId && linkFromNodeId !== node.id) finishLink(node.id);
                   }}
-                  title="输入端口"
-                >
-                  <CircleDot size={12} />
-                </button>
+                  title="连线端口"
+                />
+
+                <button
+                  className={`port input ${linkFromNodeId === node.id ? 'active' : ''}`}
+                  onPointerDown={(event) => {
+                    handlePortPointerDown(event, node.id);
+                  }}
+                  onPointerUp={(event) => {
+                    event.stopPropagation();
+                    if (linkFromNodeId && linkFromNodeId !== node.id) finishLink(node.id);
+                  }}
+                  title="连线端口"
+                />
               </article>
             ))}
 

@@ -88,8 +88,7 @@ button {
   background: rgba(255, 255, 255, 0.1);
 }
 
-.canvas-panel,
-.node-inspector-panel {
+.canvas-panel {
   position: fixed;
   z-index: 65;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -104,12 +103,6 @@ button {
   left: 90px;
   top: 72px;
   width: 300px;
-}
-
-.node-inspector-panel {
-  right: 24px;
-  top: 86px;
-  width: 320px;
 }
 
 .panel-header {
@@ -426,6 +419,21 @@ button {
   background: rgba(14, 165, 233, 0.16);
 }
 
+.icon-mini:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.spin-icon {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .toolbar-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -444,22 +452,6 @@ button {
   font-size: 13px;
 }
 
-.inspector {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.inspector label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 12px;
-  color: #cbd5e1;
-}
-
-.inspector input,
-.inspector textarea,
 .canvas-name,
 .node-title input,
 .node-content-input,
@@ -472,14 +464,12 @@ button {
   outline: none;
 }
 
-.inspector input,
 .canvas-name,
 .node-title input,
 .node-content-input {
   padding: 9px 10px;
 }
 
-.inspector textarea,
 .stage textarea {
   min-height: 110px;
   padding: 10px;
@@ -498,11 +488,6 @@ button {
   gap: 6px;
   padding: 8px 10px;
   border-radius: 10px;
-}
-
-.inspector-actions {
-  display: flex;
-  gap: 8px;
 }
 
 .empty-state,
@@ -610,10 +595,6 @@ button {
   font-size: 12px;
 }
 
-.node-inspector-panel .inspector {
-  padding: 14px;
-}
-
 .danger-button {
   justify-content: center;
   color: #fecaca;
@@ -686,27 +667,52 @@ button {
   border-radius: 16px;
   display: flex;
   flex-direction: column;
+  overflow: visible;
+}
+
+.node::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
   background: rgba(15, 23, 42, 0.96);
   border: 1px solid rgba(148, 163, 184, 0.18);
   box-shadow: 0 18px 40px rgba(2, 6, 23, 0.48);
-  overflow: hidden;
+  pointer-events: none;
 }
 
 .node.selected {
+  box-shadow: none;
+}
+
+.node.selected::before {
   border-color: rgba(56, 189, 248, 0.62);
   box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.3), 0 18px 40px rgba(2, 6, 23, 0.48);
 }
 
-.node-header {
+.node.note {
+  cursor: grab;
+}
+
+.node-floating-header {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 48px;
-  padding: 12px 12px 10px;
+  min-height: 38px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
   cursor: grab;
   user-select: none;
-  background: rgba(15, 23, 42, 0.94);
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.36);
+  backdrop-filter: blur(12px);
 }
 
 .node-title {
@@ -734,19 +740,80 @@ button {
 }
 
 .node-body {
+  position: relative;
+  z-index: 1;
   flex: 1;
   min-height: 0;
-  padding: 0 12px 12px;
+  padding: 0;
   display: flex;
   flex-direction: column;
+  gap: 0;
+}
+
+.node-text-display {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 16px;
+  border: 0;
+  background: rgba(15, 23, 42, 0.5);
+  color: #e2e8f0;
+  font-size: 13px;
+  white-space: pre-wrap;
+  line-height: 1.4;
+  cursor: grab;
+}
+
+.node-run-state {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
   gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 0;
+  background: rgba(14, 165, 233, 0.1);
+  color: #bae6fd;
+  font-size: 13px;
+}
+
+.node-error-display {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 16px;
+  border: 0;
+  background: rgba(127, 29, 29, 0.28);
+  color: #fecaca;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: grab;
+}
+
+.node-error-display strong {
+  color: #fca5a5;
+  font-size: 12px;
+}
+
+.node-error-display span {
+  white-space: pre-wrap;
 }
 
 .node-body textarea {
   flex: 1;
   min-height: 0;
-  padding: 10px;
+  padding: 8px;
+  border: 0;
+  border-radius: 16px;
   resize: none;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .image-preview {
@@ -785,29 +852,55 @@ button {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 28px;
-  height: 28px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  z-index: 3;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 2px solid rgba(96, 165, 250, 0.82);
   border-radius: 999px;
   display: grid;
   place-items: center;
-  background: rgba(15, 23, 42, 0.98);
-  color: #cbd5e1;
+  background: #020617;
+  color: #bfdbfe;
+  box-shadow: 0 0 0 4px rgba(2, 6, 23, 0.78), 0 8px 18px rgba(2, 6, 23, 0.4);
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.port::before,
+.port::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 1.5px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+
+.port::after {
+  transform: translate(-50%, -50%) rotate(90deg);
 }
 
 .port.input {
-  left: -14px;
+  left: -22px;
 }
 
 .port.output {
-  right: -14px;
+  right: -22px;
+}
+
+.port:hover {
+  transform: translateY(-50%) scale(1.12);
 }
 
 .port.active,
+.stage.link-mode .port.input,
 .stage.link-mode .port.output {
-  border-color: rgba(56, 189, 248, 0.55);
-  background: rgba(14, 165, 233, 0.16);
-  color: #bae6fd;
+  border-color: #38bdf8;
+  background: #0ea5e9;
+  color: #ecfeff;
 }
 
 .empty-hint {
@@ -863,14 +956,6 @@ button {
     left: 66px;
     right: 12px;
     top: 72px;
-    width: auto;
-  }
-
-  .node-inspector-panel {
-    left: 66px;
-    right: 12px;
-    top: auto;
-    bottom: 16px;
     width: auto;
   }
 
