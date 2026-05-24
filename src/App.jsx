@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Bot,
   Download,
   FileUp,
   Image as ImageIcon,
   Film,
   Link2,
+  Languages,
   PencilLine,
   Plus,
   Play,
@@ -22,6 +24,7 @@ import {
 const STORAGE_KEY = 'jimicanvas.documents.v1';
 const JIMIAIGO_TOKEN_STORAGE_KEY = 'jimicanvas.jimiaigo.token';
 const DEFAULT_CHAT_API_URL = 'http://localhost:27355';
+const DEFAULT_TEXT_MODEL = 'gpt-5.4-mini';
 const DEFAULT_NODE_WIDTH = 260;
 const DEFAULT_NODE_HEIGHT = 180;
 const MIN_CANVAS_SCALE = 0.6;
@@ -81,7 +84,8 @@ function createNode(type, x, y) {
     id,
     type: 'note',
     title: '文本节点',
-    content: '在这里输入内容，拖动标题栏可以移动节点。右侧圆点发起连线。',
+    prompt: '',
+    content: '选择文本节点后，在下方输入文字并运行。',
     x,
     y,
     width: DEFAULT_NODE_WIDTH,
@@ -97,7 +101,8 @@ function createDocument(name, withStarterNodes = true) {
           id: uid('node'),
           type: 'note',
           title: '欢迎使用',
-          content: '这是一个轻量画布。左侧创建画布，中间拖拽节点，点击圆点连线。',
+          prompt: '',
+          content: '这是一个轻量画布。点击文本节点，在下方输入文字后运行或翻译。',
           x: 120,
           y: 100,
           width: DEFAULT_NODE_WIDTH,
@@ -233,6 +238,7 @@ function App() {
   const [canvasScale, setCanvasScale] = useState(1);
   const [importError, setImportError] = useState('');
   const [runningNodeId, setRunningNodeId] = useState(null);
+  const [translatingNodeId, setTranslatingNodeId] = useState(null);
   const [showCanvasPanel, setShowCanvasPanel] = useState(false);
 
   const stageRef = useRef(null);
@@ -422,8 +428,8 @@ function App() {
     }
   }
 
-  async function runTextGeneration(node) {
-    const promptText = String(node.content || node.title || '').trim();
+  async function runTextGeneration(node, mode = 'generate') {
+    const promptText = String(node.prompt || node.content || node.title || '').trim();
     if (!promptText) {
       updateNode(node.id, { content: '文本节点内容为空', status: 'error' });
       return;
@@ -444,8 +450,16 @@ function App() {
     }
 
     const baseUrl = getChatApiBaseUrl().replace(/\/$/, '');
+    const requestText =
+      mode === 'translate-en'
+        ? `Detect whether the following text is primarily Chinese or English. If it is Chinese, translate it into natural English. If it is English, translate it into natural Chinese. Return only the translation, with no explanations:\n\n${promptText}`
+        : promptText;
 
-    setRunningNodeId(node.id);
+    if (mode === 'translate-en') {
+      setTranslatingNodeId(node.id);
+    } else {
+      setRunningNodeId(node.id);
+    }
 
     try {
       const response = await fetch(`${baseUrl}/api/chat/completions`, {
@@ -455,9 +469,9 @@ function App() {
           Authorization: token,
         },
         body: JSON.stringify({
-          model: 'gpt-5.4-mini',
+          model: DEFAULT_TEXT_MODEL,
           stream: false,
-          messages: [{ role: 'user', content: promptText }],
+          messages: [{ role: 'user', content: requestText }],
         }),
       });
 
@@ -478,16 +492,24 @@ function App() {
         throw new Error('返回内容为空');
       }
 
-      updateNode(node.id, { content: generated.trim(), status: 'idle' });
+      if (mode === 'translate-en') {
+        updateNode(node.id, { prompt: generated.trim(), status: 'idle' });
+      } else {
+        updateNode(node.id, { content: generated.trim(), status: 'idle' });
+      }
       setSelectedNodeId(node.id);
-      setEditingNodeId(node.id);
+      setEditingNodeId(mode === 'translate-en' ? null : node.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : '生成失败';
       updateNode(node.id, { content: message, status: 'error' });
       setSelectedNodeId(node.id);
       setEditingNodeId(null);
     } finally {
-      setRunningNodeId(null);
+      if (mode === 'translate-en') {
+        setTranslatingNodeId(null);
+      } else {
+        setRunningNodeId(null);
+      }
     }
   }
 
@@ -949,22 +971,7 @@ function App() {
                   </div>
                   <div className="node-header-actions">
                     {node.type === 'note' ? (
-                      <button
-                        className="icon-mini"
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          runTextGeneration(node);
-                        }}
-                        title="运行文本生成"
-                        disabled={runningNodeId === node.id}
-                      >
-                        {runningNodeId === node.id ? (
-                          <LoaderCircle size={14} className="spin-icon" />
-                        ) : (
-                          <Play size={14} />
-                        )}
-                      </button>
+                      null
                     ) : null}
                     <button
                       className="icon-mini danger"
@@ -1045,7 +1052,7 @@ function App() {
                         }
                       }}
                       onPointerDown={(event) => event.stopPropagation()}
-                      placeholder="输入文本内容"
+                      placeholder="编辑结果文字"
                     />
                   ) : (
                     <div
@@ -1056,10 +1063,61 @@ function App() {
                         setEditingNodeId(node.id);
                       }}
                     >
-                      {node.content || '双击编辑文字'}
+                      {node.content || '暂无结果'}
                     </div>
                   )}
                 </div>
+
+                {node.type === 'note' && selectedNodeId === node.id ? (
+                  <div className="node-bottom-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+                    <textarea
+                      className="node-prompt-input"
+                      value={node.prompt || ''}
+                      onChange={(event) => updateNode(node.id, { prompt: event.target.value, status: 'idle' })}
+                      placeholder="输入文字"
+                    />
+                    <div className="node-bottom-actions">
+                      <label className="node-model-picker" title="模型">
+                        <Bot size={14} />
+                        <select
+                          className="node-model-select"
+                          value={DEFAULT_TEXT_MODEL}
+                          onChange={(event) => event.preventDefault()}
+                        >
+                          <option value={DEFAULT_TEXT_MODEL}>{DEFAULT_TEXT_MODEL}</option>
+                        </select>
+                      </label>
+                      <div className="node-run-actions">
+                        <button
+                          className="icon-button"
+                          onClick={() => runTextGeneration(node, 'translate-en')}
+                          title="一键翻译英文"
+                          disabled={translatingNodeId === node.id || runningNodeId === node.id || !String(node.prompt || '').trim()}
+                        >
+                          {translatingNodeId === node.id ? (
+                            <LoaderCircle size={14} className="spin-icon" />
+                          ) : (
+                            <Languages size={14} />
+                          )}
+                          翻译
+                        </button>
+                        <button
+                          className="icon-button primary"
+                          onClick={() => runTextGeneration(node)}
+                          title="运行文本生成"
+                          disabled={runningNodeId === node.id || translatingNodeId === node.id || !String(node.prompt || '').trim()}
+                        >
+                          {runningNodeId === node.id ? (
+                            <LoaderCircle size={14} className="spin-icon" />
+                          ) : (
+                            <Play size={14} />
+                          )}
+                          运行
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 <button
                   className={`port output ${linkFromNodeId === node.id ? 'active' : ''}`}
