@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AssetPickerModal } from './components/AssetPickerModal';
 import { CanvasNode } from './components/CanvasNode';
 import { CanvasPanel } from './components/CanvasPanel';
+import { CanvasZoomControls } from './components/CanvasZoomControls';
 import { ConnectionLayer } from './components/ConnectionLayer';
 import { EmptyHint } from './components/EmptyHint';
 import { FloatingDock } from './components/FloatingDock';
@@ -11,9 +13,18 @@ import {
   JIMIAIGO_TOKEN_STORAGE_KEY,
   MAX_CANVAS_SCALE,
   MIN_CANVAS_SCALE,
+  normalizeImageModelSettings,
 } from './lib/constants';
 import { clampValue, createDocument, createNode, snapScale, uid } from './lib/canvas';
 import { getStoredChatToken, runChatCompletion } from './lib/chatApi';
+import {
+  createImageGenerationTask,
+  getAssetList,
+  normalizeImageUrl,
+  readImageFile,
+  uploadAsset,
+  waitForImageTask,
+} from './lib/imageApi';
 import { loadInitialState, writeStorage } from './lib/storage';
 
 function App() {
@@ -30,7 +41,16 @@ function App() {
   const [importError, setImportError] = useState('');
   const [runningNodeId, setRunningNodeId] = useState(null);
   const [translatingNodeId, setTranslatingNodeId] = useState(null);
+  const [uploadingNodeId, setUploadingNodeId] = useState(null);
   const [showCanvasPanel, setShowCanvasPanel] = useState(false);
+  const [assetPicker, setAssetPicker] = useState({
+    nodeId: null,
+    source: 'local',
+    assets: [],
+    selectedAssets: [],
+    search: '',
+    loading: false,
+  });
 
   const stageRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -49,6 +69,11 @@ function App() {
       setHoverLinkNodeId(null);
     }
   }, [documents, activeCanvasId]);
+
+  useEffect(() => {
+    if (!assetPicker.nodeId) return;
+    loadAssetPickerAssets(assetPicker.source);
+  }, [assetPicker.nodeId, assetPicker.source]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -176,6 +201,18 @@ function App() {
     }));
   }
 
+  function getOrRequestToken() {
+    let token = getStoredChatToken();
+    if (!token && typeof window !== 'undefined') {
+      const input = window.prompt('请输入 Jimiaigo 的 token');
+      if (input) {
+        token = String(input).trim();
+        window.localStorage.setItem(JIMIAIGO_TOKEN_STORAGE_KEY, token);
+      }
+    }
+    return token;
+  }
+
   function removeNode(nodeId) {
     updateActiveCanvas((doc) => ({
       ...doc,
@@ -218,14 +255,7 @@ function App() {
       return;
     }
 
-    let token = getStoredChatToken();
-    if (!token && typeof window !== 'undefined') {
-      const input = window.prompt('请输入 Jimiaigo 的 token');
-      if (input) {
-        token = String(input).trim();
-        window.localStorage.setItem(JIMIAIGO_TOKEN_STORAGE_KEY, token);
-      }
-    }
+    const token = getOrRequestToken();
 
     if (!token) {
       updateNode(node.id, { content: '缺少 token', status: 'error' });
@@ -265,6 +295,214 @@ function App() {
         setRunningNodeId(null);
       }
     }
+  }
+
+  async function runImageGeneration(node, mode = 'generate') {
+    const promptText = String(node.prompt || '').trim();
+    if (!promptText) {
+      updateNode(node.id, { content: '图片提示词不能为空', status: 'error' });
+      return;
+    }
+
+    const token = getOrRequestToken();
+
+    if (!token) {
+      updateNode(node.id, { content: '缺少 token', status: 'error' });
+      return;
+    }
+
+    if (mode === 'translate') {
+      setTranslatingNodeId(node.id);
+      try {
+        const translated = await runChatCompletion({
+          token,
+          content: `Detect whether the following image prompt is primarily Chinese or English. If it is Chinese, translate it into natural English. If it is English, translate it into natural Chinese. Return only the translation, with no explanations:\n\n${promptText}`,
+        });
+        updateNode(node.id, { prompt: translated, status: 'idle' });
+        setSelectedNodeId(node.id);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '翻译失败';
+        updateNode(node.id, { content: message, status: 'error' });
+        setSelectedNodeId(node.id);
+      } finally {
+        setTranslatingNodeId(null);
+      }
+      return;
+    }
+
+    setRunningNodeId(node.id);
+    updateNode(node.id, { status: 'running' });
+
+    try {
+      const settings = normalizeImageModelSettings({
+        model: node.imageModel,
+        resolution: node.imageResolution,
+        ratio: node.imageRatio,
+        count: node.imageCount,
+      });
+      const count = settings.count;
+      const images = [];
+
+      for (let index = 0; index < count; index += 1) {
+        const taskId = await createImageGenerationTask({
+          token,
+          prompt: promptText,
+          model: settings.model,
+          ratio: settings.ratio,
+          resolution: settings.resolution,
+          referenceImages: node.referenceImages || [],
+        });
+        const taskImages = await waitForImageTask({ token, taskId });
+        images.push(...taskImages);
+        updateNode(node.id, {
+          content: images[0],
+          images,
+          status: 'running',
+        });
+      }
+
+      updateNode(node.id, {
+        content: images[0],
+        images,
+        status: 'idle',
+      });
+      setSelectedNodeId(node.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '图片生成失败';
+      updateNode(node.id, { content: message, status: 'error' });
+      setSelectedNodeId(node.id);
+    } finally {
+      setRunningNodeId(null);
+    }
+  }
+
+  async function uploadImageReferences(nodeId, files) {
+    const token = getOrRequestToken();
+    if (!token) {
+      updateNode(nodeId, { content: '缺少 token', status: 'error' });
+      return;
+    }
+
+    setUploadingNodeId(nodeId);
+    try {
+      const references = [];
+      for (const file of files.slice(0, 5)) {
+        const localImage = await readImageFile(file);
+        const uploadedUrl = await uploadAsset({ token, file });
+        references.push({
+          ...localImage,
+          url: normalizeImageUrl(uploadedUrl || localImage.url),
+          uploadedUrl,
+        });
+      }
+
+      updateActiveCanvas((doc) => ({
+        ...doc,
+        nodes: doc.nodes.map((node) => {
+          if (node.id !== nodeId) return node;
+          const current = Array.isArray(node.referenceImages) ? node.referenceImages : [];
+          return {
+            ...node,
+            referenceImages: [...current, ...references].slice(0, 5),
+            status: 'idle',
+          };
+        }),
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '上传图片失败';
+      updateNode(nodeId, { content: message, status: 'error' });
+    } finally {
+      setUploadingNodeId(null);
+    }
+  }
+
+  function removeImageReference(nodeId, index) {
+    updateActiveCanvas((doc) => ({
+      ...doc,
+      nodes: doc.nodes.map((node) => {
+        if (node.id !== nodeId) return node;
+        const references = Array.isArray(node.referenceImages) ? node.referenceImages : [];
+        return {
+          ...node,
+          referenceImages: references.filter((_, itemIndex) => itemIndex !== index),
+        };
+      }),
+    }));
+  }
+
+  function openAssetLibrary(nodeId) {
+    setAssetPicker({
+      nodeId,
+      source: 'local',
+      assets: [],
+      selectedAssets: [],
+      search: '',
+      loading: true,
+    });
+  }
+
+  async function loadAssetPickerAssets(source) {
+    const token = getOrRequestToken();
+    if (!token) {
+      setAssetPicker((current) => ({ ...current, loading: false }));
+      return;
+    }
+
+    setAssetPicker((current) => ({ ...current, loading: true, assets: [] }));
+    try {
+      const result = await getAssetList({ token, source, page: 1, pageSize: 36 });
+      setAssetPicker((current) => ({
+        ...current,
+        assets: result.list || [],
+        loading: false,
+      }));
+    } catch {
+      setAssetPicker((current) => ({ ...current, assets: [], loading: false }));
+    }
+  }
+
+  function toggleAssetSelection(asset) {
+    setAssetPicker((current) => {
+      const exists = current.selectedAssets.some((item) => item.id === asset.id);
+      if (exists) {
+        return {
+          ...current,
+          selectedAssets: current.selectedAssets.filter((item) => item.id !== asset.id),
+        };
+      }
+      if (current.selectedAssets.length >= 5) return current;
+      return {
+        ...current,
+        selectedAssets: [...current.selectedAssets, asset],
+      };
+    });
+  }
+
+  function confirmAssetSelection() {
+    const { nodeId, selectedAssets } = assetPicker;
+    if (!nodeId || selectedAssets.length === 0) return;
+
+    updateActiveCanvas((doc) => ({
+      ...doc,
+      nodes: doc.nodes.map((node) => {
+        if (node.id !== nodeId) return node;
+        const current = Array.isArray(node.referenceImages) ? node.referenceImages : [];
+        const normalized = selectedAssets.map((asset) => ({
+          id: asset.id,
+          name: asset.name || '图片资产',
+          url: assetPicker.source === 'local' ? asset.url : normalizeImageUrl(asset.url),
+          source: assetPicker.source,
+          type: 'image',
+        }));
+        return {
+          ...node,
+          referenceImages: [...current, ...normalized].slice(0, 5),
+          status: 'idle',
+        };
+      }),
+    }));
+
+    setAssetPicker((current) => ({ ...current, nodeId: null, selectedAssets: [] }));
   }
 
   function startLink(nodeId) {
@@ -478,18 +716,31 @@ function App() {
 
       {importError ? <div className="toast-error">{importError}</div> : null}
 
+      {assetPicker.nodeId ? (
+        <AssetPickerModal
+          assets={assetPicker.assets}
+          loading={assetPicker.loading}
+          source={assetPicker.source}
+          search={assetPicker.search}
+          selectedAssets={assetPicker.selectedAssets}
+          maxCount={5}
+          onSourceChange={(source) =>
+            setAssetPicker((current) => ({ ...current, source, selectedAssets: [] }))
+          }
+          onSearchChange={(search) => setAssetPicker((current) => ({ ...current, search }))}
+          onToggleAsset={toggleAssetSelection}
+          onUploadImages={(files) => uploadImageReferences(assetPicker.nodeId, files)}
+          onConfirm={confirmAssetSelection}
+          onClose={() => setAssetPicker((current) => ({ ...current, nodeId: null }))}
+        />
+      ) : null}
+
       <main className="workspace">
         <Topbar
           activeCanvas={activeCanvas}
           nodesCount={nodes.length}
           connectionsCount={connections.length}
-          canvasScalePercent={canvasScalePercent}
-          linkFromNodeId={linkFromNodeId}
           onRenameCanvas={renameCanvas}
-          onZoom={zoomCanvas}
-          onScaleChange={setCanvasScaleClamped}
-          onResetScale={resetCanvasScale}
-          onCancelLink={() => setLinkFromNodeId(null)}
         />
 
         <section
@@ -528,6 +779,9 @@ function App() {
                 onUpdateNode={updateNode}
                 onRemoveNode={removeNode}
                 onRunTextGeneration={runTextGeneration}
+                onRunImageGeneration={runImageGeneration}
+                onOpenAssetLibrary={openAssetLibrary}
+                onRemoveImageReference={removeImageReference}
                 onPortPointerDown={handlePortPointerDown}
                 onFinishLink={finishLink}
               />
@@ -535,6 +789,12 @@ function App() {
 
             <EmptyHint />
           </div>
+          <CanvasZoomControls
+            canvasScalePercent={canvasScalePercent}
+            onZoom={zoomCanvas}
+            onScaleChange={setCanvasScaleClamped}
+            onResetScale={resetCanvasScale}
+          />
         </section>
       </main>
     </div>

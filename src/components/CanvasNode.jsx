@@ -1,20 +1,151 @@
+import { useEffect, useRef, useState } from 'react';
 import {
   Bot,
+  Check,
+  ChevronDown,
   FileText,
   Film,
+  FolderOpen,
   Image as ImageIcon,
   Languages,
   LoaderCircle,
   Play,
   Trash2,
+  X,
 } from 'lucide-react';
-import { DEFAULT_TEXT_MODEL } from '../lib/constants';
+import {
+  DEFAULT_TEXT_MODEL,
+  getImageCountOptions,
+  IMAGE_MODEL_OPTIONS,
+  getImageRatioOptions,
+  getImageResolutionOptions,
+  normalizeImageModelSettings,
+} from '../lib/constants';
 import { isImageContent, isVideoContent } from '../lib/canvas';
+import { normalizeImageUrl } from '../lib/imageApi';
 
 function NodeIcon({ type }) {
   if (type === 'image') return <ImageIcon size={14} />;
   if (type === 'video') return <Film size={14} />;
   return <FileText size={14} />;
+}
+
+function CustomSelect({
+  icon,
+  label,
+  title,
+  value,
+  options,
+  onChange,
+  compact = false,
+  className = '',
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const selected = options.find((option) => option.value === value) || options[0];
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!rootRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [open]);
+
+  return (
+    <div
+      ref={rootRef}
+      className={`custom-select ${open ? 'open' : ''} ${compact ? 'compact' : ''} ${className}`}
+      title={title}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          setOpen(false);
+        }
+      }}
+    >
+      <button
+        type="button"
+        className="custom-select-trigger"
+        onClick={() => setOpen((value) => !value)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        {icon}
+        {label ? <span className="custom-select-prefix">{label}</span> : null}
+        <span className="custom-select-value">{selected?.label}</span>
+        <ChevronDown size={13} className="custom-select-arrow" />
+      </button>
+      {open ? (
+        <div className="custom-select-menu" role="listbox">
+          {options.map((option) => {
+            const isSelected = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className={`custom-select-option ${isSelected ? 'selected' : ''}`}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                role="option"
+                aria-selected={isSelected}
+              >
+                <span>{option.label}</span>
+                {isSelected ? <Check size={13} /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function OptionSegment({ title, options, value, onChange, renderIcon }) {
+  return (
+    <div className="option-segment">
+      <div className="option-segment-title">{title}</div>
+      <div className="option-segment-control">
+        {options.map((option) => {
+          const isActive = option.value === value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              className={`option-segment-button ${isActive ? 'active' : ''}`}
+              onClick={() => onChange(option.value)}
+              title={option.label}
+            >
+              {renderIcon ? renderIcon(option) : null}
+              <span>{option.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RatioIcon({ value }) {
+  const [width = 1, height = 1] = String(value)
+    .split(':')
+    .map((part) => Number(part) || 1);
+  const isTall = height > width;
+  const isWide = width > height;
+
+  return (
+    <span
+      className={`ratio-icon ${isWide ? 'wide' : ''} ${isTall ? 'tall' : ''}`}
+      aria-hidden="true"
+    />
+  );
 }
 
 function NoteBody({
@@ -84,9 +215,54 @@ function NoteBody({
   );
 }
 
-function MediaBody({ node, onUpdateNode }) {
-  const isImage = node.type === 'image';
-  const canPreview = isImage ? isImageContent(node.content) : isVideoContent(node.content);
+function ImageBody({ node, isRunning, onBeginDrag }) {
+  const images = Array.isArray(node.images) && node.images.length > 0 ? node.images : [];
+  const displayImages = images.length > 0 ? images : isImageContent(node.content) ? [node.content] : [];
+
+  if (isRunning) {
+    return (
+      <div className="image-output-state" onPointerDown={(event) => onBeginDrag(event, node)}>
+        <LoaderCircle size={24} className="spin-icon" />
+        <span>正在生成图片</span>
+      </div>
+    );
+  }
+
+  if (node.status === 'error') {
+    return (
+      <div
+        className="node-error-display image-error-display"
+        onPointerDown={(event) => onBeginDrag(event, node)}
+      >
+        <strong>生成失败</strong>
+        <span>{node.content || '图片生成失败'}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`image-output-grid image-count-${Math.min(displayImages.length || 1, 4)}`}
+      onPointerDown={(event) => onBeginDrag(event, node)}
+    >
+      {displayImages.length > 0 ? (
+        displayImages.map((imageUrl, index) => (
+          <img
+            key={`${imageUrl}-${index}`}
+            src={normalizeImageUrl(imageUrl)}
+            alt={`${node.title}-${index + 1}`}
+            draggable={false}
+          />
+        ))
+      ) : (
+        <div className="image-empty">点击节点，在下方输入提示词生成图片</div>
+      )}
+    </div>
+  );
+}
+
+function VideoBody({ node, onUpdateNode }) {
+  const canPreview = isVideoContent(node.content);
 
   return (
     <>
@@ -95,20 +271,140 @@ function MediaBody({ node, onUpdateNode }) {
         value={node.content}
         onChange={(event) => onUpdateNode(node.id, { content: event.target.value })}
         onPointerDown={(event) => event.stopPropagation()}
-        placeholder={isImage ? '粘贴图片 URL 或 data URL' : '粘贴视频 URL 或 data URL'}
+        placeholder="粘贴视频 URL 或 data URL"
       />
-      <div className={`image-preview ${isImage ? '' : 'video-preview'}`}>
+      <div className="image-preview video-preview">
         {canPreview ? (
-          isImage ? (
-            <img src={node.content} alt={node.title} />
-          ) : (
-            <video src={node.content} controls playsInline />
-          )
+          <video src={node.content} controls playsInline />
         ) : (
           <div className="image-empty">无可预览内容</div>
         )}
       </div>
     </>
+  );
+}
+
+function ImageToolbar({
+  node,
+  isRunning,
+  isTranslating,
+  onRunImageGeneration,
+  onOpenAssetLibrary,
+  onRemoveImageReference,
+  onUpdateNode,
+}) {
+  const isPromptEmpty = !String(node.prompt || '').trim();
+  const references = Array.isArray(node.referenceImages) ? node.referenceImages : [];
+  const model = node.imageModel || IMAGE_MODEL_OPTIONS[0].value;
+  const resolutionOptions = getImageResolutionOptions(model);
+  const ratioOptions = getImageRatioOptions(model);
+  const countOptions = getImageCountOptions(model);
+  const normalizedSettings = normalizeImageModelSettings({
+    model,
+    resolution: node.imageResolution,
+    ratio: node.imageRatio,
+    count: node.imageCount,
+  });
+
+  return (
+    <div className="node-bottom-toolbar image-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+      <div className="node-prompt-wrap">
+        <textarea
+          className="node-prompt-input"
+          value={node.prompt || ''}
+          onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
+          placeholder="输入图片提示词"
+        />
+        <button
+          className="prompt-asset-button"
+          onClick={() => onOpenAssetLibrary(node.id)}
+          disabled={isRunning}
+          title="从资产库选择"
+        >
+          <FolderOpen size={14} />
+          资产库
+        </button>
+      </div>
+      <div className="image-options-row">
+        <OptionSegment
+          title="模型"
+          value={model}
+          options={IMAGE_MODEL_OPTIONS}
+          onChange={(value) => {
+            const nextSettings = normalizeImageModelSettings({
+              model: value,
+              resolution: node.imageResolution,
+              ratio: node.imageRatio,
+              count: node.imageCount,
+            });
+            onUpdateNode(node.id, {
+              imageModel: value,
+              imageResolution: nextSettings.resolution,
+              imageRatio: nextSettings.ratio,
+              imageCount: nextSettings.count,
+            });
+          }}
+        />
+        <OptionSegment
+          title="分辨率"
+          value={normalizedSettings.resolution}
+          options={resolutionOptions}
+          onChange={(value) => onUpdateNode(node.id, { imageResolution: value })}
+        />
+      </div>
+      <OptionSegment
+        title="尺寸"
+        value={normalizedSettings.ratio}
+        options={ratioOptions}
+        onChange={(value) => onUpdateNode(node.id, { imageRatio: value })}
+        renderIcon={(option) => <RatioIcon value={option.value} />}
+      />
+      <OptionSegment
+        title="生成数量"
+        value={normalizedSettings.count}
+        options={countOptions.map((option) => ({ ...option, label: `${option.value}张` }))}
+        onChange={(value) => onUpdateNode(node.id, { imageCount: Number(value) })}
+      />
+      <div className="image-reference-row">
+        <div className="image-reference-list">
+          {references.map((image, index) => (
+            <div className="image-reference-chip" key={image.id || image.url || index}>
+              <img
+                src={image.source === 'local' ? image.url || image.data : normalizeImageUrl(image.url || image.data)}
+                alt={image.name || `参考图 ${index + 1}`}
+              />
+              <button
+                type="button"
+                onClick={() => onRemoveImageReference(node.id, index)}
+                title="移除参考图"
+              >
+                <X size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="node-bottom-actions image-bottom-actions">
+        <button
+          className="icon-button"
+          onClick={() => onRunImageGeneration(node, 'translate')}
+          title="翻译提示词"
+          disabled={isTranslating || isRunning || isPromptEmpty}
+        >
+          {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
+          翻译
+        </button>
+        <button
+          className="icon-button primary"
+          onClick={() => onRunImageGeneration(node)}
+          title="运行图片生成"
+          disabled={isRunning || isTranslating || isPromptEmpty}
+        >
+          {isRunning ? <LoaderCircle size={14} className="spin-icon" /> : <Play size={14} />}
+          运行
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -130,16 +426,13 @@ function NoteToolbar({
         placeholder="输入文字"
       />
       <div className="node-bottom-actions">
-        <label className="node-model-picker" title="模型">
-          <Bot size={14} />
-          <select
-            className="node-model-select"
-            value={DEFAULT_TEXT_MODEL}
-            onChange={(event) => event.preventDefault()}
-          >
-            <option value={DEFAULT_TEXT_MODEL}>{DEFAULT_TEXT_MODEL}</option>
-          </select>
-        </label>
+        <CustomSelect
+          title="模型"
+          icon={<Bot size={14} />}
+          value={DEFAULT_TEXT_MODEL}
+          options={[{ value: DEFAULT_TEXT_MODEL, label: DEFAULT_TEXT_MODEL }]}
+          onChange={() => {}}
+        />
         <div className="node-run-actions">
           <button
             className="icon-button"
@@ -180,6 +473,9 @@ export function CanvasNode({
   onUpdateNode,
   onRemoveNode,
   onRunTextGeneration,
+  onRunImageGeneration,
+  onOpenAssetLibrary,
+  onRemoveImageReference,
   onPortPointerDown,
   onFinishLink,
 }) {
@@ -246,8 +542,10 @@ export function CanvasNode({
             onUpdateNode={onUpdateNode}
             onStopEditing={onStopEditing}
           />
+        ) : node.type === 'image' ? (
+          <ImageBody node={node} isRunning={isRunning} onBeginDrag={onBeginDrag} />
         ) : (
-          <MediaBody node={node} onUpdateNode={onUpdateNode} />
+          <VideoBody node={node} onUpdateNode={onUpdateNode} />
         )}
       </div>
 
@@ -257,6 +555,16 @@ export function CanvasNode({
           isRunning={isRunning}
           isTranslating={isTranslating}
           onRunTextGeneration={onRunTextGeneration}
+          onUpdateNode={onUpdateNode}
+        />
+      ) : node.type === 'image' && isSelected ? (
+        <ImageToolbar
+          node={node}
+          isRunning={isRunning}
+          isTranslating={isTranslating}
+          onRunImageGeneration={onRunImageGeneration}
+          onOpenAssetLibrary={onOpenAssetLibrary}
+          onRemoveImageReference={onRemoveImageReference}
           onUpdateNode={onUpdateNode}
         />
       ) : null}
