@@ -29,6 +29,8 @@ import {
   getImageResolutionOptions,
   normalizeImageModelSettings,
   normalizeVideoModelSettings,
+  VEO_GENERATION_TYPE_OPTIONS,
+  VEO_REFERENCE_IMAGE_MAX,
   VIDEO_FAMILY_OPTIONS,
 } from '../lib/constants';
 import { normalizeVideoUrl } from '../lib/videoApi';
@@ -320,6 +322,45 @@ function ratioIconValue(family, value) {
   return value;
 }
 
+function referencePreviewSrc(image) {
+  if (!image) return '';
+  return image.source === 'local'
+    ? image.url || image.data
+    : normalizeImageUrl(image.url || image.data);
+}
+
+function VeoFrameSlot({ label, optional, image, disabled, blockedHint, onPick, onClear }) {
+  const isBlocked = Boolean(disabled && blockedHint);
+  return (
+    <div className={`veo-frame-slot ${optional ? 'is-optional' : ''} ${isBlocked ? 'is-blocked' : ''}`}>
+      <div className="veo-frame-slot-label">
+        {label}
+        {optional ? <span className="veo-frame-optional">可选</span> : null}
+      </div>
+      {image ? (
+        <div className="veo-frame-preview">
+          <img src={referencePreviewSrc(image)} alt={label} />
+          <button type="button" onClick={onClear} disabled={disabled} title={`移除${label}`}>
+            <X size={11} />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="veo-frame-add"
+          onClick={onPick}
+          disabled={disabled}
+          title={blockedHint || `选择${label}`}
+        >
+          <FolderOpen size={14} />
+          选择
+        </button>
+      )}
+      {isBlocked ? <span className="veo-frame-hint">{blockedHint}</span> : null}
+    </div>
+  );
+}
+
 function VideoToolbar({
   node,
   isRunning,
@@ -327,11 +368,16 @@ function VideoToolbar({
   onRunVideoGeneration,
   onOpenAssetLibrary,
   onRemoveImageReference,
+  onRemoveVeoFrame,
   onUpdateNode,
 }) {
   const isPromptEmpty = !String(node.prompt || '').trim();
   const references = Array.isArray(node.referenceImages) ? node.referenceImages : [];
   const family = inferVideoFamily(node);
+  const isVeo = family === 'veo';
+  const veoGenerationType = node.videoGenerationType || 'frame';
+  const showVeoReferenceImages = isVeo && veoGenerationType === 'reference';
+  const showGenericReferenceImages = !isVeo;
   const model = node.videoModel || getVideoModelOptions(family)[0]?.value;
   const isManxueSeedance = family === 'seedance' && isSeedanceManxueModel(model);
   const modelOptions = getVideoModelOptions(family);
@@ -348,6 +394,7 @@ function VideoToolbar({
     ratio: node.videoRatio,
     quality: node.videoQuality,
     duration: node.videoDuration,
+    generationType: node.videoGenerationType,
     count: node.videoCount,
     route: node.videoRoute,
   });
@@ -363,7 +410,7 @@ function VideoToolbar({
 
   function applyFamilyChange(nextFamily) {
     const nextSettings = normalizeVideoModelSettings({ family: nextFamily });
-    onUpdateNode(node.id, {
+    const patch = {
       videoFamily: nextFamily,
       videoModel: nextSettings.model,
       videoRoute: nextSettings.route,
@@ -375,7 +422,28 @@ function VideoToolbar({
       videoDuration: nextSettings.duration,
       videoCount: nextSettings.count,
       status: 'idle',
-    });
+    };
+
+    if (nextFamily === 'veo') {
+      patch.videoGenerationType = nextSettings.generationType;
+    } else {
+      patch.videoGenerationType = undefined;
+      patch.videoFirstFrame = null;
+      patch.videoLastFrame = null;
+    }
+
+    onUpdateNode(node.id, patch);
+  }
+
+  function applyVeoGenerationTypeChange(value) {
+    const patch = { videoGenerationType: value, status: 'idle' };
+    if (value === 'frame') {
+      patch.referenceImages = [];
+    } else {
+      patch.videoFirstFrame = null;
+      patch.videoLastFrame = null;
+    }
+    onUpdateNode(node.id, patch);
   }
 
   function applyModelChange(value) {
@@ -415,15 +483,26 @@ function VideoToolbar({
           onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
           placeholder="输入视频提示词"
         />
-        <button
-          className="prompt-asset-button"
-          onClick={() => onOpenAssetLibrary(node.id)}
-          disabled={isRunning}
-          title="从资产库选择参考图"
-        >
-          <FolderOpen size={14} />
-          资产库
-        </button>
+        {showVeoReferenceImages || showGenericReferenceImages ? (
+          <button
+            className="prompt-asset-button"
+            onClick={() =>
+              onOpenAssetLibrary(node.id, showVeoReferenceImages ? 'veo-reference' : 'reference')
+            }
+            disabled={
+              isRunning ||
+              (showVeoReferenceImages && references.length >= VEO_REFERENCE_IMAGE_MAX)
+            }
+            title={
+              showVeoReferenceImages
+                ? `从资产库选择参考图（最多 ${VEO_REFERENCE_IMAGE_MAX} 张）`
+                : '从资产库选择参考图'
+            }
+          >
+            <FolderOpen size={14} />
+            资产库
+          </button>
+        ) : null}
       </div>
       <OptionSegment
         title="系列"
@@ -477,31 +556,61 @@ function VideoToolbar({
           onChange={(value) => onUpdateNode(node.id, { videoDuration: value })}
         />
       </div>
+      {isVeo ? (
+        <OptionSegment
+          title="生成类型"
+          value={normalizedSettings.generationType || 'frame'}
+          options={VEO_GENERATION_TYPE_OPTIONS}
+          onChange={applyVeoGenerationTypeChange}
+        />
+      ) : null}
+      {isVeo && veoGenerationType === 'frame' ? (
+        <div className="veo-frame-row">
+          <VeoFrameSlot
+            label="首帧"
+            image={node.videoFirstFrame}
+            disabled={isRunning}
+            onPick={() => onOpenAssetLibrary(node.id, 'veo-first')}
+            onClear={() => onRemoveVeoFrame(node.id, 'first')}
+          />
+          <VeoFrameSlot
+            label="尾帧"
+            optional
+            image={node.videoLastFrame}
+            disabled={isRunning || !node.videoFirstFrame}
+            blockedHint={!node.videoFirstFrame ? '请先选择首帧' : ''}
+            onPick={() => {
+              if (!node.videoFirstFrame) return;
+              onOpenAssetLibrary(node.id, 'veo-last');
+            }}
+            onClear={() => onRemoveVeoFrame(node.id, 'last')}
+          />
+        </div>
+      ) : null}
       <OptionSegment
         title="生成次数"
         value={normalizedSettings.count}
         options={countOptions.map((option) => ({ ...option, label: `${option.value}次` }))}
         onChange={(value) => onUpdateNode(node.id, { videoCount: Number(value) })}
       />
-      <div className="image-reference-row">
-        <div className="image-reference-list">
-          {references.map((image, index) => (
-            <div className="image-reference-chip" key={image.id || image.url || index}>
-              <img
-                src={image.source === 'local' ? image.url || image.data : normalizeImageUrl(image.url || image.data)}
-                alt={image.name || `参考图 ${index + 1}`}
-              />
-              <button
-                type="button"
-                onClick={() => onRemoveImageReference(node.id, index)}
-                title="移除参考图"
-              >
-                <X size={11} />
-              </button>
-            </div>
-          ))}
+      {showVeoReferenceImages || showGenericReferenceImages ? (
+        <div className="image-reference-row">
+          <div className="image-reference-list">
+            {references.map((image, index) => (
+              <div className="image-reference-chip" key={image.id || image.url || index}>
+                <img src={referencePreviewSrc(image)} alt={image.name || `参考图 ${index + 1}`} />
+                <button
+                  type="button"
+                  onClick={() => onRemoveImageReference(node.id, index)}
+                  title="移除参考图"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
       <div className="node-bottom-actions image-bottom-actions">
         <button
           className="icon-button"
@@ -719,6 +828,7 @@ export function CanvasNode({
   onRunVideoGeneration,
   onOpenAssetLibrary,
   onRemoveImageReference,
+  onRemoveVeoFrame,
   onPortPointerDown,
   onFinishLink,
 }) {
@@ -818,6 +928,7 @@ export function CanvasNode({
           onRunVideoGeneration={onRunVideoGeneration}
           onOpenAssetLibrary={onOpenAssetLibrary}
           onRemoveImageReference={onRemoveImageReference}
+          onRemoveVeoFrame={onRemoveVeoFrame}
           onUpdateNode={onUpdateNode}
         />
       ) : null}

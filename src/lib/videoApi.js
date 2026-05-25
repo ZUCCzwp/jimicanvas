@@ -84,6 +84,21 @@ function buildReferenceImageUrls(referenceImages = []) {
     .filter(Boolean);
 }
 
+function buildVeoFrameImageUrl(image) {
+  if (!image) return '';
+  return normalizeImageUrl(image.url || image.data || image.uploadedUrl);
+}
+
+function buildVeoImages({ generationType, referenceImages = [], firstFrame, lastFrame }) {
+  if (generationType === 'reference') {
+    return buildReferenceImageUrls(referenceImages).slice(0, 3);
+  }
+
+  const first = buildVeoFrameImageUrl(firstFrame);
+  const last = first ? buildVeoFrameImageUrl(lastFrame) : '';
+  return [first, last].filter(Boolean);
+}
+
 function extractTaskId(data) {
   return data?.id || data?.projectId || data?.task_id || data?.taskId || data?.TaskID;
 }
@@ -108,8 +123,14 @@ async function createSoraTask({ token, prompt, settings, referenceImages }) {
   return { taskId: String(taskId), provider: 'sora' };
 }
 
-async function createVeoTask({ token, prompt, settings, referenceImages }) {
-  const images = buildReferenceImageUrls(referenceImages);
+async function createVeoTask({ token, prompt, settings, referenceImages, veoFrames = {} }) {
+  const generationType = settings.generationType === 'reference' ? 'reference' : 'frame';
+  const images = buildVeoImages({
+    generationType,
+    referenceImages,
+    firstFrame: veoFrames.firstFrame,
+    lastFrame: veoFrames.lastFrame,
+  });
   const aspectRatio = settings.ratio === 'landscape' ? '16:9' : settings.ratio === 'portrait' ? '9:16' : settings.ratio;
 
   const data = await requestJson('/api/video/veo/frames/create', {
@@ -122,7 +143,7 @@ async function createVeoTask({ token, prompt, settings, referenceImages }) {
       duration: Number(settings.duration) || 8,
       resolution: settings.resolution,
       images,
-      generation_type: images.length > 0 ? 'reference' : 'frame',
+      generation_type: generationType,
     },
   });
 
@@ -131,7 +152,14 @@ async function createVeoTask({ token, prompt, settings, referenceImages }) {
     throw new Error('VEO 任务创建成功，但未返回任务 ID');
   }
 
-  return { taskId: String(taskId), provider: 'veo', queryModel: settings.model };
+  const veoSource = data?.source === 'SC_VEO' ? 'SC_VEO' : 'KYY_VEO';
+
+  return {
+    taskId: String(taskId),
+    provider: 'veo',
+    queryModel: settings.model,
+    veoSource,
+  };
 }
 
 async function createOmniTask({ token, prompt, settings, referenceImages }) {
@@ -227,12 +255,18 @@ async function createGrokTask({ token, prompt, settings, referenceImages }) {
   return { taskId: String(taskId), provider: 'grok' };
 }
 
-export async function createVideoGenerationTask({ token, prompt, settings, referenceImages = [] }) {
+export async function createVideoGenerationTask({
+  token,
+  prompt,
+  settings,
+  referenceImages = [],
+  veoFrames = {},
+}) {
   const family = settings.family || DEFAULT_VIDEO_FAMILY;
 
   switch (family) {
     case 'veo':
-      return createVeoTask({ token, prompt, settings, referenceImages });
+      return createVeoTask({ token, prompt, settings, referenceImages, veoFrames });
     case 'omni':
       return createOmniTask({ token, prompt, settings, referenceImages });
     case 'seedance':
@@ -267,8 +301,12 @@ async function querySoraTask({ token, taskId }) {
   return requestJson(`/api/video/sora2/result?${params.toString()}`, { token });
 }
 
-async function queryVeoTask({ token, taskId }) {
-  return requestJson(`/api/video/query/${encodeURIComponent(taskId)}`, { token });
+async function queryVeoTask({ token, taskId, veoSource = 'KYY_VEO' }) {
+  const params = new URLSearchParams({
+    taskId,
+    source: veoSource === 'SC_VEO' ? 'SC_VEO' : 'KYY_VEO',
+  });
+  return requestJson(`/api/video/veo/query?${params.toString()}`, { token });
 }
 
 async function queryOmniTask({ token, taskId, model }) {
@@ -296,6 +334,7 @@ export async function waitForVideoTask({
   taskId,
   provider = 'sora',
   queryModel,
+  veoSource = 'KYY_VEO',
   maxAttempts = 400,
   intervalMs = 3000,
 }) {
@@ -314,7 +353,7 @@ export async function waitForVideoTask({
         throw new Error(result?.reason || '视频生成失败');
       }
     } else if (provider === 'veo') {
-      const result = await queryVeoTask({ token, taskId });
+      const result = await queryVeoTask({ token, taskId, veoSource });
       const status = String(result?.status || '').toLowerCase();
 
       if (GENERIC_SUCCESS_STATUS.has(status) || result?.video_url) {
@@ -324,7 +363,7 @@ export async function waitForVideoTask({
       }
 
       if (GENERIC_FAILED_STATUS.has(status)) {
-        throw new Error(result?.error?.message || result?.error || 'VEO 视频生成失败');
+        throw new Error(result?.reason || 'VEO 视频生成失败');
       }
     } else if (provider === 'omni') {
       const result = await queryOmniTask({ token, taskId, model: queryModel });

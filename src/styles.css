@@ -1031,6 +1031,91 @@ button {
   justify-content: flex-end;
 }
 
+.veo-frame-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.veo-frame-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.veo-frame-slot-label {
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.veo-frame-optional {
+  font-size: 10px;
+  color: var(--muted-2);
+}
+
+.veo-frame-hint {
+  font-size: 10px;
+  color: var(--muted-2);
+  line-height: 1.4;
+}
+
+.veo-frame-add,
+.veo-frame-preview {
+  box-sizing: border-box;
+  width: 72px;
+  height: 40px;
+  flex: 0 0 72px;
+  border-radius: 6px;
+  border: 1px dashed var(--line);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.veo-frame-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  padding: 0;
+}
+
+.veo-frame-add svg {
+  width: 12px;
+  height: 12px;
+}
+
+.veo-frame-preview {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+}
+
+.veo-frame-preview img {
+  display: block;
+  width: 72px;
+  height: 40px;
+  max-width: 72px;
+  max-height: 40px;
+  object-fit: cover;
+}
+
+.veo-frame-preview button {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+}
+
 .image-reference-row {
   display: flex;
   align-items: center;
@@ -1543,23 +1628,6 @@ button {
   color: #ecfeff;
 }
 
-.empty-hint {
-  position: absolute;
-  right: 16px;
-  bottom: 72px;
-  z-index: 4;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.82);
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  color: #94a3b8;
-  font-size: 12px;
-  pointer-events: none;
-}
-
 .zoom-control {
   display: inline-flex;
   align-items: center;
@@ -1628,10 +1696,6 @@ button {
     right: 12px;
     bottom: 12px;
     left: 12px;
-  }
-
-  .empty-hint {
-    display: none;
   }
 
   .zoom-slider {

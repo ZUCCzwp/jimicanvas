@@ -4,7 +4,6 @@ import { CanvasNode } from './components/CanvasNode';
 import { CanvasPanel } from './components/CanvasPanel';
 import { CanvasZoomControls } from './components/CanvasZoomControls';
 import { ConnectionLayer } from './components/ConnectionLayer';
-import { EmptyHint } from './components/EmptyHint';
 import { FloatingDock } from './components/FloatingDock';
 import { Topbar } from './components/Topbar';
 import {
@@ -18,6 +17,7 @@ import {
   normalizeImageModelSettings,
   inferVideoFamily,
   normalizeVideoModelSettings,
+  VEO_REFERENCE_IMAGE_MAX,
 } from './lib/constants';
 import { clampValue, createDocument, createNode, snapScale, uid } from './lib/canvas';
 import { getStoredChatToken, runChatCompletion } from './lib/chatApi';
@@ -52,6 +52,10 @@ function App() {
   const [showCanvasPanel, setShowCanvasPanel] = useState(false);
   const [assetPicker, setAssetPicker] = useState({
     nodeId: null,
+    pickMode: 'reference',
+    maxCount: 5,
+    title: '资产库',
+    subtitle: '选择图片作为参考图',
     source: 'local',
     assets: [],
     selectedAssets: [],
@@ -467,24 +471,39 @@ function App() {
         ratio: node.videoRatio,
         quality: node.videoQuality,
         duration: node.videoDuration,
+        generationType: node.videoGenerationType,
         count: node.videoCount,
         route: node.videoRoute,
       });
       const videos = [];
 
       for (let index = 0; index < settings.count; index += 1) {
-        const { taskId, provider, queryModel } = await createVideoGenerationTask({
+        const { taskId, provider, queryModel, veoSource } = await createVideoGenerationTask({
           token,
           prompt: promptText,
           settings,
           referenceImages: node.referenceImages || [],
+          veoFrames:
+            family === 'veo'
+              ? {
+                  firstFrame: node.videoFirstFrame,
+                  lastFrame: node.videoLastFrame,
+                }
+              : {},
         });
-        const videoUrl = await waitForVideoTask({ token, taskId, provider, queryModel });
+        const videoUrl = await waitForVideoTask({
+          token,
+          taskId,
+          provider,
+          queryModel,
+          veoSource: veoSource || node.videoTaskSource,
+        });
         videos.push(videoUrl);
         updateNode(node.id, {
           content: videos[0],
           videos,
           videoFamily: settings.family,
+          videoTaskSource: veoSource || node.videoTaskSource,
           status: 'running',
         });
       }
@@ -504,17 +523,74 @@ function App() {
     }
   }
 
-  async function uploadImageReferences(nodeId, files) {
+  function getAssetPickerMeta(node, pickMode = 'reference') {
+    if (pickMode === 'veo-first') {
+      return { maxCount: 1, title: '资产库', subtitle: '选择首帧图片' };
+    }
+    if (pickMode === 'veo-last') {
+      return { maxCount: 1, title: '资产库', subtitle: '选择尾帧图片（可选）' };
+    }
+    if (pickMode === 'veo-reference') {
+      const currentCount = Array.isArray(node?.referenceImages) ? node.referenceImages.length : 0;
+      return {
+        maxCount: Math.max(1, VEO_REFERENCE_IMAGE_MAX - currentCount),
+        title: '资产库',
+        subtitle: `选择参考图（最多 ${VEO_REFERENCE_IMAGE_MAX} 张）`,
+      };
+    }
+    return { maxCount: 5, title: '资产库', subtitle: '选择图片作为参考图' };
+  }
+
+  function applyPickedAssetsToNode(node, pickMode, pickedAssets, source) {
+    const normalized = pickedAssets.map((asset) => ({
+      id: asset.id,
+      name: asset.name || '图片资产',
+      url: source === 'local' ? asset.url : normalizeImageUrl(asset.url),
+      source,
+      type: 'image',
+    }));
+
+    if (pickMode === 'veo-first') {
+      return { ...node, videoFirstFrame: normalized[0] || null, status: 'idle' };
+    }
+    if (pickMode === 'veo-last') {
+      if (!node.videoFirstFrame) return node;
+      return { ...node, videoLastFrame: normalized[0] || null, status: 'idle' };
+    }
+    if (pickMode === 'veo-reference') {
+      const current = Array.isArray(node.referenceImages) ? node.referenceImages : [];
+      return {
+        ...node,
+        referenceImages: [...current, ...normalized].slice(0, VEO_REFERENCE_IMAGE_MAX),
+        status: 'idle',
+      };
+    }
+
+    const current = Array.isArray(node.referenceImages) ? node.referenceImages : [];
+    return {
+      ...node,
+      referenceImages: [...current, ...normalized].slice(0, 5),
+      status: 'idle',
+    };
+  }
+
+  async function uploadImageReferences(nodeId, files, pickMode = 'reference') {
     const token = getOrRequestToken();
     if (!token) {
       updateNode(nodeId, { content: '缺少 token', status: 'error' });
       return;
     }
 
+    const node = nodes.find((item) => item.id === nodeId);
+    if (pickMode === 'veo-last' && !node?.videoFirstFrame) {
+      return;
+    }
+    const { maxCount } = getAssetPickerMeta(node, pickMode);
+
     setUploadingNodeId(nodeId);
     try {
       const references = [];
-      for (const file of files.slice(0, 5)) {
+      for (const file of files.slice(0, maxCount)) {
         const localImage = await readImageFile(file);
         const uploadedUrl = await uploadAsset({ token, file });
         references.push({
@@ -526,14 +602,9 @@ function App() {
 
       updateActiveCanvas((doc) => ({
         ...doc,
-        nodes: doc.nodes.map((node) => {
-          if (node.id !== nodeId) return node;
-          const current = Array.isArray(node.referenceImages) ? node.referenceImages : [];
-          return {
-            ...node,
-            referenceImages: [...current, ...references].slice(0, 5),
-            status: 'idle',
-          };
+        nodes: doc.nodes.map((item) => {
+          if (item.id !== nodeId) return item;
+          return applyPickedAssetsToNode(item, pickMode, references, 'local');
         }),
       }));
     } catch (error) {
@@ -558,9 +629,18 @@ function App() {
     }));
   }
 
-  function openAssetLibrary(nodeId) {
+  function openAssetLibrary(nodeId, pickMode = 'reference') {
+    const node = nodes.find((item) => item.id === nodeId);
+    if (pickMode === 'veo-last' && !node?.videoFirstFrame) {
+      return;
+    }
+    const meta = getAssetPickerMeta(node, pickMode);
     setAssetPicker({
       nodeId,
+      pickMode,
+      maxCount: meta.maxCount,
+      title: meta.title,
+      subtitle: meta.subtitle,
       source: 'local',
       assets: [],
       selectedAssets: [],
@@ -598,7 +678,7 @@ function App() {
           selectedAssets: current.selectedAssets.filter((item) => item.id !== asset.id),
         };
       }
-      if (current.selectedAssets.length >= 5) return current;
+      if (current.selectedAssets.length >= current.maxCount) return current;
       return {
         ...current,
         selectedAssets: [...current.selectedAssets, asset],
@@ -607,30 +687,30 @@ function App() {
   }
 
   function confirmAssetSelection() {
-    const { nodeId, selectedAssets } = assetPicker;
+    const { nodeId, selectedAssets, pickMode, source } = assetPicker;
     if (!nodeId || selectedAssets.length === 0) return;
 
     updateActiveCanvas((doc) => ({
       ...doc,
       nodes: doc.nodes.map((node) => {
         if (node.id !== nodeId) return node;
-        const current = Array.isArray(node.referenceImages) ? node.referenceImages : [];
-        const normalized = selectedAssets.map((asset) => ({
-          id: asset.id,
-          name: asset.name || '图片资产',
-          url: assetPicker.source === 'local' ? asset.url : normalizeImageUrl(asset.url),
-          source: assetPicker.source,
-          type: 'image',
-        }));
-        return {
-          ...node,
-          referenceImages: [...current, ...normalized].slice(0, 5),
-          status: 'idle',
-        };
+        return applyPickedAssetsToNode(node, pickMode, selectedAssets, source);
       }),
     }));
 
     setAssetPicker((current) => ({ ...current, nodeId: null, selectedAssets: [] }));
+  }
+
+  function removeVeoFrame(nodeId, slot) {
+    updateActiveCanvas((doc) => ({
+      ...doc,
+      nodes: doc.nodes.map((node) => {
+        if (node.id !== nodeId) return node;
+        if (slot === 'first') return { ...node, videoFirstFrame: null, videoLastFrame: null };
+        if (slot === 'last') return { ...node, videoLastFrame: null };
+        return node;
+      }),
+    }));
   }
 
   function startLink(nodeId) {
@@ -881,13 +961,15 @@ function App() {
           source={assetPicker.source}
           search={assetPicker.search}
           selectedAssets={assetPicker.selectedAssets}
-          maxCount={5}
+          maxCount={assetPicker.maxCount}
+          title={assetPicker.title}
+          subtitle={assetPicker.subtitle}
           onSourceChange={(source) =>
             setAssetPicker((current) => ({ ...current, source, selectedAssets: [] }))
           }
           onSearchChange={(search) => setAssetPicker((current) => ({ ...current, search }))}
           onToggleAsset={toggleAssetSelection}
-          onUploadImages={(files) => uploadImageReferences(assetPicker.nodeId, files)}
+          onUploadImages={(files) => uploadImageReferences(assetPicker.nodeId, files, assetPicker.pickMode)}
           onConfirm={confirmAssetSelection}
           onClose={() => setAssetPicker((current) => ({ ...current, nodeId: null }))}
         />
@@ -945,13 +1027,12 @@ function App() {
                 onRunVideoGeneration={runVideoGeneration}
                 onOpenAssetLibrary={openAssetLibrary}
                 onRemoveImageReference={removeImageReference}
+                onRemoveVeoFrame={removeVeoFrame}
                 onPortPointerDown={handlePortPointerDown}
                 onFinishLink={finishLink}
               />
             ))}
           </div>
-
-          <EmptyHint />
 
           <CanvasZoomControls
             canvasScalePercent={canvasScalePercent}

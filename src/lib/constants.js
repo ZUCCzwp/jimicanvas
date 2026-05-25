@@ -26,6 +26,13 @@ export const DEFAULT_VIDEO_SIZE = '1280x720';
 export const DEFAULT_VIDEO_RESOLUTION = '720p';
 export const DEFAULT_VIDEO_QUALITY = '720p';
 export const DEFAULT_VIDEO_COUNT = 1;
+export const DEFAULT_VEO_GENERATION_TYPE = 'frame';
+export const VEO_REFERENCE_IMAGE_MAX = 3;
+
+export const VEO_GENERATION_TYPE_OPTIONS = [
+  { value: 'frame', label: '首尾帧' },
+  { value: 'reference', label: '参考图' },
+];
 
 export const VIDEO_FAMILY_OPTIONS = [
   { value: 'sora', label: 'Sora' },
@@ -66,6 +73,7 @@ export const VIDEO_FAMILY_CONFIG = {
   },
   veo: {
     provider: 'veo',
+    defaultDuration: '8',
     models: [{ value: 'sc-veo3.1-fast', label: 'VEO 3.1 Fast' }],
     resolutions: [
       { value: '720p', label: '720p' },
@@ -77,11 +85,7 @@ export const VIDEO_FAMILY_CONFIG = {
       { value: '9:16', label: '9:16' },
       { value: '1:1', label: '1:1' },
     ],
-    durations: [
-      { value: '4', label: '4 秒' },
-      { value: '6', label: '6 秒' },
-      { value: '8', label: '8 秒' },
-    ],
+    durations: [{ value: '8', label: '8 秒' }],
     maxCount: 3,
     resolutionKey: 'resolution',
     ratioKey: 'ratio',
@@ -295,6 +299,12 @@ export function getDefaultVideoDuration(family = DEFAULT_VIDEO_FAMILY) {
   return getVideoFamilyConfig(family).defaultDuration || DEFAULT_VIDEO_DURATION;
 }
 
+export function normalizeVeoGenerationType(value) {
+  return VEO_GENERATION_TYPE_OPTIONS.some((option) => option.value === value)
+    ? value
+    : DEFAULT_VEO_GENERATION_TYPE;
+}
+
 export function normalizeVideoModelSettings({
   family = DEFAULT_VIDEO_FAMILY,
   model = DEFAULT_VIDEO_MODEL,
@@ -304,11 +314,13 @@ export function normalizeVideoModelSettings({
   ratio = DEFAULT_VIDEO_RATIO,
   quality = DEFAULT_VIDEO_QUALITY,
   duration,
+  generationType,
   count = DEFAULT_VIDEO_COUNT,
   route = DEFAULT_VIDEO_ROUTE,
 } = {}) {
   const config = getVideoFamilyConfig(family);
   const effectiveDuration = duration ?? getDefaultVideoDuration(family);
+  const normalizedGenerationType = family === 'veo' ? normalizeVeoGenerationType(generationType) : undefined;
   const effectiveOrientation = orientation ?? getDefaultVideoOrientation(family);
   const modelOptions = config.models || [];
   const ratioOptions = config.ratios || [];
@@ -385,6 +397,7 @@ export function normalizeVideoModelSettings({
     orientation: family === 'sora' ? normalizedRatio : undefined,
     ratio: family === 'sora' ? undefined : normalizedRatio,
     duration: normalizedDuration,
+    generationType: normalizedGenerationType,
     count: Math.min(config.maxCount, Math.max(1, Number(count) || DEFAULT_VIDEO_COUNT)),
   };
 }

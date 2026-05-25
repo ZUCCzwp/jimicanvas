@@ -9,6 +9,8 @@ export function AssetPickerModal({
   search,
   selectedAssets,
   maxCount = 5,
+  title = '资产库',
+  subtitle = '选择图片作为参考图',
   onSourceChange,
   onSearchChange,
   onToggleAsset,
@@ -35,8 +37,8 @@ export function AssetPickerModal({
           <div className="asset-modal-title">
             <FolderOpen size={18} />
             <div>
-              <strong>资产库</strong>
-              <span>选择图片作为参考图</span>
+              <strong>{title}</strong>
+              <span>{subtitle}</span>
             </div>
           </div>
           <button className="panel-icon" onClick={onClose} title="关闭">
