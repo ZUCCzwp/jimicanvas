@@ -31,7 +31,7 @@ export function createNode(type, x, y) {
       x,
       y,
       width: 320,
-      height: 240,
+      height: 300,
     };
   }
 
@@ -84,7 +84,7 @@ export function createDocument(name, withStarterNodes = true) {
           x: 520,
           y: 210,
           width: 320,
-          height: 240,
+          height: 300,
         },
       ]
     : [];

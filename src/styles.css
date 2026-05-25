@@ -1044,8 +1044,8 @@ button {
 
 .image-reference-chip {
   position: relative;
-  width: 32px;
-  height: 32px;
+  width: 56px;
+  height: 56px;
   flex: 0 0 auto;
   overflow: hidden;
   border-radius: 8px;
@@ -1064,8 +1064,8 @@ button {
   position: absolute;
   right: 2px;
   top: 2px;
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -1328,6 +1328,8 @@ button {
   overflow: auto;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
   padding: 8px;
   border-radius: 16px;
@@ -1336,6 +1338,7 @@ button {
   color: #fecaca;
   font-size: 13px;
   line-height: 1.4;
+  text-align: center;
   cursor: grab;
 }
 
@@ -1345,6 +1348,7 @@ button {
 }
 
 .node-error-display span {
+  max-width: 100%;
   white-space: pre-wrap;
 }
 
@@ -1361,6 +1365,7 @@ button {
 
 .image-preview {
   flex: 1;
+  min-height: 220px;
   border-radius: 12px;
   overflow: hidden;
   background: rgba(15, 23, 42, 0.8);

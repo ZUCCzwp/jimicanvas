@@ -2,7 +2,7 @@ export const STORAGE_KEY = 'jimicanvas.documents.v1';
 export const JIMIAIGO_TOKEN_STORAGE_KEY = 'jimicanvas.jimiaigo.token';
 export const DEFAULT_CHAT_API_URL = 'http://localhost:27355';
 export const DEFAULT_TEXT_MODEL = 'gpt-5.4-mini';
-export const DEFAULT_IMAGE_MODEL = 'nanobanana2';
+export const DEFAULT_IMAGE_MODEL = 'gpt-image-2';
 export const DEFAULT_IMAGE_RESOLUTION = '1k';
 export const DEFAULT_IMAGE_RATIO = '1:1';
 export const DEFAULT_IMAGE_COUNT = 1;
@@ -15,9 +15,9 @@ export const DEFAULT_VIDEO_URL =
   'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
 
 export const IMAGE_MODEL_OPTIONS = [
+  { value: 'gpt-image-2', label: 'gpt image2' },
   { value: 'nanobanana2', label: 'nano banana2' },
   { value: 'nanobananapro', label: 'nano banana pro' },
-  { value: 'gpt-image-2', label: 'gpt image2' },
 ];
 
 export const IMAGE_RESOLUTION_OPTIONS = [

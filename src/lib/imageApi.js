@@ -23,14 +23,22 @@ export function normalizeImageUrl(url) {
 
 async function requestJson(path, { token, method = 'GET', body } = {}) {
   const baseUrl = getChatApiBaseUrl().replace(/\/$/, '');
-  const response = await fetch(`${baseUrl}${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: token,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let response;
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: token,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error('请求失败，无法连接到图片服务');
+    }
+    throw error;
+  }
 
   const rawText = await response.text();
   let parsed = null;
@@ -49,13 +57,21 @@ async function requestJson(path, { token, method = 'GET', body } = {}) {
 
 async function requestForm(path, { token, formData } = {}) {
   const baseUrl = getChatApiBaseUrl().replace(/\/$/, '');
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: token,
-    },
-    body: formData,
-  });
+  let response;
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: token,
+      },
+      body: formData,
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error('上传失败，无法连接到图片服务');
+    }
+    throw error;
+  }
 
   const rawText = await response.text();
   let parsed = null;
@@ -128,10 +144,14 @@ async function urlToInlineData(url) {
 async function buildReferenceParts(referenceImages = []) {
   const parts = [];
   for (const image of referenceImages) {
-    const inlineData = image.inlineData || (image.data ? dataUrlToInlineData(image.data) : null);
-    const resolved = inlineData || (image.url ? await urlToInlineData(image.url) : null);
-    if (resolved) {
-      parts.push({ inline_data: resolved });
+    try {
+      const inlineData = image.inlineData || (image.data ? dataUrlToInlineData(image.data) : null);
+      const resolved = inlineData || (image.url ? await urlToInlineData(image.url) : null);
+      if (resolved) {
+        parts.push({ inline_data: resolved });
+      }
+    } catch (error) {
+      console.warn('跳过无法读取的参考图', image?.url || image?.name || image?.id || '', error);
     }
   }
   return parts;
@@ -246,7 +266,7 @@ export async function getImageTask({ token, taskId }) {
   return requestJson(`/api/imageTask/${encodeURIComponent(taskId)}`, { token });
 }
 
-export async function waitForImageTask({ token, taskId, maxAttempts = 60, intervalMs = 3000 }) {
+export async function waitForImageTask({ token, taskId, maxAttempts = 400, intervalMs = 3000 }) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const task = await getImageTask({ token, taskId });
     const status = String(task?.status || '').toLowerCase();
