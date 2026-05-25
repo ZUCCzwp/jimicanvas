@@ -9,7 +9,7 @@ export function ConnectionLayer({
   onSelectConnection,
 }) {
   return (
-    <svg className="connection-layer" width="100%" height="100%">
+    <svg className="connection-layer" aria-hidden="true">
       <defs>
         <marker
           id="arrow"

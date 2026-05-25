@@ -11,6 +11,8 @@ import {
   DEFAULT_NODE_HEIGHT,
   DEFAULT_NODE_WIDTH,
   JIMIAIGO_TOKEN_STORAGE_KEY,
+  CANVAS_GRID_CELL_SIZE,
+  CANVAS_WHEEL_PAN_FACTOR,
   MAX_CANVAS_SCALE,
   MIN_CANVAS_SCALE,
   normalizeImageModelSettings,
@@ -38,6 +40,8 @@ function App() {
   const [hoverLinkNodeId, setHoverLinkNodeId] = useState(null);
   const [pointerPos, setPointerPos] = useState({ x: 0, y: 0 });
   const [canvasScale, setCanvasScale] = useState(1);
+  const [viewportOffset, setViewportOffset] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
   const [importError, setImportError] = useState('');
   const [runningNodeId, setRunningNodeId] = useState(null);
   const [translatingNodeId, setTranslatingNodeId] = useState(null);
@@ -55,6 +59,7 @@ function App() {
   const stageRef = useRef(null);
   const fileInputRef = useRef(null);
   const dragRef = useRef(null);
+  const panRef = useRef(null);
 
   useEffect(() => {
     writeStorage(documents);
@@ -74,6 +79,38 @@ function App() {
     if (!assetPicker.nodeId) return;
     loadAssetPickerAssets(assetPicker.source);
   }, [assetPicker.nodeId, assetPicker.source]);
+
+  useEffect(() => {
+    setViewportOffset({ x: 0, y: 0 });
+  }, [activeCanvasId]);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const handleWheel = (event) => {
+      const target = event.target;
+      const isEditableTarget =
+        target instanceof HTMLElement &&
+        (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+
+      if (isEditableTarget) return;
+
+      event.preventDefault();
+
+      const useShiftAsHorizontal = event.shiftKey && event.deltaX === 0;
+      const deltaX = (useShiftAsHorizontal ? event.deltaY : event.deltaX) * CANVAS_WHEEL_PAN_FACTOR;
+      const deltaY = (useShiftAsHorizontal ? 0 : event.deltaY) * CANVAS_WHEEL_PAN_FACTOR;
+
+      setViewportOffset((current) => ({
+        x: current.x - deltaX,
+        y: current.y - deltaY,
+      }));
+    };
+
+    stage.addEventListener('wheel', handleWheel, { passive: false });
+    return () => stage.removeEventListener('wheel', handleWheel);
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -129,8 +166,8 @@ function App() {
     if (!rect) return null;
 
     return {
-      x: (event.clientX - rect.left) / canvasScale,
-      y: (event.clientY - rect.top) / canvasScale,
+      x: (event.clientX - rect.left - viewportOffset.x) / canvasScale,
+      y: (event.clientY - rect.top - viewportOffset.y) / canvasScale,
     };
   }
 
@@ -181,8 +218,12 @@ function App() {
 
   function addNode(type) {
     const rect = stageRef.current?.getBoundingClientRect();
-    const centerX = rect ? rect.width / 2 - DEFAULT_NODE_WIDTH / 2 : 220;
-    const centerY = rect ? rect.height / 2 - DEFAULT_NODE_HEIGHT / 2 : 160;
+    const centerX = rect
+      ? (rect.width / 2 - viewportOffset.x) / canvasScale - DEFAULT_NODE_WIDTH / 2
+      : 220;
+    const centerY = rect
+      ? (rect.height / 2 - viewportOffset.y) / canvasScale - DEFAULT_NODE_HEIGHT / 2
+      : 160;
     const node = createNode(type, centerX + Math.random() * 80 - 40, centerY + Math.random() * 80 - 40);
 
     updateActiveCanvas((doc) => ({
@@ -587,19 +628,30 @@ function App() {
       setHoverLinkNodeId(target?.id || null);
     }
 
+    const pan = panRef.current;
+    if (pan) {
+      setViewportOffset({
+        x: pan.originX + (event.clientX - pan.startX),
+        y: pan.originY + (event.clientY - pan.startY),
+      });
+      return;
+    }
+
     const drag = dragRef.current;
     if (!drag) return;
 
-    const dx = event.clientX - drag.startX;
-    const dy = event.clientY - drag.startY;
-    const nextX = clampValue(drag.originX + dx, -1200, 2800);
-    const nextY = clampValue(drag.originY + dy, -1200, 2200);
+    const dx = (event.clientX - drag.startX) / canvasScale;
+    const dy = (event.clientY - drag.startY) / canvasScale;
+    const nextX = drag.originX + dx;
+    const nextY = drag.originY + dy;
 
     updateNode(drag.nodeId, { x: nextX, y: nextY });
   }
 
   function handleStagePointerUp(event) {
     dragRef.current = null;
+    panRef.current = null;
+    setIsPanning(false);
     if (linkFromNodeId) {
       const target = getNodeAtPointer(event, linkFromNodeId);
       if (target) {
@@ -625,18 +677,37 @@ function App() {
     };
   }
 
-  function handleStagePointerDown(event) {
-    const isCanvasBackground =
-      event.target === event.currentTarget ||
-      (typeof SVGSVGElement !== 'undefined' &&
-        event.target instanceof SVGSVGElement &&
-        event.target.classList.contains('connection-layer'));
+  function isStageBackgroundTarget(event) {
+    const { target, currentTarget } = event;
+    if (target === currentTarget) return true;
+    if (!(target instanceof Element)) return false;
 
-    if (isCanvasBackground) {
+    if (target.classList.contains('stage-content')) {
+      return true;
+    }
+
+    return (
+      typeof SVGSVGElement !== 'undefined' &&
+      target instanceof SVGSVGElement &&
+      target.classList.contains('connection-layer')
+    );
+  }
+
+  function handleStagePointerDown(event) {
+    if (isStageBackgroundTarget(event)) {
       setSelectedNodeId(null);
       setSelectedConnectionId(null);
       setEditingNodeId(null);
       if (linkFromNodeId) clearLinkDraft();
+
+      panRef.current = {
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: viewportOffset.x,
+        originY: viewportOffset.y,
+      };
+      setIsPanning(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
     }
   }
 
@@ -744,15 +815,19 @@ function App() {
         />
 
         <section
-          className={`stage ${linkFromNodeId ? 'link-mode' : ''}`}
+          className={`stage ${linkFromNodeId ? 'link-mode' : ''} ${isPanning ? 'is-panning' : ''}`}
           ref={stageRef}
-          style={{ '--canvas-scale': canvasScale }}
+          style={{
+            '--canvas-scale': canvasScale,
+            '--grid-cell': `${CANVAS_GRID_CELL_SIZE}px`,
+            '--viewport-x': `${viewportOffset.x}px`,
+            '--viewport-y': `${viewportOffset.y}px`,
+          }}
           onPointerMove={handleStagePointerMove}
           onPointerUp={handleStagePointerUp}
           onPointerDown={handleStagePointerDown}
         >
           <div className="stage-content">
-            <div className="grid-layer" />
             <ConnectionLayer
               nodes={nodes}
               connections={connections}
@@ -786,9 +861,10 @@ function App() {
                 onFinishLink={finishLink}
               />
             ))}
-
-            <EmptyHint />
           </div>
+
+          <EmptyHint />
+
           <CanvasZoomControls
             canvasScalePercent={canvasScalePercent}
             onZoom={zoomCanvas}

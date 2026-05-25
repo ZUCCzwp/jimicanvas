@@ -11,6 +11,8 @@ export const DEFAULT_NODE_HEIGHT = 180;
 export const MIN_CANVAS_SCALE = 0.6;
 export const MAX_CANVAS_SCALE = 1.4;
 export const CANVAS_SCALE_STEP = 0.1;
+export const CANVAS_WHEEL_PAN_FACTOR = 1;
+export const CANVAS_GRID_CELL_SIZE = 28;
 export const DEFAULT_VIDEO_URL =
   'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
 
