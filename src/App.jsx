@@ -16,6 +16,8 @@ import {
   MAX_CANVAS_SCALE,
   MIN_CANVAS_SCALE,
   normalizeImageModelSettings,
+  inferVideoFamily,
+  normalizeVideoModelSettings,
 } from './lib/constants';
 import { clampValue, createDocument, createNode, snapScale, uid } from './lib/canvas';
 import { getStoredChatToken, runChatCompletion } from './lib/chatApi';
@@ -28,6 +30,7 @@ import {
   waitForImageTask,
 } from './lib/imageApi';
 import { loadInitialState, writeStorage } from './lib/storage';
+import { createVideoGenerationTask, waitForVideoTask } from './lib/videoApi';
 
 function App() {
   const initial = useMemo(() => loadInitialState(), []);
@@ -410,6 +413,90 @@ function App() {
       setSelectedNodeId(node.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : '图片生成失败';
+      updateNode(node.id, { content: message, status: 'error' });
+      setSelectedNodeId(node.id);
+    } finally {
+      setRunningNodeId(null);
+    }
+  }
+
+  async function runVideoGeneration(node, mode = 'generate') {
+    const promptText = String(node.prompt || '').trim();
+    if (!promptText) {
+      updateNode(node.id, { content: '视频提示词不能为空', status: 'error' });
+      return;
+    }
+
+    const token = getOrRequestToken();
+
+    if (!token) {
+      updateNode(node.id, { content: '缺少 token', status: 'error' });
+      return;
+    }
+
+    if (mode === 'translate') {
+      setTranslatingNodeId(node.id);
+      try {
+        const translated = await runChatCompletion({
+          token,
+          content: `Detect whether the following video prompt is primarily Chinese or English. If it is Chinese, translate it into natural English. If it is English, translate it into natural Chinese. Return only the translation, with no explanations:\n\n${promptText}`,
+        });
+        updateNode(node.id, { prompt: translated, status: 'idle' });
+        setSelectedNodeId(node.id);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '翻译失败';
+        updateNode(node.id, { content: message, status: 'error' });
+        setSelectedNodeId(node.id);
+      } finally {
+        setTranslatingNodeId(null);
+      }
+      return;
+    }
+
+    setRunningNodeId(node.id);
+    updateNode(node.id, { status: 'running' });
+
+    try {
+      const family = inferVideoFamily(node);
+      const settings = normalizeVideoModelSettings({
+        family,
+        model: node.videoModel,
+        size: node.videoSize,
+        resolution: node.videoResolution,
+        orientation: node.videoOrientation,
+        ratio: node.videoRatio,
+        quality: node.videoQuality,
+        duration: node.videoDuration,
+        count: node.videoCount,
+        route: node.videoRoute,
+      });
+      const videos = [];
+
+      for (let index = 0; index < settings.count; index += 1) {
+        const { taskId, provider, queryModel } = await createVideoGenerationTask({
+          token,
+          prompt: promptText,
+          settings,
+          referenceImages: node.referenceImages || [],
+        });
+        const videoUrl = await waitForVideoTask({ token, taskId, provider, queryModel });
+        videos.push(videoUrl);
+        updateNode(node.id, {
+          content: videos[0],
+          videos,
+          videoFamily: settings.family,
+          status: 'running',
+        });
+      }
+
+      updateNode(node.id, {
+        content: videos[0],
+        videos,
+        status: 'idle',
+      });
+      setSelectedNodeId(node.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '视频生成失败';
       updateNode(node.id, { content: message, status: 'error' });
       setSelectedNodeId(node.id);
     } finally {
@@ -855,6 +942,7 @@ function App() {
                 onRemoveNode={removeNode}
                 onRunTextGeneration={runTextGeneration}
                 onRunImageGeneration={runImageGeneration}
+                onRunVideoGeneration={runVideoGeneration}
                 onOpenAssetLibrary={openAssetLibrary}
                 onRemoveImageReference={removeImageReference}
                 onPortPointerDown={handlePortPointerDown}

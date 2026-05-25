@@ -15,6 +15,379 @@ export const CANVAS_WHEEL_PAN_FACTOR = 1;
 export const CANVAS_GRID_CELL_SIZE = 28;
 export const DEFAULT_VIDEO_URL =
   'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
+export const DEFAULT_VIDEO_FAMILY = 'sora';
+export const DEFAULT_VIDEO_MODEL = 'sora2-gz-sp';
+export const DEFAULT_VIDEO_ROUTE = 'route3';
+export const DEFAULT_VIDEO_DURATION = '8';
+export const DEFAULT_SORA_VIDEO_DURATION = '12';
+export const DEFAULT_VIDEO_ORIENTATION = 'landscape';
+export const DEFAULT_VIDEO_RATIO = '16:9';
+export const DEFAULT_VIDEO_SIZE = '1280x720';
+export const DEFAULT_VIDEO_RESOLUTION = '720p';
+export const DEFAULT_VIDEO_QUALITY = '720p';
+export const DEFAULT_VIDEO_COUNT = 1;
+
+export const VIDEO_FAMILY_OPTIONS = [
+  { value: 'sora', label: 'Sora' },
+  { value: 'veo', label: 'VEO' },
+  { value: 'omni', label: 'Omni' },
+  { value: 'seedance', label: 'Seedance' },
+  { value: 'grok', label: 'Grok' },
+];
+
+export const VIDEO_COUNT_OPTIONS = [
+  { value: 1, label: '1 次' },
+  { value: 2, label: '2 次' },
+  { value: 3, label: '3 次' },
+];
+
+export const VIDEO_FAMILY_CONFIG = {
+  sora: {
+    provider: 'sora',
+    route: 'route3',
+    defaultDuration: '12',
+    defaultOrientation: 'portrait',
+    models: [
+      { value: 'sora2-gz-sp', label: 'Sora2 特价版' },
+      { value: 'sora2-gz-stable', label: 'Sora2 稳定版' },
+    ],
+    ratios: [
+      { value: 'landscape', label: '横屏 16:9' },
+      { value: 'portrait', label: '竖屏 9:16' },
+    ],
+    durations: [
+      { value: '4', label: '4 秒' },
+      { value: '8', label: '8 秒' },
+      { value: '12', label: '12 秒' },
+    ],
+    maxCount: 3,
+    resolutionKey: 'size',
+    ratioKey: 'orientation',
+  },
+  veo: {
+    provider: 'veo',
+    models: [{ value: 'sc-veo3.1-fast', label: 'VEO 3.1 Fast' }],
+    resolutions: [
+      { value: '720p', label: '720p' },
+      { value: '1080p', label: '1080p' },
+      { value: '4k', label: '4K' },
+    ],
+    ratios: [
+      { value: '16:9', label: '16:9' },
+      { value: '9:16', label: '9:16' },
+      { value: '1:1', label: '1:1' },
+    ],
+    durations: [
+      { value: '4', label: '4 秒' },
+      { value: '6', label: '6 秒' },
+      { value: '8', label: '8 秒' },
+    ],
+    maxCount: 3,
+    resolutionKey: 'resolution',
+    ratioKey: 'ratio',
+  },
+  omni: {
+    provider: 'omni',
+    models: [{ value: 'Gemini-Omini', label: 'Gemini Omni' }],
+    resolutions: [
+      { value: '720p', label: '720p' },
+      { value: '1080p', label: '1080p' },
+      { value: '4k', label: '4K' },
+    ],
+    ratios: [
+      { value: '16:9', label: '16:9' },
+      { value: '9:16', label: '9:16' },
+      { value: '1:1', label: '1:1' },
+    ],
+    durations: [
+      { value: '4', label: '4 秒' },
+      { value: '6', label: '6 秒' },
+      { value: '8', label: '8 秒' },
+      { value: '10', label: '10 秒' },
+    ],
+    maxCount: 3,
+    resolutionKey: 'resolution',
+    ratioKey: 'ratio',
+  },
+  seedance: {
+    provider: 'seedance',
+    models: [
+      { value: 'doubao-seedance-2.0', label: 'Seedance 2.0' },
+      { value: 'seedance-2.0-manxue', label: 'Seedance 2.0 满血版' },
+    ],
+    resolutions: [
+      { value: '480p', label: '480p' },
+      { value: '720p', label: '720p' },
+    ],
+    manxueResolutions: [
+      { value: '720p', label: '720P' },
+      { value: '1080p', label: '1080P' },
+      { value: '2k', label: '2K' },
+      { value: '4k', label: '4K' },
+    ],
+    manxueDurations: [
+      { value: '4', label: '4 秒' },
+      { value: '5', label: '5 秒' },
+      { value: '6', label: '6 秒' },
+      { value: '8', label: '8 秒' },
+      { value: '10', label: '10 秒' },
+      { value: '12', label: '12 秒' },
+      { value: '15', label: '15 秒' },
+    ],
+    standardDurations: [
+      { value: '5', label: '5 秒' },
+      { value: '10', label: '10 秒' },
+      { value: '15', label: '15 秒' },
+    ],
+    ratios: [
+      { value: '16:9', label: '16:9' },
+      { value: '9:16', label: '9:16' },
+      { value: '1:1', label: '1:1' },
+      { value: '4:3', label: '4:3' },
+      { value: '3:4', label: '3:4' },
+    ],
+    durations: [
+      { value: '5', label: '5 秒' },
+      { value: '10', label: '10 秒' },
+      { value: '15', label: '15 秒' },
+    ],
+    maxCount: 3,
+    resolutionKey: 'resolution',
+    ratioKey: 'ratio',
+  },
+  grok: {
+    provider: 'grok',
+    models: [{ value: 'grok_video3', label: 'Grok Video 3' }],
+    resolutions: [
+      { value: '480p', label: '480p' },
+      { value: '720p', label: '720p' },
+    ],
+    ratios: [
+      { value: '16:9', label: '16:9' },
+      { value: '9:16', label: '9:16' },
+      { value: '1:1', label: '1:1' },
+      { value: '3:2', label: '3:2' },
+      { value: '2:3', label: '2:3' },
+    ],
+    durations: [
+      { value: '6', label: '6 秒' },
+      { value: '10', label: '10 秒' },
+      { value: '15', label: '15 秒' },
+      { value: '20', label: '20 秒' },
+      { value: '30', label: '30 秒' },
+    ],
+    maxCount: 3,
+    resolutionKey: 'quality',
+    ratioKey: 'ratio',
+  },
+};
+
+export const SEEDANCE_MANXUE_MODEL = 'seedance-2.0-manxue';
+
+export function isSeedanceManxueModel(model = '') {
+  const value = String(model).toLowerCase();
+  return (
+    value === SEEDANCE_MANXUE_MODEL ||
+    value.startsWith('sd2_mx_') ||
+    value.startsWith('sd2_manxue_') ||
+    value === 'doubao-seedance-2.0-fast'
+  );
+}
+
+export function isSeedanceStandardModel(model = '') {
+  return String(model) === 'doubao-seedance-2.0';
+}
+
+export function resolutionFromManxueModel(model = '') {
+  const value = String(model).toLowerCase();
+  if (value.includes('720p')) return '720p';
+  if (value.includes('1080p')) return '1080p';
+  if (value.includes('2k')) return '2k';
+  if (value.includes('4k')) return '4k';
+  return '720p';
+}
+
+export function getDefaultVideoOrientation(family = DEFAULT_VIDEO_FAMILY) {
+  return getVideoFamilyConfig(family).defaultOrientation || DEFAULT_VIDEO_ORIENTATION;
+}
+
+export function defaultSoraSize(orientation) {
+  const resolved = orientation ?? getDefaultVideoOrientation('sora');
+  return resolved === 'portrait' ? '720x1280' : '1280x720';
+}
+
+export function buildManxueApiModel(resolution = '720p') {
+  const map = {
+    '720p': 'sd2_mx_720p',
+    '1080p': 'sd2_mx_1080p',
+    '2k': 'sd2_mx_2k',
+    '4k': 'sd2_mx_4k',
+  };
+  return map[String(resolution).toLowerCase()] || 'sd2_mx_720p';
+}
+
+export function normalizeSeedanceUiModel(model = '') {
+  if (isSeedanceManxueModel(model) && model !== SEEDANCE_MANXUE_MODEL) {
+    return SEEDANCE_MANXUE_MODEL;
+  }
+  if (model === 'doubao-seedance-2.0-fast') {
+    return SEEDANCE_MANXUE_MODEL;
+  }
+  return model;
+}
+
+export function inferVideoFamily(node = {}) {
+  if (node.videoFamily && VIDEO_FAMILY_CONFIG[node.videoFamily]) {
+    return node.videoFamily;
+  }
+
+  const model = String(node.videoModel || '').toLowerCase();
+  if (model.includes('grok')) return 'grok';
+  if (isSeedanceManxueModel(model) || model.includes('seedance') || model.includes('doubao')) return 'seedance';
+  if (model.includes('veo') || model.startsWith('sc-veo')) return 'veo';
+  if (model.includes('omni') || model.includes('gemini')) return 'omni';
+  return 'sora';
+}
+
+export function getVideoFamilyConfig(family = DEFAULT_VIDEO_FAMILY) {
+  return VIDEO_FAMILY_CONFIG[family] || VIDEO_FAMILY_CONFIG[DEFAULT_VIDEO_FAMILY];
+}
+
+export function getVideoModelOptions(family) {
+  return getVideoFamilyConfig(family).models;
+}
+
+export function getVideoResolutionOptions(family, model = '') {
+  const config = getVideoFamilyConfig(family);
+  if (family === 'sora') {
+    return [];
+  }
+  if (family === 'seedance' && isSeedanceManxueModel(model)) {
+    return config.manxueResolutions || [];
+  }
+  if (family === 'seedance' && isSeedanceStandardModel(model)) {
+    return config.resolutions;
+  }
+  return config.resolutions;
+}
+
+export function getVideoRatioOptions(family) {
+  return getVideoFamilyConfig(family).ratios;
+}
+
+export function getVideoDurationOptions(family, model = '') {
+  const config = getVideoFamilyConfig(family);
+  if (family === 'seedance' && isSeedanceManxueModel(model)) {
+    return config.manxueDurations || config.durations;
+  }
+  if (family === 'seedance' && isSeedanceStandardModel(model)) {
+    return config.standardDurations || config.durations;
+  }
+  return config.durations;
+}
+
+export function getVideoCountOptions(family) {
+  const maxCount = getVideoFamilyConfig(family).maxCount;
+  return VIDEO_COUNT_OPTIONS.filter((option) => option.value <= maxCount);
+}
+
+export function getDefaultVideoDuration(family = DEFAULT_VIDEO_FAMILY) {
+  return getVideoFamilyConfig(family).defaultDuration || DEFAULT_VIDEO_DURATION;
+}
+
+export function normalizeVideoModelSettings({
+  family = DEFAULT_VIDEO_FAMILY,
+  model = DEFAULT_VIDEO_MODEL,
+  size = DEFAULT_VIDEO_SIZE,
+  resolution = DEFAULT_VIDEO_RESOLUTION,
+  orientation,
+  ratio = DEFAULT_VIDEO_RATIO,
+  quality = DEFAULT_VIDEO_QUALITY,
+  duration,
+  count = DEFAULT_VIDEO_COUNT,
+  route = DEFAULT_VIDEO_ROUTE,
+} = {}) {
+  const config = getVideoFamilyConfig(family);
+  const effectiveDuration = duration ?? getDefaultVideoDuration(family);
+  const effectiveOrientation = orientation ?? getDefaultVideoOrientation(family);
+  const modelOptions = config.models || [];
+  const ratioOptions = config.ratios || [];
+
+  const isManxueSeedance = family === 'seedance' && isSeedanceManxueModel(model);
+  const manxueResolutionOptions = config.manxueResolutions || [];
+
+  let normalizedModel = modelOptions.some((option) => option.value === normalizeSeedanceUiModel(model))
+    ? normalizeSeedanceUiModel(model)
+    : isManxueSeedance
+      ? SEEDANCE_MANXUE_MODEL
+      : modelOptions[0]?.value;
+
+  if (family === 'seedance' && isSeedanceManxueModel(model) && model !== SEEDANCE_MANXUE_MODEL) {
+    normalizedModel = SEEDANCE_MANXUE_MODEL;
+  }
+
+  const durationOptions =
+    family === 'seedance' && isSeedanceManxueModel(normalizedModel)
+      ? config.manxueDurations || config.durations
+      : family === 'seedance' && isSeedanceStandardModel(normalizedModel)
+        ? config.standardDurations || config.durations
+        : config.durations;
+
+  const normalizedRatio = ratioOptions.some((option) => option.value === (family === 'sora' ? effectiveOrientation : ratio))
+    ? family === 'sora'
+      ? effectiveOrientation
+      : ratio
+    : family === 'sora'
+      ? getDefaultVideoOrientation(family)
+      : ratioOptions[0]?.value;
+
+  let normalizedResolution = resolution;
+  if (family === 'sora') {
+    normalizedResolution = defaultSoraSize(normalizedRatio);
+  } else if (family === 'seedance' && isSeedanceManxueModel(normalizedModel)) {
+    const manxueResolutionFromModel = isManxueSeedance && model !== SEEDANCE_MANXUE_MODEL
+      ? resolutionFromManxueModel(model)
+      : resolution;
+    normalizedResolution = manxueResolutionOptions.some(
+      (option) => option.value === manxueResolutionFromModel
+    )
+      ? manxueResolutionFromModel
+      : manxueResolutionOptions[0]?.value || '720p';
+  } else if (family === 'grok') {
+    const resolutionOptions = config.resolutions || [];
+    normalizedResolution = resolutionOptions.some((option) => option.value === quality)
+      ? quality
+      : resolutionOptions[0]?.value;
+  } else {
+    const resolutionOptions = getVideoResolutionOptions(family, normalizedModel);
+    normalizedResolution = resolutionOptions.some((option) => option.value === resolution)
+      ? resolution
+      : resolutionOptions[0]?.value;
+  }
+
+  const normalizedDuration = durationOptions.some((option) => option.value === String(effectiveDuration))
+    ? String(effectiveDuration)
+    : getDefaultVideoDuration(family);
+
+  const isManxueProvider = family === 'seedance' && isSeedanceManxueModel(normalizedModel);
+  const provider = isManxueProvider ? 'seedance-manxue' : config.provider;
+  const apiModel = isManxueProvider ? buildManxueApiModel(normalizedResolution) : normalizedModel;
+
+  return {
+    family,
+    model: normalizedModel,
+    apiModel,
+    route: family === 'sora' ? route || config.route : undefined,
+    provider,
+    size: family === 'sora' ? normalizedResolution : undefined,
+    resolution: family === 'sora' ? undefined : normalizedResolution,
+    quality: family === 'grok' ? normalizedResolution : undefined,
+    orientation: family === 'sora' ? normalizedRatio : undefined,
+    ratio: family === 'sora' ? undefined : normalizedRatio,
+    duration: normalizedDuration,
+    count: Math.min(config.maxCount, Math.max(1, Number(count) || DEFAULT_VIDEO_COUNT)),
+  };
+}
 
 export const IMAGE_MODEL_OPTIONS = [
   { value: 'gpt-image-2', label: 'gpt image2' },

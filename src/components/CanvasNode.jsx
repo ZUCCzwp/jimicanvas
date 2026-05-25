@@ -16,11 +16,22 @@ import {
 import {
   DEFAULT_TEXT_MODEL,
   getImageCountOptions,
+  getVideoCountOptions,
+  getVideoDurationOptions,
+  getVideoModelOptions,
+  getVideoRatioOptions,
+  getVideoResolutionOptions,
+  defaultSoraSize,
+  inferVideoFamily,
+  isSeedanceManxueModel,
   IMAGE_MODEL_OPTIONS,
   getImageRatioOptions,
   getImageResolutionOptions,
   normalizeImageModelSettings,
+  normalizeVideoModelSettings,
+  VIDEO_FAMILY_OPTIONS,
 } from '../lib/constants';
+import { normalizeVideoUrl } from '../lib/videoApi';
 import { isImageContent, isVideoContent } from '../lib/canvas';
 import { normalizeImageUrl } from '../lib/imageApi';
 
@@ -261,26 +272,257 @@ function ImageBody({ node, isRunning, onBeginDrag }) {
   );
 }
 
-function VideoBody({ node, onUpdateNode }) {
-  const canPreview = isVideoContent(node.content);
+function VideoBody({ node, isRunning, onBeginDrag }) {
+  const videos = Array.isArray(node.videos) && node.videos.length > 0 ? node.videos : [];
+  const displayVideo =
+    videos.length > 0
+      ? videos[0]
+      : isVideoContent(node.content)
+        ? node.content
+        : '';
+
+  if (isRunning) {
+    return (
+      <div className="video-output-state" onPointerDown={(event) => onBeginDrag(event, node)}>
+        <LoaderCircle size={24} className="spin-icon" />
+        <span>正在生成视频</span>
+      </div>
+    );
+  }
+
+  if (node.status === 'error') {
+    return (
+      <div
+        className="node-error-display image-error-display"
+        onPointerDown={(event) => onBeginDrag(event, node)}
+      >
+        <strong>生成失败</strong>
+        <span>{node.content || '视频生成失败'}</span>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <input
-        className="node-content-input"
-        value={node.content}
-        onChange={(event) => onUpdateNode(node.id, { content: event.target.value })}
-        onPointerDown={(event) => event.stopPropagation()}
-        placeholder="粘贴视频 URL 或 data URL"
-      />
-      <div className="image-preview video-preview">
-        {canPreview ? (
-          <video src={node.content} controls playsInline />
-        ) : (
-          <div className="image-empty">无可预览内容</div>
-        )}
+    <div className="video-output-preview" onPointerDown={(event) => onBeginDrag(event, node)}>
+      {displayVideo ? (
+        <video src={normalizeVideoUrl(displayVideo)} controls playsInline />
+      ) : (
+        <div className="image-empty">单击节点，在下方配置提示词并生成视频</div>
+      )}
+    </div>
+  );
+}
+
+function ratioIconValue(family, value) {
+  if (family === 'sora') {
+    return value === 'portrait' ? '9:16' : '16:9';
+  }
+  return value;
+}
+
+function VideoToolbar({
+  node,
+  isRunning,
+  isTranslating,
+  onRunVideoGeneration,
+  onOpenAssetLibrary,
+  onRemoveImageReference,
+  onUpdateNode,
+}) {
+  const isPromptEmpty = !String(node.prompt || '').trim();
+  const references = Array.isArray(node.referenceImages) ? node.referenceImages : [];
+  const family = inferVideoFamily(node);
+  const model = node.videoModel || getVideoModelOptions(family)[0]?.value;
+  const isManxueSeedance = family === 'seedance' && isSeedanceManxueModel(model);
+  const modelOptions = getVideoModelOptions(family);
+  const resolutionOptions = getVideoResolutionOptions(family, model);
+  const ratioOptions = getVideoRatioOptions(family);
+  const durationOptions = getVideoDurationOptions(family, model);
+  const countOptions = getVideoCountOptions(family);
+  const normalizedSettings = normalizeVideoModelSettings({
+    family,
+    model: node.videoModel,
+    size: node.videoSize,
+    resolution: node.videoResolution,
+    orientation: node.videoOrientation,
+    ratio: node.videoRatio,
+    quality: node.videoQuality,
+    duration: node.videoDuration,
+    count: node.videoCount,
+    route: node.videoRoute,
+  });
+
+  const resolutionValue =
+    family === 'sora'
+      ? normalizedSettings.size
+      : family === 'grok'
+        ? normalizedSettings.quality
+        : normalizedSettings.resolution;
+  const ratioValue = family === 'sora' ? normalizedSettings.orientation : normalizedSettings.ratio;
+  const resolutionTitle = family === 'grok' ? '画质' : '分辨率';
+
+  function applyFamilyChange(nextFamily) {
+    const nextSettings = normalizeVideoModelSettings({ family: nextFamily });
+    onUpdateNode(node.id, {
+      videoFamily: nextFamily,
+      videoModel: nextSettings.model,
+      videoRoute: nextSettings.route,
+      videoSize: nextSettings.size || node.videoSize,
+      videoResolution: nextSettings.resolution || node.videoResolution,
+      videoQuality: nextSettings.quality || node.videoQuality,
+      videoOrientation: nextSettings.orientation || node.videoOrientation,
+      videoRatio: nextSettings.ratio || node.videoRatio,
+      videoDuration: nextSettings.duration,
+      videoCount: nextSettings.count,
+      status: 'idle',
+    });
+  }
+
+  function applyModelChange(value) {
+    const defaultResolution = value === 'seedance-2.0-manxue' ? '720p' : node.videoResolution;
+    const nextSettings = normalizeVideoModelSettings({
+      family,
+      model: value,
+      size: node.videoSize,
+      resolution: defaultResolution,
+      orientation: node.videoOrientation,
+      ratio: node.videoRatio,
+      quality: node.videoQuality,
+      duration: node.videoDuration,
+      count: node.videoCount,
+      route: node.videoRoute,
+    });
+    onUpdateNode(node.id, {
+      videoModel: nextSettings.model,
+      videoSize: nextSettings.size,
+      videoResolution: nextSettings.resolution,
+      videoQuality: nextSettings.quality,
+      videoOrientation: nextSettings.orientation,
+      videoRatio: nextSettings.ratio,
+      videoDuration: nextSettings.duration,
+      videoCount: nextSettings.count,
+    });
+  }
+
+  const showResolutionControl = resolutionOptions.length > 0;
+
+  return (
+    <div className="node-bottom-toolbar image-toolbar video-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+      <div className="node-prompt-wrap">
+        <textarea
+          className="node-prompt-input"
+          value={node.prompt || ''}
+          onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
+          placeholder="输入视频提示词"
+        />
+        <button
+          className="prompt-asset-button"
+          onClick={() => onOpenAssetLibrary(node.id)}
+          disabled={isRunning}
+          title="从资产库选择参考图"
+        >
+          <FolderOpen size={14} />
+          资产库
+        </button>
       </div>
-    </>
+      <OptionSegment
+        title="系列"
+        value={family}
+        options={VIDEO_FAMILY_OPTIONS}
+        onChange={applyFamilyChange}
+      />
+      <div className="image-options-row">
+        <OptionSegment
+          title="模型"
+          value={normalizedSettings.model}
+          options={modelOptions}
+          onChange={applyModelChange}
+        />
+        {showResolutionControl ? (
+          <OptionSegment
+            title={resolutionTitle}
+            value={resolutionValue}
+            options={resolutionOptions}
+            onChange={(value) => {
+              if (family === 'grok') {
+                onUpdateNode(node.id, { videoQuality: value });
+                return;
+              }
+              onUpdateNode(node.id, { videoResolution: value });
+            }}
+          />
+        ) : null}
+      </div>
+      <div className="image-options-row">
+        <OptionSegment
+          title="宽高比"
+          value={ratioValue}
+          options={ratioOptions}
+          onChange={(value) => {
+            if (family === 'sora') {
+              onUpdateNode(node.id, {
+                videoOrientation: value,
+                videoSize: defaultSoraSize(value),
+              });
+              return;
+            }
+            onUpdateNode(node.id, { videoRatio: value });
+          }}
+          renderIcon={(option) => <RatioIcon value={ratioIconValue(family, option.value)} />}
+        />
+        <OptionSegment
+          title="时长"
+          value={normalizedSettings.duration}
+          options={durationOptions}
+          onChange={(value) => onUpdateNode(node.id, { videoDuration: value })}
+        />
+      </div>
+      <OptionSegment
+        title="生成次数"
+        value={normalizedSettings.count}
+        options={countOptions.map((option) => ({ ...option, label: `${option.value}次` }))}
+        onChange={(value) => onUpdateNode(node.id, { videoCount: Number(value) })}
+      />
+      <div className="image-reference-row">
+        <div className="image-reference-list">
+          {references.map((image, index) => (
+            <div className="image-reference-chip" key={image.id || image.url || index}>
+              <img
+                src={image.source === 'local' ? image.url || image.data : normalizeImageUrl(image.url || image.data)}
+                alt={image.name || `参考图 ${index + 1}`}
+              />
+              <button
+                type="button"
+                onClick={() => onRemoveImageReference(node.id, index)}
+                title="移除参考图"
+              >
+                <X size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="node-bottom-actions image-bottom-actions">
+        <button
+          className="icon-button"
+          onClick={() => onRunVideoGeneration(node, 'translate')}
+          title="翻译提示词"
+          disabled={isTranslating || isRunning || isPromptEmpty}
+        >
+          {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
+          翻译
+        </button>
+        <button
+          className="icon-button primary"
+          onClick={() => onRunVideoGeneration(node)}
+          title="运行视频生成"
+          disabled={isRunning || isTranslating || isPromptEmpty}
+        >
+          {isRunning ? <LoaderCircle size={14} className="spin-icon" /> : <Play size={14} />}
+          运行
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -474,6 +716,7 @@ export function CanvasNode({
   onRemoveNode,
   onRunTextGeneration,
   onRunImageGeneration,
+  onRunVideoGeneration,
   onOpenAssetLibrary,
   onRemoveImageReference,
   onPortPointerDown,
@@ -545,7 +788,7 @@ export function CanvasNode({
         ) : node.type === 'image' ? (
           <ImageBody node={node} isRunning={isRunning} onBeginDrag={onBeginDrag} />
         ) : (
-          <VideoBody node={node} onUpdateNode={onUpdateNode} />
+          <VideoBody node={node} isRunning={isRunning} onBeginDrag={onBeginDrag} />
         )}
       </div>
 
@@ -563,6 +806,16 @@ export function CanvasNode({
           isRunning={isRunning}
           isTranslating={isTranslating}
           onRunImageGeneration={onRunImageGeneration}
+          onOpenAssetLibrary={onOpenAssetLibrary}
+          onRemoveImageReference={onRemoveImageReference}
+          onUpdateNode={onUpdateNode}
+        />
+      ) : node.type === 'video' && isSelected ? (
+        <VideoToolbar
+          node={node}
+          isRunning={isRunning}
+          isTranslating={isTranslating}
+          onRunVideoGeneration={onRunVideoGeneration}
           onOpenAssetLibrary={onOpenAssetLibrary}
           onRemoveImageReference={onRemoveImageReference}
           onUpdateNode={onUpdateNode}
