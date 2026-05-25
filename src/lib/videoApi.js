@@ -290,6 +290,7 @@ function pickVideoUrl(payload) {
       payload.video_url ||
       payload.videoUrl ||
       payload.originUrl ||
+      payload.origin_url ||
       payload.result?.video_url ||
       payload.result?.video_path ||
       payload.result?.videoUrl

@@ -29,12 +29,23 @@ import {
   uploadAsset,
   waitForImageTask,
 } from './lib/imageApi';
-import { loadInitialState, writeStorage } from './lib/storage';
+import {
+  hasStorageBackup,
+  loadInitialState,
+  readStorageBackup,
+  writeStorage,
+} from './lib/storage';
 import { createVideoGenerationTask, waitForVideoTask } from './lib/videoApi';
 
 function App() {
   const initial = useMemo(() => loadInitialState(), []);
   const [documents, setDocuments] = useState(initial.documents);
+  const [storageNotice, setStorageNotice] = useState(() => {
+    if (initial.loadedFrom === 'backup') {
+      return '已从本地备份恢复画布，建议点击左侧导出按钮保存一份 JSON';
+    }
+    return '';
+  });
   const [activeCanvasId, setActiveCanvasId] = useState(initial.activeCanvasId);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [selectedConnectionId, setSelectedConnectionId] = useState(null);
@@ -69,7 +80,24 @@ function App() {
   const panRef = useRef(null);
 
   useEffect(() => {
-    writeStorage(documents);
+    const result = writeStorage(documents);
+    if (!result.ok) {
+      setStorageNotice(
+        '画布保存到浏览器失败，存储空间可能已满。请尽快导出 JSON，或删除节点里过大的本地图片后再试。'
+      );
+      return;
+    }
+    if (storageNotice.startsWith('画布保存到浏览器失败')) {
+      setStorageNotice('');
+    }
+  }, [documents]);
+
+  useEffect(() => {
+    function handleBeforeUnload() {
+      writeStorage(documents);
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [documents]);
 
   useEffect(() => {
@@ -884,6 +912,23 @@ function App() {
     clearLinkDraft();
   }
 
+  function restoreStorageBackup() {
+    const backup = readStorageBackup();
+    if (!backup || backup.length === 0) {
+      setStorageNotice('未找到可恢复的本地备份');
+      return;
+    }
+
+    setDocuments(backup);
+    setActiveCanvasId(backup[0].id);
+    setSelectedNodeId(null);
+    setSelectedConnectionId(null);
+    setEditingNodeId(null);
+    clearLinkDraft();
+    writeStorage(backup);
+    setStorageNotice('已从本地备份恢复画布');
+  }
+
   function exportJson() {
     const blob = new Blob([JSON.stringify(documents, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -948,11 +993,23 @@ function App() {
           onRenameCanvas={renameCanvas}
           onSelectCanvas={selectCanvas}
           onDeleteCanvas={deleteCanvas}
+          onRestoreBackup={restoreStorageBackup}
+          hasStorageBackup={hasStorageBackup()}
           onClose={() => setShowCanvasPanel(false)}
         />
       ) : null}
 
       {importError ? <div className="toast-error">{importError}</div> : null}
+      {storageNotice ? (
+        <div className="toast-info">
+          <span>{storageNotice}</span>
+          {hasStorageBackup() ? (
+            <button type="button" className="toast-action" onClick={restoreStorageBackup}>
+              恢复备份
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {assetPicker.nodeId ? (
         <AssetPickerModal
