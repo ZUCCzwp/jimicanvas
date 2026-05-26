@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { getNoteContentStyleCss } from '../lib/noteContentStyle';
 import {
+  DEFAULT_NODE_HEIGHT,
+  DEFAULT_NODE_WIDTH,
   DEFAULT_TEXT_MODEL,
   getImageCountOptions,
   getVideoCountOptions,
@@ -754,6 +756,7 @@ export function CanvasNode({
   onSelectNode,
   onClearConnectionSelection,
   onBeginDrag,
+  onBeginResize,
   onOpenTextEdit,
   onCopyNode,
   onUpdateNode,
@@ -772,8 +775,8 @@ export function CanvasNode({
       className={`node ${isSelected ? 'selected' : ''} ${isRunning ? 'is-running' : ''} ${node.type}`}
       style={{
         transform: `translate(${node.x}px, ${node.y}px)`,
-        width: node.width,
-        height: node.height,
+        width: node.width ?? DEFAULT_NODE_WIDTH,
+        height: node.height ?? DEFAULT_NODE_HEIGHT,
       }}
       onPointerDown={(event) => {
         onSelectNode(node.id);
@@ -881,6 +884,19 @@ export function CanvasNode({
           onRemoveImageReference={onRemoveImageReference}
           onRemoveVeoFrame={onRemoveVeoFrame}
           onUpdateNode={onUpdateNode}
+        />
+      ) : null}
+
+      {node.type === 'note' && isSelected ? (
+        <button
+          type="button"
+          className="node-resize-handle"
+          title="拖拽调整输出框大小"
+          aria-label="调整节点大小"
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            onBeginResize(event, node);
+          }}
         />
       ) : null}
 

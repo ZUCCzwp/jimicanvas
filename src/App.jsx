@@ -20,7 +20,15 @@ import {
   normalizeVideoModelSettings,
   VEO_REFERENCE_IMAGE_MAX,
 } from './lib/constants';
-import { clampValue, createDocument, createNode, duplicateNode, snapScale, uid } from './lib/canvas';
+import {
+  clampNoteSize,
+  clampValue,
+  createDocument,
+  createNode,
+  duplicateNode,
+  snapScale,
+  uid,
+} from './lib/canvas';
 import {
   fetchCanvasDocuments,
   parseCloudDocuments,
@@ -74,6 +82,7 @@ function App() {
   const [canvasScale, setCanvasScale] = useState(1);
   const [viewportOffset, setViewportOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const [importError, setImportError] = useState('');
   const [copyNotice, setCopyNotice] = useState('');
   const [runningNodeId, setRunningNodeId] = useState(null);
@@ -101,6 +110,7 @@ function App() {
   const viewportOffsetRef = useRef(viewportOffset);
   const fileInputRef = useRef(null);
   const dragRef = useRef(null);
+  const resizeRef = useRef(null);
   const panRef = useRef(null);
   const cloudVersionRef = useRef(0);
   const cloudSyncReadyRef = useRef(false);
@@ -1192,6 +1202,15 @@ function App() {
       return;
     }
 
+    const resize = resizeRef.current;
+    if (resize) {
+      const dx = (event.clientX - resize.startX) / canvasScale;
+      const dy = (event.clientY - resize.startY) / canvasScale;
+      const { width, height } = clampNoteSize(resize.originWidth + dx, resize.originHeight + dy);
+      updateNode(resize.nodeId, { width, height });
+      return;
+    }
+
     const drag = dragRef.current;
     if (!drag) return;
 
@@ -1205,8 +1224,10 @@ function App() {
 
   function handleStagePointerUp(event) {
     dragRef.current = null;
+    resizeRef.current = null;
     panRef.current = null;
     setIsPanning(false);
+    setIsResizing(false);
     if (linkFromNodeId) {
       const target = getNodeAtPointer(event, linkFromNodeId);
       if (target) {
@@ -1222,6 +1243,7 @@ function App() {
     event.stopPropagation();
     setSelectedNodeId(node.id);
     setSelectedConnectionId(null);
+    resizeRef.current = null;
     dragRef.current = {
       nodeId: node.id,
       startX: event.clientX,
@@ -1229,6 +1251,22 @@ function App() {
       originX: node.x,
       originY: node.y,
     };
+  }
+
+  function beginResize(event, node) {
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedNodeId(node.id);
+    setSelectedConnectionId(null);
+    dragRef.current = null;
+    resizeRef.current = {
+      nodeId: node.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      originWidth: node.width,
+      originHeight: node.height,
+    };
+    setIsResizing(true);
   }
 
   function isStageBackgroundTarget(event) {
@@ -1431,7 +1469,7 @@ function App() {
         />
 
         <section
-          className={`stage ${linkFromNodeId ? 'link-mode' : ''} ${isPanning ? 'is-panning' : ''}`}
+          className={`stage ${linkFromNodeId ? 'link-mode' : ''} ${isPanning ? 'is-panning' : ''} ${isResizing ? 'is-resizing' : ''}`}
           ref={stageRef}
           style={{
             '--canvas-scale': canvasScale,
@@ -1464,6 +1502,7 @@ function App() {
                 onSelectNode={setSelectedNodeId}
                 onClearConnectionSelection={() => setSelectedConnectionId(null)}
                 onBeginDrag={beginDrag}
+                onBeginResize={beginResize}
                 onOpenTextEdit={openEnlargedTextEdit}
                 onCopyNode={duplicateNodeById}
                 onUpdateNode={updateNode}

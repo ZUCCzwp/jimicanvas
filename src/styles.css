@@ -861,6 +861,46 @@ button {
   cursor: grab;
 }
 
+.node-resize-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  z-index: 3;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 0 0 12px 0;
+  cursor: nwse-resize;
+  background: transparent;
+}
+
+.node-resize-handle::before {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid rgba(148, 163, 184, 0.75);
+  border-bottom: 2px solid rgba(148, 163, 184, 0.75);
+  border-radius: 0 0 2px 0;
+  pointer-events: none;
+}
+
+.node-resize-handle:hover::before,
+.node.selected .node-resize-handle::before {
+  border-color: rgba(56, 189, 248, 0.95);
+}
+
+.stage.is-resizing {
+  cursor: nwse-resize;
+}
+
+.stage.is-resizing .node.note {
+  cursor: nwse-resize;
+}
+
 .node-floating-header {
   position: absolute;
   left: 0;

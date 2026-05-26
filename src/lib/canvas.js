@@ -1,6 +1,10 @@
 import {
   DEFAULT_NODE_HEIGHT,
   DEFAULT_NODE_WIDTH,
+  MAX_NOTE_HEIGHT,
+  MAX_NOTE_WIDTH,
+  MIN_NOTE_HEIGHT,
+  MIN_NOTE_WIDTH,
   DEFAULT_IMAGE_COUNT,
   DEFAULT_IMAGE_MODEL,
   DEFAULT_IMAGE_RATIO,
@@ -169,6 +173,13 @@ export function isImageContent(content) {
 
 export function isVideoContent(content) {
   return typeof content === 'string' && (content.startsWith('data:video') || /^https?:\/\//.test(content));
+}
+
+export function clampNoteSize(width, height) {
+  return {
+    width: Math.min(MAX_NOTE_WIDTH, Math.max(MIN_NOTE_WIDTH, Math.round(width))),
+    height: Math.min(MAX_NOTE_HEIGHT, Math.max(MIN_NOTE_HEIGHT, Math.round(height))),
+  };
 }
 
 export function duplicateNode(source, offsetX = 28, offsetY = 28) {
