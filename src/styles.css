@@ -649,7 +649,6 @@ button {
   font-size: 12px;
 }
 
-.save-chip,
 .sync-chip {
   display: inline-flex;
   align-items: center;
@@ -658,12 +657,6 @@ button {
   padding: 0 11px;
   border-radius: 999px;
   font-size: 12px;
-}
-
-.save-chip {
-  border: 1px solid rgba(16, 185, 129, 0.22);
-  color: #a7f3d0;
-  background: rgba(16, 185, 129, 0.1);
 }
 
 .sync-chip-label {

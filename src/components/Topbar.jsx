@@ -104,7 +104,6 @@ export function Topbar({
         </div>
 
         <div className="toolbar-row">
-          <span className="save-chip">本地自动保存</span>
           <span
             className={`sync-chip ${cloudMeta.className}`}
             title={syncedHint || cloudMeta.label}
