@@ -92,6 +92,8 @@ function App() {
   });
 
   const stageRef = useRef(null);
+  const canvasScaleRef = useRef(canvasScale);
+  const viewportOffsetRef = useRef(viewportOffset);
   const fileInputRef = useRef(null);
   const dragRef = useRef(null);
   const panRef = useRef(null);
@@ -115,6 +117,14 @@ function App() {
   useEffect(() => {
     activeCanvasIdRef.current = activeCanvasId;
   }, [activeCanvasId]);
+
+  useEffect(() => {
+    canvasScaleRef.current = canvasScale;
+  }, [canvasScale]);
+
+  useEffect(() => {
+    viewportOffsetRef.current = viewportOffset;
+  }, [viewportOffset]);
 
   const flushPersist = async () => {
     writeStorage(documentsRef.current);
@@ -333,6 +343,37 @@ function App() {
         target instanceof HTMLElement &&
         (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
 
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+
+        const rect = stage.getBoundingClientRect();
+        const pointerX = event.clientX - rect.left;
+        const pointerY = event.clientY - rect.top;
+        const oldScale = canvasScaleRef.current;
+        const offset = viewportOffsetRef.current;
+        const normalizedDeltaY = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
+
+        if (Math.abs(normalizedDeltaY) < 0.01) return;
+
+        const nextScale = clampValue(
+          oldScale * Math.pow(1.002, -normalizedDeltaY),
+          MIN_CANVAS_SCALE,
+          MAX_CANVAS_SCALE
+        );
+
+        if (Math.abs(nextScale - oldScale) < 0.0001) return;
+
+        const canvasX = (pointerX - offset.x) / oldScale;
+        const canvasY = (pointerY - offset.y) / oldScale;
+
+        setCanvasScale(nextScale);
+        setViewportOffset({
+          x: pointerX - canvasX * nextScale,
+          y: pointerY - canvasY * nextScale,
+        });
+        return;
+      }
+
       if (isEditableTarget) return;
 
       event.preventDefault();
@@ -347,8 +388,8 @@ function App() {
       }));
     };
 
-    stage.addEventListener('wheel', handleWheel, { passive: false });
-    return () => stage.removeEventListener('wheel', handleWheel);
+    stage.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+    return () => stage.removeEventListener('wheel', handleWheel, { capture: true });
   }, []);
 
   useEffect(() => {
