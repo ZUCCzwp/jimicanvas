@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AssetPickerModal } from './components/AssetPickerModal';
 import { ImagePreviewModal } from './components/ImagePreviewModal';
+import { VideoPreviewModal } from './components/VideoPreviewModal';
 import { NodeTypePickerPopover } from './components/NodeTypePickerPopover';
 import { TextEditModal } from './components/TextEditModal';
 import { CanvasNode } from './components/CanvasNode';
@@ -15,6 +16,7 @@ import {
   JIMIAIGO_TOKEN_STORAGE_KEY,
   CANVAS_GRID_CELL_SIZE,
   CANVAS_WHEEL_PAN_FACTOR,
+  CLOUD_SYNC_DEBOUNCE_MS,
   MAX_CANVAS_SCALE,
   MIN_CANVAS_SCALE,
   normalizeImageModelSettings,
@@ -31,7 +33,13 @@ import {
   snapScale,
   uid,
 } from './lib/canvas';
-import { getTextInputLinks, resolveImagePrompt } from './lib/connections';
+import {
+  getImageInputLinks,
+  getTextInputLinks,
+  resolveImagePrompt,
+  resolveVideoPrompt,
+  resolveVideoReferenceImages,
+} from './lib/connections';
 import {
   fetchCanvasDocuments,
   parseCloudDocuments,
@@ -64,7 +72,7 @@ import {
   readStorageBackup,
   writeStorage,
 } from './lib/storage';
-import { createVideoGenerationTask } from './lib/videoApi';
+import { createVideoGenerationTask, downloadVideoFile } from './lib/videoApi';
 
 function App() {
   const initial = useMemo(() => loadInitialState(), []);
@@ -80,6 +88,7 @@ function App() {
   const [selectedConnectionId, setSelectedConnectionId] = useState(null);
   const [enlargedTextEdit, setEnlargedTextEdit] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [videoPreview, setVideoPreview] = useState(null);
   const [linkFromNodeId, setLinkFromNodeId] = useState(null);
   const [linkNodePicker, setLinkNodePicker] = useState(null);
   const [inputHighlightNodeId, setInputHighlightNodeId] = useState(null);
@@ -293,7 +302,7 @@ function App() {
         }
         setCloudSyncStatus('error');
       }
-    }, 600);
+    }, CLOUD_SYNC_DEBOUNCE_MS);
 
     return () => window.clearTimeout(timer);
   }, [documents, activeCanvasId]);
@@ -429,6 +438,7 @@ function App() {
         setInputHighlightNodeId(null);
         setEnlargedTextEdit(null);
         setImagePreview(null);
+        setVideoPreview(null);
         setSelectedConnectionId(null);
       }
 
@@ -597,6 +607,27 @@ function App() {
     setImagePreview(null);
   }
 
+  function openVideoPreview(videoUrl, title = '视频预览') {
+    if (!videoUrl) return;
+    setVideoPreview({ videoUrl, title });
+  }
+
+  function closeVideoPreview() {
+    setVideoPreview(null);
+  }
+
+  async function handleDownloadVideo(videoUrl, title = 'video') {
+    const safeName = String(title || 'video')
+      .replace(/[\\/:*?"<>|]/g, '_')
+      .trim();
+    try {
+      await downloadVideoFile(videoUrl, `${safeName || 'video'}.mp4`);
+      showCopyNotice('视频下载已开始');
+    } catch (error) {
+      showCopyNotice(error?.message || '视频下载失败');
+    }
+  }
+
   function showCopyNotice(message) {
     setCopyNotice(message);
     if (copyNoticeTimerRef.current) {
@@ -652,7 +683,7 @@ function App() {
     }));
   }
 
-  function syncImageNodeOutputLayout(nodeId, layout) {
+  function syncMediaNodeOutputLayout(nodeId, nodeType, layout) {
     const width = layout.width;
     const height = layout.height;
     const outputAspectCss = layout.outputAspectCss || layout.cssAspectRatio;
@@ -660,7 +691,7 @@ function App() {
     updateActiveCanvas((doc) => ({
       ...doc,
       nodes: doc.nodes.map((node) => {
-        if (node.id !== nodeId || node.type !== 'image') return node;
+        if (node.id !== nodeId || node.type !== nodeType) return node;
         if (node.width === width && node.height === height && node.outputAspectCss === outputAspectCss) {
           return node;
         }
@@ -673,6 +704,14 @@ function App() {
         };
       }),
     }));
+  }
+
+  function syncImageNodeOutputLayout(nodeId, layout) {
+    syncMediaNodeOutputLayout(nodeId, 'image', layout);
+  }
+
+  function syncVideoNodeOutputLayout(nodeId, layout) {
+    syncMediaNodeOutputLayout(nodeId, 'video', layout);
   }
 
   function updateNodeInCanvas(canvasId, nodeId, patch) {
@@ -952,9 +991,9 @@ function App() {
   }
 
   async function runVideoGeneration(node, mode = 'generate') {
-    const promptText = String(node.prompt || '').trim();
+    const promptText = resolveVideoPrompt(node, nodes, connections);
     if (!promptText) {
-      updateNode(node.id, { content: '视频提示词不能为空', status: 'error' });
+      updateNode(node.id, { content: '视频提示词不能为空，请填写提示词或连接文本节点', status: 'error' });
       return;
     }
 
@@ -988,14 +1027,22 @@ function App() {
     recoveredTaskKeysRef.current.delete(recoverTaskKey(activeCanvasId, node));
 
     try {
-      await executeVideoGeneration(getNodeFromDocuments(activeCanvasId, node.id) || node, {
-        token,
-        updateNode,
-        createVideoGenerationTask,
-        normalizeVideoModelSettings,
-        inferVideoFamily,
-        onPersist: flushPersist,
-      });
+      const currentNode = getNodeFromDocuments(activeCanvasId, node.id) || node;
+      await executeVideoGeneration(
+        {
+          ...currentNode,
+          prompt: resolveVideoPrompt(currentNode, nodes, connections),
+          referenceImages: resolveVideoReferenceImages(currentNode, nodes, connections),
+        },
+        {
+          token,
+          updateNode,
+          createVideoGenerationTask,
+          normalizeVideoModelSettings,
+          inferVideoFamily,
+          onPersist: flushPersist,
+        }
+      );
       setSelectedNodeId(node.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : '视频生成失败';
@@ -1240,6 +1287,7 @@ function App() {
     setLinkNodePicker(null);
     setInputHighlightNodeId(null);
     setImagePreview(null);
+    setVideoPreview(null);
   }
 
   function finishLink(targetNodeId) {
@@ -1606,6 +1654,14 @@ function App() {
         />
       ) : null}
 
+      {videoPreview ? (
+        <VideoPreviewModal
+          videoUrl={videoPreview.videoUrl}
+          title={videoPreview.title}
+          onClose={closeVideoPreview}
+        />
+      ) : null}
+
       {linkNodePicker ? (
         <NodeTypePickerPopover
           screenX={linkNodePicker.screenX}
@@ -1678,7 +1734,12 @@ function App() {
                 isRunning={isNodeActivelyRunning(node, runningNodeId)}
                 isTranslating={translatingNodeId === node.id}
                 textInputLinks={
-                  node.type === 'image' ? getTextInputLinks(node.id, nodes, connections) : []
+                  node.type === 'image' || node.type === 'video'
+                    ? getTextInputLinks(node.id, nodes, connections)
+                    : []
+                }
+                imageInputLinks={
+                  node.type === 'video' ? getImageInputLinks(node.id, nodes, connections) : []
                 }
                 isInputsHighlighted={inputHighlightNodeId === node.id}
                 linkFromNodeId={linkFromNodeId}
@@ -1700,7 +1761,10 @@ function App() {
                 onPreviewImage={(images, index) =>
                   openImagePreview(images, index, node.title || '图片预览')
                 }
+                onPreviewVideo={(videoUrl, title) => openVideoPreview(videoUrl, title)}
+                onDownloadVideo={handleDownloadVideo}
                 onSyncImageOutputLayout={syncImageNodeOutputLayout}
+                onSyncVideoOutputLayout={syncVideoNodeOutputLayout}
                 onRemoveVeoFrame={removeVeoFrame}
                 onPortPointerDown={handlePortPointerDown}
                 onFinishLink={finishLink}

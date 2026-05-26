@@ -1,5 +1,6 @@
 import { waitForImageTask } from './imageApi';
 import { buildImageNodeLayoutPatch } from './imageNodeLayout';
+import { buildVideoNodeLayoutPatch } from './videoNodeLayout';
 import { waitForVideoTask } from './videoApi';
 
 const RECOVER_STAGGER_MS = 500;
@@ -434,6 +435,13 @@ export async function executeVideoGeneration(
       videoTaskSource: node.taskVeoSource || node.videoTaskSource,
       status: batch.completed < batch.total ? 'running' : 'idle',
       generationBatch: batch.completed < batch.total ? batch : undefined,
+      ...buildVideoNodeLayoutPatch({
+        ...node,
+        videoFamily: settings.family,
+        videoOrientation: settings.orientation,
+        videoRatio: settings.ratio,
+        videoSize: settings.size,
+      }),
       ...clearVideoTaskFields(),
     });
     node = {
@@ -452,6 +460,13 @@ export async function executeVideoGeneration(
     videos,
     status: 'idle',
     generationBatch: undefined,
+    ...buildVideoNodeLayoutPatch({
+      ...node,
+      videoFamily: settings.family,
+      videoOrientation: settings.orientation,
+      videoRatio: settings.ratio,
+      videoSize: settings.size,
+    }),
     ...clearVideoTaskFields(),
   });
   if (onPersist) onPersist();

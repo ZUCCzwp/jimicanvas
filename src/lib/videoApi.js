@@ -14,7 +14,21 @@ const TASK_PENDING_STATUS = new Set([
 ]);
 
 export function normalizeVideoUrl(url) {
-  return normalizeImageUrl(url);
+  const value = String(url || '').trim();
+  if (!value) return '';
+  if (
+    value.startsWith('data:video') ||
+    value.startsWith('data:') ||
+    value.startsWith('blob:') ||
+    /^https?:\/\//.test(value)
+  ) {
+    return value;
+  }
+  // public/ 下的画布内置演示视频，走前端静态资源，不要拼到 jimiaigo API 域名
+  if (value.startsWith('/demo/')) {
+    return value;
+  }
+  return normalizeImageUrl(value);
 }
 
 async function requestJson(path, { token, method = 'GET', body } = {}) {
@@ -312,8 +326,25 @@ function isTaskPending(status) {
   return !normalized || TASK_PENDING_STATUS.has(normalized);
 }
 
-export async function getTaskDetail({ token, taskId }) {
-  return requestJson(`/api/task/${encodeURIComponent(taskId)}`, { token });
+/** 后端创建视频后异步写入 ai_tasks，首轮轮询可能返回「任务不存在」 */
+function isTaskRecordPendingError(error) {
+  const message = String(error?.message || error || '');
+  return /任务不存在/.test(message);
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function getTaskDetail({ token, taskId, allowPendingRecord = false } = {}) {
+  try {
+    return await requestJson(`/api/task/${encodeURIComponent(taskId)}`, { token });
+  } catch (error) {
+    if (allowPendingRecord && isTaskRecordPendingError(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function waitForVideoTask({
@@ -324,7 +355,20 @@ export async function waitForVideoTask({
   onProgress,
 }) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const task = await getTaskDetail({ token, taskId });
+    const task = await getTaskDetail({ token, taskId, allowPendingRecord: true });
+
+    if (!task) {
+      if (onProgress) {
+        onProgress({
+          status: 'pending',
+          progress: 0,
+        });
+      }
+      // 落库有延迟：前几次短间隔重试，之后按正常轮询间隔
+      await wait(attempt < 12 ? 500 : intervalMs);
+      continue;
+    }
+
     const status = task?.status;
 
     if (onProgress) {
@@ -350,8 +394,33 @@ export async function waitForVideoTask({
       throw new Error(`未知的视频任务状态: ${status || 'unknown'}`);
     }
 
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    await wait(intervalMs);
   }
 
   throw new Error('视频生成超时，请稍后重试');
+}
+
+export async function downloadVideoFile(url, filename = 'video.mp4') {
+  const href = normalizeVideoUrl(url);
+  if (!href) throw new Error('没有可下载的视频');
+
+  try {
+    const response = await fetch(href);
+    if (!response.ok) throw new Error('下载失败');
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = blobUrl;
+    anchor.download = filename;
+    anchor.rel = 'noopener';
+    anchor.click();
+    URL.revokeObjectURL(blobUrl);
+  } catch {
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.download = filename;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+    anchor.click();
+  }
 }

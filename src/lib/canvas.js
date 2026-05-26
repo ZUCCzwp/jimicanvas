@@ -20,9 +20,11 @@ import {
   DEFAULT_VIDEO_RATIO,
   DEFAULT_VIDEO_RESOLUTION,
   DEFAULT_VIDEO_ROUTE,
+  DEFAULT_VIDEO_URL,
   PLACEHOLDER_IMAGE,
 } from './constants';
 import { computeImageOutputSize, parseRatioValue } from './imageNodeLayout';
+import { buildVideoNodeLayoutPatch } from './videoNodeLayout';
 
 export function uid(prefix = 'id') {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -59,21 +61,29 @@ export function createNode(type, x, y) {
   }
 
   if (type === 'video') {
+    const videoDefaults = {
+      videoFamily: DEFAULT_VIDEO_FAMILY,
+      videoOrientation: getDefaultVideoOrientation(DEFAULT_VIDEO_FAMILY),
+      videoRatio: DEFAULT_VIDEO_RATIO,
+      videoSize: defaultSoraSize(getDefaultVideoOrientation(DEFAULT_VIDEO_FAMILY)),
+    };
+    const videoLayout = buildVideoNodeLayoutPatch(videoDefaults);
+
     return {
       id,
       type,
       title: '视频节点',
       prompt: '',
-      content: '',
+      content: DEFAULT_VIDEO_URL,
       videos: [],
       referenceImages: [],
-      videoFamily: DEFAULT_VIDEO_FAMILY,
+      videoFamily: videoDefaults.videoFamily,
       videoModel: DEFAULT_VIDEO_MODEL,
       videoRoute: DEFAULT_VIDEO_ROUTE,
       videoDuration: getDefaultVideoDuration(DEFAULT_VIDEO_FAMILY),
-      videoOrientation: getDefaultVideoOrientation(DEFAULT_VIDEO_FAMILY),
-      videoRatio: DEFAULT_VIDEO_RATIO,
-      videoSize: defaultSoraSize(getDefaultVideoOrientation(DEFAULT_VIDEO_FAMILY)),
+      videoOrientation: videoDefaults.videoOrientation,
+      videoRatio: videoDefaults.videoRatio,
+      videoSize: videoDefaults.videoSize,
       videoResolution: DEFAULT_VIDEO_RESOLUTION,
       videoQuality: DEFAULT_VIDEO_QUALITY,
       videoCount: DEFAULT_VIDEO_COUNT,
@@ -81,11 +91,12 @@ export function createNode(type, x, y) {
       videoFirstFrame: null,
       videoLastFrame: null,
       videoTaskSource: null,
+      outputAspectCss: videoLayout.outputAspectCss,
       status: 'idle',
       x,
       y,
-      width: 360,
-      height: 300,
+      width: videoLayout.width,
+      height: videoLayout.height,
     };
   }
 
@@ -180,8 +191,15 @@ export function isImageContent(content) {
   return typeof content === 'string' && (content.startsWith('data:image') || /^https?:\/\//.test(content));
 }
 
+const VIDEO_CONTENT_PATTERN = /\.(mp4|webm|mov|m4v|ogv)(\?.*)?$/i;
+
 export function isVideoContent(content) {
-  return typeof content === 'string' && (content.startsWith('data:video') || /^https?:\/\//.test(content));
+  if (typeof content !== 'string') return false;
+  const value = content.trim();
+  if (!value) return false;
+  if (value.startsWith('data:video') || value.startsWith('blob:')) return true;
+  if (/^https?:\/\//.test(value)) return true;
+  return VIDEO_CONTENT_PATTERN.test(value);
 }
 
 export function clampNoteSize(width, height) {

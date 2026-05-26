@@ -1,4 +1,6 @@
 export const STORAGE_KEY = 'jimicanvas.documents.v1';
+/** 画布有改动后，延迟多久再上传到云端（防抖，减少频繁保存） */
+export const CLOUD_SYNC_DEBOUNCE_MS = 30000;
 export const JIMIAIGO_TOKEN_STORAGE_KEY = 'jimicanvas.jimiaigo.token';
 export const DEFAULT_CHAT_API_URL = 'http://localhost:27355';
 export const DEFAULT_TEXT_MODEL = 'gpt-5.4-mini';
@@ -17,16 +19,15 @@ export const MAX_CANVAS_SCALE = 1.4;
 export const CANVAS_SCALE_STEP = 0.1;
 export const CANVAS_WHEEL_PAN_FACTOR = 1;
 export const CANVAS_GRID_CELL_SIZE = 28;
-export const DEFAULT_VIDEO_URL =
-  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
+export const DEFAULT_VIDEO_URL = '/demo/default-tiktok-ecommerce-9x16.mp4';
 export const DEFAULT_VIDEO_FAMILY = 'sora';
 export const DEFAULT_VIDEO_MODEL = 'sora2-gz-sp';
 export const DEFAULT_VIDEO_ROUTE = 'route3';
 export const DEFAULT_VIDEO_DURATION = '8';
 export const DEFAULT_SORA_VIDEO_DURATION = '12';
-export const DEFAULT_VIDEO_ORIENTATION = 'landscape';
-export const DEFAULT_VIDEO_RATIO = '16:9';
-export const DEFAULT_VIDEO_SIZE = '1280x720';
+export const DEFAULT_VIDEO_ORIENTATION = 'portrait';
+export const DEFAULT_VIDEO_RATIO = '9:16';
+export const DEFAULT_VIDEO_SIZE = '720x1280';
 export const DEFAULT_VIDEO_RESOLUTION = '720p';
 export const DEFAULT_VIDEO_QUALITY = '720p';
 export const DEFAULT_VIDEO_COUNT = 1;

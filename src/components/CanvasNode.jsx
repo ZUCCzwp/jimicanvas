@@ -6,6 +6,7 @@ import {
   FolderOpen,
   Image as ImageIcon,
   Copy,
+  Download,
   Languages,
   LoaderCircle,
   Maximize2,
@@ -38,8 +39,14 @@ import {
 } from '../lib/constants';
 import { normalizeVideoUrl } from '../lib/videoApi';
 import { isImageContent, isVideoContent } from '../lib/canvas';
-import { formatTextInputLabel, getTextInputPreview } from '../lib/connections';
+import {
+  formatImageInputLabel,
+  formatTextInputLabel,
+  getImageNodeOutputUrl,
+  getTextInputPreview,
+} from '../lib/connections';
 import { buildImageNodeLayoutPatch, resolveImageOutputLayout } from '../lib/imageNodeLayout';
+import { buildVideoNodeLayoutPatch } from '../lib/videoNodeLayout';
 import { normalizeImageUrl } from '../lib/imageApi';
 import { CustomSelect } from './CustomSelect';
 import { NodeGenerationState } from './NodeGenerationState';
@@ -284,14 +291,101 @@ function ImageBody({
   );
 }
 
-function VideoBody({ node, isRunning, onBeginDrag }) {
+function getVideoDisplayUrl(node) {
   const videos = Array.isArray(node.videos) && node.videos.length > 0 ? node.videos : [];
-  const displayVideo =
-    videos.length > 0
-      ? videos[0]
-      : isVideoContent(node.content)
-        ? node.content
-        : '';
+  if (videos.length > 0) return videos[0];
+  if (isVideoContent(node.content)) return node.content;
+  return '';
+}
+
+function useVideoOutputLayout(node, displayVideo, onSyncOutputLayout) {
+  const layoutSignatureRef = useRef('');
+  const onSyncOutputLayoutRef = useRef(onSyncOutputLayout);
+
+  onSyncOutputLayoutRef.current = onSyncOutputLayout;
+
+  useEffect(() => {
+    if (displayVideo) return undefined;
+
+    const layout = buildVideoNodeLayoutPatch(node);
+    const signature = `${layout.width}x${layout.height}x${layout.outputAspectCss}`;
+    if (layoutSignatureRef.current === signature) return undefined;
+    layoutSignatureRef.current = signature;
+    onSyncOutputLayoutRef.current?.(node.id, layout);
+    return undefined;
+  }, [displayVideo, node.id, node.videoFamily, node.videoOrientation, node.videoRatio, node.videoSize]);
+}
+
+function shouldApplyVideoLayout(node, layout) {
+  return !(
+    node.width === layout.width &&
+    node.height === layout.height &&
+    node.outputAspectCss === layout.outputAspectCss
+  );
+}
+
+function applyVideoNodeLayout(node, onSyncOutputLayout, aspectWidth, aspectHeight) {
+  const layout = buildVideoNodeLayoutPatch(
+    node,
+    aspectWidth && aspectHeight ? { width: aspectWidth, height: aspectHeight } : null
+  );
+  if (!shouldApplyVideoLayout(node, layout)) return;
+  onSyncOutputLayout?.(node.id, layout);
+}
+
+function VideoBody({
+  node,
+  isRunning,
+  isInputsHighlighted = false,
+  onBeginDrag,
+  onHighlightInputs,
+  onSyncOutputLayout,
+}) {
+  const displayVideo = getVideoDisplayUrl(node);
+  const loadedAspectRef = useRef('');
+  const videoRef = useRef(null);
+  const hoverPreviewRef = useRef(false);
+
+  useVideoOutputLayout(node, displayVideo, onSyncOutputLayout);
+
+  function stopHoverPreview() {
+    const video = videoRef.current;
+    if (!video) return;
+    video.pause();
+    try {
+      video.currentTime = 0;
+    } catch {
+      // ignore seek errors while metadata is loading
+    }
+  }
+
+  async function startHoverPreview() {
+    const video = videoRef.current;
+    if (!video) return;
+    try {
+      if (video.readyState < 1) return;
+      video.currentTime = 0;
+      await video.play();
+    } catch {
+      // hover play may be blocked until enough data is buffered
+    }
+  }
+
+  function handleVideoLoadedMetadata(event) {
+    const video = event.currentTarget;
+    const aspectWidth = video.videoWidth;
+    const aspectHeight = video.videoHeight;
+    if (!aspectWidth || !aspectHeight) return;
+
+    const signature = `${aspectWidth}x${aspectHeight}`;
+    if (loadedAspectRef.current === signature) return;
+    loadedAspectRef.current = signature;
+
+    applyVideoNodeLayout(node, onSyncOutputLayout, aspectWidth, aspectHeight);
+    if (hoverPreviewRef.current) {
+      startHoverPreview();
+    }
+  }
 
   if (isRunning) {
     return (
@@ -317,9 +411,37 @@ function VideoBody({ node, isRunning, onBeginDrag }) {
   }
 
   return (
-    <div className="video-output-preview" onPointerDown={(event) => onBeginDrag(event, node)}>
+    <div
+      className={`video-output-preview ${isInputsHighlighted ? 'inputs-highlighted' : ''}`}
+      onPointerDown={(event) => {
+        onHighlightInputs?.(node.id);
+        onBeginDrag(event, node);
+      }}
+    >
       {displayVideo ? (
-        <video src={normalizeVideoUrl(displayVideo)} controls playsInline />
+        <div
+          className="video-output-thumb"
+          onPointerEnter={() => {
+            hoverPreviewRef.current = true;
+            startHoverPreview();
+          }}
+          onPointerLeave={() => {
+            hoverPreviewRef.current = false;
+            stopHoverPreview();
+          }}
+        >
+          <video
+            ref={videoRef}
+            key={displayVideo}
+            src={normalizeVideoUrl(displayVideo)}
+            muted
+            playsInline
+            preload="auto"
+            draggable={false}
+            onLoadedMetadata={handleVideoLoadedMetadata}
+            onEnded={stopHoverPreview}
+          />
+        </div>
       ) : (
         <div className="image-empty">单击节点，在下方配置提示词并生成视频</div>
       )}
@@ -377,13 +499,18 @@ function VideoToolbar({
   node,
   isRunning,
   isTranslating,
+  textInputLinks = [],
+  imageInputLinks = [],
   onRunVideoGeneration,
   onOpenAssetLibrary,
   onRemoveImageReference,
+  onRemoveTextReference,
   onRemoveVeoFrame,
   onUpdateNode,
 }) {
-  const isPromptEmpty = !String(node.prompt || '').trim();
+  const hasTextInput = textInputLinks.length > 0;
+  const hasImageInput = imageInputLinks.length > 0;
+  const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
   const references = Array.isArray(node.referenceImages) ? node.referenceImages : [];
   const family = inferVideoFamily(node);
   const isVeo = family === 'veo';
@@ -420,6 +547,10 @@ function VideoToolbar({
   const ratioValue = family === 'sora' ? normalizedSettings.orientation : normalizedSettings.ratio;
   const resolutionTitle = family === 'grok' ? '画质' : '分辨率';
 
+  function patchVideoLayout(overrides = {}) {
+    return buildVideoNodeLayoutPatch({ ...node, ...overrides });
+  }
+
   function applyFamilyChange(nextFamily) {
     const nextSettings = normalizeVideoModelSettings({ family: nextFamily });
     const patch = {
@@ -444,7 +575,15 @@ function VideoToolbar({
       patch.videoLastFrame = null;
     }
 
-    onUpdateNode(node.id, patch);
+    onUpdateNode(node.id, {
+      ...patch,
+      ...patchVideoLayout({
+        videoFamily: patch.videoFamily,
+        videoOrientation: patch.videoOrientation,
+        videoRatio: patch.videoRatio,
+        videoSize: patch.videoSize,
+      }),
+    });
   }
 
   function applyVeoGenerationTypeChange(value) {
@@ -481,6 +620,11 @@ function VideoToolbar({
       videoRatio: nextSettings.ratio,
       videoDuration: nextSettings.duration,
       videoCount: nextSettings.count,
+      ...patchVideoLayout({
+        videoOrientation: nextSettings.orientation,
+        videoRatio: nextSettings.ratio,
+        videoSize: nextSettings.size,
+      }),
     });
   }
 
@@ -551,13 +695,18 @@ function VideoToolbar({
           options={ratioOptions}
           onChange={(value) => {
             if (family === 'sora') {
+              const size = defaultSoraSize(value);
               onUpdateNode(node.id, {
                 videoOrientation: value,
-                videoSize: defaultSoraSize(value),
+                videoSize: size,
+                ...patchVideoLayout({ videoOrientation: value, videoSize: size }),
               });
               return;
             }
-            onUpdateNode(node.id, { videoRatio: value });
+            onUpdateNode(node.id, {
+              videoRatio: value,
+              ...patchVideoLayout({ videoRatio: value }),
+            });
           }}
           renderIcon={(option) => <RatioIcon value={ratioIconValue(family, option.value)} />}
         />
@@ -605,8 +754,62 @@ function VideoToolbar({
         options={countOptions.map((option) => ({ ...option, label: `${option.value}次` }))}
         onChange={(value) => onUpdateNode(node.id, { videoCount: Number(value) })}
       />
+      {hasTextInput ? (
+        <div className="image-reference-row">
+          <span className="image-reference-label">文本引用</span>
+          <div className="image-reference-list">
+            {textInputLinks.map(({ linkId, node: textNode }) => (
+              <div className="text-reference-chip" key={linkId}>
+                <FileText size={14} />
+                <span className="text-reference-preview" title={getTextInputPreview(textNode) || '空文本'}>
+                  {formatTextInputLabel(textNode)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onRemoveTextReference(linkId)}
+                  title="移除文本引用并断开连线"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {hasImageInput ? (
+        <div className="image-reference-row">
+          <span className="image-reference-label">图片引用</span>
+          <div className="image-reference-list">
+            {imageInputLinks.map(({ linkId, node: imageNode }) => {
+              const previewUrl = getImageNodeOutputUrl(imageNode);
+              return (
+                <div className="image-reference-chip connection-image-chip" key={linkId}>
+                  {previewUrl ? (
+                    <img src={normalizeImageUrl(previewUrl)} alt={formatImageInputLabel(imageNode)} />
+                  ) : (
+                    <div className="connection-image-placeholder">
+                      <ImageIcon size={16} />
+                    </div>
+                  )}
+                  <span className="connection-image-label" title={formatImageInputLabel(imageNode)}>
+                    {formatImageInputLabel(imageNode)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveTextReference(linkId)}
+                    title="移除图片引用并断开连线"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
       {showVeoReferenceImages || showGenericReferenceImages ? (
         <div className="image-reference-row">
+          <span className="image-reference-label">参考图</span>
           <div className="image-reference-list">
             {references.map((image, index) => (
               <div className="image-reference-chip" key={image.id || image.url || index}>
@@ -883,6 +1086,7 @@ export function CanvasNode({
   isRunning,
   isTranslating,
   textInputLinks = [],
+  imageInputLinks = [],
   isInputsHighlighted = false,
   linkFromNodeId,
   onSelectNode,
@@ -901,12 +1105,16 @@ export function CanvasNode({
   onRemoveTextReference,
   onHighlightInputs,
   onPreviewImage,
+  onPreviewVideo,
+  onDownloadVideo,
   onSyncImageOutputLayout,
+  onSyncVideoOutputLayout,
   onRemoveVeoFrame,
   onPortPointerDown,
   onFinishLink,
 }) {
   const imageDisplayImages = node.type === 'image' ? getImageDisplayImages(node) : [];
+  const videoDisplayUrl = node.type === 'video' ? getVideoDisplayUrl(node) : '';
 
   return (
     <article
@@ -965,6 +1173,36 @@ export function CanvasNode({
               <Maximize2 size={14} />
             </button>
           ) : null}
+          {node.type === 'video' && videoDisplayUrl ? (
+            <>
+              <button
+                className="icon-mini"
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onPreviewVideo?.(videoDisplayUrl, node.title || '视频预览');
+                }}
+                title="预览视频"
+              >
+                <Maximize2 size={14} />
+              </button>
+              <button
+                className="icon-mini"
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onDownloadVideo?.(videoDisplayUrl, node.title || 'video');
+                }}
+                title="下载视频"
+              >
+                <Download size={14} />
+              </button>
+            </>
+          ) : null}
           <button
             className="icon-mini"
             type="button"
@@ -1011,7 +1249,14 @@ export function CanvasNode({
             onSyncOutputLayout={onSyncImageOutputLayout}
           />
         ) : (
-          <VideoBody node={node} isRunning={isRunning} onBeginDrag={onBeginDrag} />
+          <VideoBody
+            node={node}
+            isRunning={isRunning}
+            isInputsHighlighted={isInputsHighlighted}
+            onBeginDrag={onBeginDrag}
+            onHighlightInputs={onHighlightInputs}
+            onSyncOutputLayout={onSyncVideoOutputLayout}
+          />
         )}
       </div>
 
@@ -1041,9 +1286,12 @@ export function CanvasNode({
           node={node}
           isRunning={isRunning}
           isTranslating={isTranslating}
+          textInputLinks={textInputLinks}
+          imageInputLinks={imageInputLinks}
           onRunVideoGeneration={onRunVideoGeneration}
           onOpenAssetLibrary={onOpenAssetLibrary}
           onRemoveImageReference={onRemoveImageReference}
+          onRemoveTextReference={onRemoveTextReference}
           onRemoveVeoFrame={onRemoveVeoFrame}
           onUpdateNode={onUpdateNode}
         />
