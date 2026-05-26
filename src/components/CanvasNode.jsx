@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import {
   Bot,
   FileText,
@@ -37,6 +38,8 @@ import {
 } from '../lib/constants';
 import { normalizeVideoUrl } from '../lib/videoApi';
 import { isImageContent, isVideoContent } from '../lib/canvas';
+import { formatTextInputLabel, getTextInputPreview } from '../lib/connections';
+import { buildImageNodeLayoutPatch, resolveImageOutputLayout } from '../lib/imageNodeLayout';
 import { normalizeImageUrl } from '../lib/imageApi';
 import { CustomSelect } from './CustomSelect';
 import { NodeGenerationState } from './NodeGenerationState';
@@ -45,6 +48,13 @@ function NodeIcon({ type }) {
   if (type === 'image') return <ImageIcon size={14} />;
   if (type === 'video') return <Film size={14} />;
   return <FileText size={14} />;
+}
+
+function getImageDisplayImages(node) {
+  const images = Array.isArray(node.images) && node.images.length > 0 ? node.images : [];
+  if (images.length > 0) return images;
+  if (isImageContent(node.content)) return [node.content];
+  return [];
 }
 
 function OptionSegment({ title, options, value, onChange, renderIcon }) {
@@ -155,9 +165,75 @@ function NoteBody({ node, isSelected, isRunning, onBeginDrag, onOpenTextEdit }) 
   );
 }
 
-function ImageBody({ node, isRunning, onBeginDrag }) {
-  const images = Array.isArray(node.images) && node.images.length > 0 ? node.images : [];
-  const displayImages = images.length > 0 ? images : isImageContent(node.content) ? [node.content] : [];
+function useImageOutputLayout(node, displayImages, onSyncOutputLayout) {
+  const layoutSignatureRef = useRef('');
+  const onSyncOutputLayoutRef = useRef(onSyncOutputLayout);
+  const displayImagesKey = displayImages.join('|');
+
+  onSyncOutputLayoutRef.current = onSyncOutputLayout;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function syncLayout() {
+      const layout = await resolveImageOutputLayout({
+        imageUrls: displayImages,
+        imageRatio: node.imageRatio,
+        imageCount: displayImages.length > 0 ? displayImages.length : node.imageCount,
+      });
+      const signature = `${layout.width}x${layout.height}x${layout.outputAspectCss}x${displayImages.length}`;
+      if (layoutSignatureRef.current === signature) return;
+      layoutSignatureRef.current = signature;
+
+      if (!cancelled) {
+        onSyncOutputLayoutRef.current?.(node.id, layout);
+      }
+    }
+
+    syncLayout();
+    return () => {
+      cancelled = true;
+    };
+  }, [displayImagesKey, node.id, node.imageCount, node.imageRatio]);
+}
+
+function applyImageNodeLayout(node, displayImages, onSyncOutputLayout, aspectWidth, aspectHeight) {
+  const layout = buildImageNodeLayoutPatch({
+    imageRatio: node.imageRatio,
+    imageCount: displayImages.length > 0 ? displayImages.length : node.imageCount,
+    aspectWidth,
+    aspectHeight,
+  });
+  onSyncOutputLayout?.(node.id, layout);
+}
+
+function ImageBody({
+  node,
+  isRunning,
+  isInputsHighlighted = false,
+  onBeginDrag,
+  onHighlightInputs,
+  onSyncOutputLayout,
+}) {
+  const displayImages = getImageDisplayImages(node);
+  const imageCount = Math.min(Math.max(displayImages.length || 1, 1), 4);
+  const loadedAspectRef = useRef('');
+
+  useImageOutputLayout(node, displayImages, onSyncOutputLayout);
+
+  function handleOutputImageLoad(event, index) {
+    if (index !== 0) return;
+    const img = event.currentTarget;
+    const aspectWidth = img.naturalWidth;
+    const aspectHeight = img.naturalHeight;
+    if (!aspectWidth || !aspectHeight) return;
+
+    const signature = `${aspectWidth}x${aspectHeight}x${displayImages.length}`;
+    if (loadedAspectRef.current === signature) return;
+    loadedAspectRef.current = signature;
+
+    applyImageNodeLayout(node, displayImages, onSyncOutputLayout, aspectWidth, aspectHeight);
+  }
 
   if (isRunning) {
     return (
@@ -184,17 +260,22 @@ function ImageBody({ node, isRunning, onBeginDrag }) {
 
   return (
     <div
-      className={`image-output-grid image-count-${Math.min(displayImages.length || 1, 4)}`}
-      onPointerDown={(event) => onBeginDrag(event, node)}
+      className={`image-output-grid image-count-${imageCount} ${isInputsHighlighted ? 'inputs-highlighted' : ''}`}
+      onPointerDown={(event) => {
+        onHighlightInputs?.(node.id);
+        onBeginDrag(event, node);
+      }}
     >
       {displayImages.length > 0 ? (
         displayImages.map((imageUrl, index) => (
-          <img
-            key={`${imageUrl}-${index}`}
-            src={normalizeImageUrl(imageUrl)}
-            alt={`${node.title}-${index + 1}`}
-            draggable={false}
-          />
+          <div className="image-output-thumb" key={`${imageUrl}-${index}`}>
+            <img
+              src={normalizeImageUrl(imageUrl)}
+              alt={`${node.title}-${index + 1}`}
+              draggable={false}
+              onLoad={(event) => handleOutputImageLoad(event, index)}
+            />
+          </div>
         ))
       ) : (
         <div className="image-empty">点击节点，在下方输入提示词生成图片</div>
@@ -570,12 +651,15 @@ function ImageToolbar({
   node,
   isRunning,
   isTranslating,
+  textInputLinks = [],
   onRunImageGeneration,
   onOpenAssetLibrary,
   onRemoveImageReference,
+  onRemoveTextReference,
   onUpdateNode,
 }) {
-  const isPromptEmpty = !String(node.prompt || '').trim();
+  const hasTextInput = textInputLinks.length > 0;
+  const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
   const references = Array.isArray(node.referenceImages) ? node.referenceImages : [];
   const model = node.imageModel || IMAGE_MODEL_OPTIONS[0].value;
   const resolutionOptions = getImageResolutionOptions(model);
@@ -587,6 +671,14 @@ function ImageToolbar({
     ratio: node.imageRatio,
     count: node.imageCount,
   });
+  const displayImages = getImageDisplayImages(node);
+
+  function patchLayout(overrides = {}) {
+    return buildImageNodeLayoutPatch({
+      imageRatio: overrides.imageRatio ?? node.imageRatio,
+      imageCount: overrides.imageCount ?? (displayImages.length || node.imageCount),
+    });
+  }
 
   return (
     <div className="node-bottom-toolbar image-toolbar" onPointerDown={(event) => event.stopPropagation()}>
@@ -624,6 +716,10 @@ function ImageToolbar({
               imageResolution: nextSettings.resolution,
               imageRatio: nextSettings.ratio,
               imageCount: nextSettings.count,
+              ...buildImageNodeLayoutPatch({
+                imageRatio: nextSettings.ratio,
+                imageCount: displayImages.length || nextSettings.count,
+              }),
             });
           }}
         />
@@ -638,16 +734,50 @@ function ImageToolbar({
         title="尺寸"
         value={normalizedSettings.ratio}
         options={ratioOptions}
-        onChange={(value) => onUpdateNode(node.id, { imageRatio: value })}
+        onChange={(value) =>
+          onUpdateNode(node.id, {
+            imageRatio: value,
+            status: 'idle',
+            ...patchLayout({ imageRatio: value }),
+          })
+        }
         renderIcon={(option) => <RatioIcon value={option.value} />}
       />
       <OptionSegment
         title="生成数量"
         value={normalizedSettings.count}
         options={countOptions.map((option) => ({ ...option, label: `${option.value}张` }))}
-        onChange={(value) => onUpdateNode(node.id, { imageCount: Number(value) })}
+        onChange={(value) =>
+          onUpdateNode(node.id, {
+            imageCount: Number(value),
+            ...patchLayout({ imageCount: Number(value) }),
+          })
+        }
       />
+      {hasTextInput ? (
+        <div className="image-reference-row">
+          <span className="image-reference-label">文本引用</span>
+          <div className="image-reference-list">
+            {textInputLinks.map(({ linkId, node: textNode }) => (
+              <div className="text-reference-chip" key={linkId}>
+                <FileText size={14} />
+                <span className="text-reference-preview" title={getTextInputPreview(textNode) || '空文本'}>
+                  {formatTextInputLabel(textNode)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onRemoveTextReference(linkId)}
+                  title="移除文本引用并断开连线"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <div className="image-reference-row">
+        <span className="image-reference-label">参考图</span>
         <div className="image-reference-list">
           {references.map((image, index) => (
             <div className="image-reference-chip" key={image.id || image.url || index}>
@@ -752,6 +882,8 @@ export function CanvasNode({
   isSelected,
   isRunning,
   isTranslating,
+  textInputLinks = [],
+  isInputsHighlighted = false,
   linkFromNodeId,
   onSelectNode,
   onClearConnectionSelection,
@@ -766,10 +898,16 @@ export function CanvasNode({
   onRunVideoGeneration,
   onOpenAssetLibrary,
   onRemoveImageReference,
+  onRemoveTextReference,
+  onHighlightInputs,
+  onPreviewImage,
+  onSyncImageOutputLayout,
   onRemoveVeoFrame,
   onPortPointerDown,
   onFinishLink,
 }) {
+  const imageDisplayImages = node.type === 'image' ? getImageDisplayImages(node) : [];
+
   return (
     <article
       className={`node ${isSelected ? 'selected' : ''} ${isRunning ? 'is-running' : ''} ${node.type}`}
@@ -812,6 +950,21 @@ export function CanvasNode({
           onPointerDown={(event) => event.stopPropagation()}
           onPointerUp={(event) => event.stopPropagation()}
         >
+          {node.type === 'image' && imageDisplayImages.length > 0 ? (
+            <button
+              className="icon-mini"
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onPreviewImage?.(imageDisplayImages, 0);
+              }}
+              title="预览图片"
+            >
+              <Maximize2 size={14} />
+            </button>
+          ) : null}
           <button
             className="icon-mini"
             type="button"
@@ -849,7 +1002,14 @@ export function CanvasNode({
             onOpenTextEdit={onOpenTextEdit}
           />
         ) : node.type === 'image' ? (
-          <ImageBody node={node} isRunning={isRunning} onBeginDrag={onBeginDrag} />
+          <ImageBody
+            node={node}
+            isRunning={isRunning}
+            isInputsHighlighted={isInputsHighlighted}
+            onBeginDrag={onBeginDrag}
+            onHighlightInputs={onHighlightInputs}
+            onSyncOutputLayout={onSyncImageOutputLayout}
+          />
         ) : (
           <VideoBody node={node} isRunning={isRunning} onBeginDrag={onBeginDrag} />
         )}
@@ -869,9 +1029,11 @@ export function CanvasNode({
           node={node}
           isRunning={isRunning}
           isTranslating={isTranslating}
+          textInputLinks={textInputLinks}
           onRunImageGeneration={onRunImageGeneration}
           onOpenAssetLibrary={onOpenAssetLibrary}
           onRemoveImageReference={onRemoveImageReference}
+          onRemoveTextReference={onRemoveTextReference}
           onUpdateNode={onUpdateNode}
         />
       ) : node.type === 'video' && isSelected ? (

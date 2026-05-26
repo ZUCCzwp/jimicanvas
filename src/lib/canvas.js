@@ -22,6 +22,7 @@ import {
   DEFAULT_VIDEO_ROUTE,
   PLACEHOLDER_IMAGE,
 } from './constants';
+import { computeImageOutputSize, parseRatioValue } from './imageNodeLayout';
 
 export function uid(prefix = 'id') {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -30,6 +31,13 @@ export function uid(prefix = 'id') {
 export function createNode(type, x, y) {
   const id = uid('node');
   if (type === 'image') {
+    const ratio = parseRatioValue(DEFAULT_IMAGE_RATIO);
+    const outputSize = computeImageOutputSize({
+      aspectWidth: ratio.width,
+      aspectHeight: ratio.height,
+      imageCount: DEFAULT_IMAGE_COUNT,
+    });
+
     return {
       id,
       type,
@@ -42,10 +50,11 @@ export function createNode(type, x, y) {
       imageResolution: DEFAULT_IMAGE_RESOLUTION,
       imageRatio: DEFAULT_IMAGE_RATIO,
       imageCount: DEFAULT_IMAGE_COUNT,
+      outputAspectCss: outputSize.cssAspectRatio,
       x,
       y,
-      width: 320,
-      height: 300,
+      width: outputSize.width,
+      height: outputSize.height,
     };
   }
 

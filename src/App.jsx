@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AssetPickerModal } from './components/AssetPickerModal';
+import { ImagePreviewModal } from './components/ImagePreviewModal';
+import { NodeTypePickerPopover } from './components/NodeTypePickerPopover';
 import { TextEditModal } from './components/TextEditModal';
 import { CanvasNode } from './components/CanvasNode';
 import { CanvasPanel } from './components/CanvasPanel';
@@ -29,6 +31,7 @@ import {
   snapScale,
   uid,
 } from './lib/canvas';
+import { getTextInputLinks, resolveImagePrompt } from './lib/connections';
 import {
   fetchCanvasDocuments,
   parseCloudDocuments,
@@ -76,7 +79,10 @@ function App() {
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [selectedConnectionId, setSelectedConnectionId] = useState(null);
   const [enlargedTextEdit, setEnlargedTextEdit] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
   const [linkFromNodeId, setLinkFromNodeId] = useState(null);
+  const [linkNodePicker, setLinkNodePicker] = useState(null);
+  const [inputHighlightNodeId, setInputHighlightNodeId] = useState(null);
   const [hoverLinkNodeId, setHoverLinkNodeId] = useState(null);
   const [pointerPos, setPointerPos] = useState({ x: 0, y: 0 });
   const [canvasScale, setCanvasScale] = useState(1);
@@ -419,7 +425,10 @@ function App() {
       if (event.key === 'Escape') {
         setLinkFromNodeId(null);
         setHoverLinkNodeId(null);
+        setLinkNodePicker(null);
+        setInputHighlightNodeId(null);
         setEnlargedTextEdit(null);
+        setImagePreview(null);
         setSelectedConnectionId(null);
       }
 
@@ -461,6 +470,18 @@ function App() {
   const activeCanvas = documents.find((doc) => doc.id === activeCanvasId) || documents[0];
   const nodes = activeCanvas?.nodes || [];
   const connections = activeCanvas?.connections || [];
+  const highlightedConnectionIds = useMemo(() => {
+    if (!inputHighlightNodeId) return [];
+    return connections
+      .filter((link) => link.toNodeId === inputHighlightNodeId)
+      .map((link) => link.id);
+  }, [connections, inputHighlightNodeId]);
+  const orderedNodes = useMemo(() => {
+    if (!selectedNodeId) return nodes;
+    const selected = nodes.find((node) => node.id === selectedNodeId);
+    if (!selected) return nodes;
+    return [...nodes.filter((node) => node.id !== selectedNodeId), selected];
+  }, [nodes, selectedNodeId]);
   const canvasScalePercent = Math.round(canvasScale * 100);
   const enlargedTextEditNode =
     enlargedTextEdit &&
@@ -562,6 +583,20 @@ function App() {
     setEnlargedTextEdit(null);
   }
 
+  function openImagePreview(images, index = 0, title = '图片预览') {
+    const list = Array.isArray(images) ? images.filter(Boolean) : [];
+    if (list.length === 0) return;
+    setImagePreview({
+      images: list,
+      index: Math.min(Math.max(index, 0), list.length - 1),
+      title,
+    });
+  }
+
+  function closeImagePreview() {
+    setImagePreview(null);
+  }
+
   function showCopyNotice(message) {
     setCopyNotice(message);
     if (copyNoticeTimerRef.current) {
@@ -614,6 +649,29 @@ function App() {
     updateActiveCanvas((doc) => ({
       ...doc,
       nodes: doc.nodes.map((node) => (node.id === nodeId ? { ...node, ...patch } : node)),
+    }));
+  }
+
+  function syncImageNodeOutputLayout(nodeId, layout) {
+    const width = layout.width;
+    const height = layout.height;
+    const outputAspectCss = layout.outputAspectCss || layout.cssAspectRatio;
+
+    updateActiveCanvas((doc) => ({
+      ...doc,
+      nodes: doc.nodes.map((node) => {
+        if (node.id !== nodeId || node.type !== 'image') return node;
+        if (node.width === width && node.height === height && node.outputAspectCss === outputAspectCss) {
+          return node;
+        }
+
+        return {
+          ...node,
+          width,
+          height,
+          outputAspectCss,
+        };
+      }),
     }));
   }
 
@@ -733,6 +791,9 @@ function App() {
     if (linkFromNodeId === nodeId) {
       clearLinkDraft();
     }
+    if (inputHighlightNodeId === nodeId) {
+      setInputHighlightNodeId(null);
+    }
   }
 
   function removeConnection(connectionId) {
@@ -742,6 +803,34 @@ function App() {
     }));
     if (selectedConnectionId === connectionId) {
       setSelectedConnectionId(null);
+    }
+    if (inputHighlightNodeId) {
+      const removed = connections.find((link) => link.id === connectionId);
+      if (removed?.toNodeId === inputHighlightNodeId) {
+        const stillHasIncoming = connections.some(
+          (link) => link.id !== connectionId && link.toNodeId === inputHighlightNodeId
+        );
+        if (!stillHasIncoming) {
+          setInputHighlightNodeId(null);
+        }
+      }
+    }
+  }
+
+  function removeTextReference(connectionId) {
+    removeConnection(connectionId);
+  }
+
+  function highlightNodeInputs(nodeId) {
+    setInputHighlightNodeId(nodeId);
+    setSelectedConnectionId(null);
+  }
+
+  function selectNode(nodeId) {
+    setSelectedNodeId(nodeId);
+    const node = nodes.find((item) => item.id === nodeId);
+    if (node?.type !== 'image') {
+      setInputHighlightNodeId(null);
     }
   }
 
@@ -797,9 +886,9 @@ function App() {
   }
 
   async function runImageGeneration(node, mode = 'generate') {
-    const promptText = String(node.prompt || '').trim();
+    const promptText = resolveImagePrompt(node, nodes, connections);
     if (!promptText) {
-      updateNode(node.id, { content: '图片提示词不能为空', status: 'error' });
+      updateNode(node.id, { content: '图片提示词不能为空，请填写提示词或连接文本节点', status: 'error' });
       return;
     }
 
@@ -833,13 +922,17 @@ function App() {
     recoveredTaskKeysRef.current.delete(recoverTaskKey(activeCanvasId, node));
 
     try {
-      await executeImageGeneration(getNodeFromDocuments(activeCanvasId, node.id) || node, {
-        token,
-        updateNode,
-        createImageGenerationTask,
-        normalizeImageModelSettings,
-        onPersist: flushPersist,
-      });
+      const currentNode = getNodeFromDocuments(activeCanvasId, node.id) || node;
+      await executeImageGeneration(
+        { ...currentNode, prompt: resolveImagePrompt(currentNode, nodes, connections) },
+        {
+          token,
+          updateNode,
+          createImageGenerationTask,
+          normalizeImageModelSettings,
+          onPersist: flushPersist,
+        }
+      );
       setSelectedNodeId(node.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : '图片生成失败';
@@ -1129,6 +1222,13 @@ function App() {
   function clearLinkDraft() {
     setLinkFromNodeId(null);
     setHoverLinkNodeId(null);
+    setLinkNodePicker(null);
+  }
+
+  function closeLinkNodePicker() {
+    setLinkNodePicker(null);
+    setLinkFromNodeId(null);
+    setHoverLinkNodeId(null);
   }
 
   function clearSelection() {
@@ -1137,6 +1237,9 @@ function App() {
     setEnlargedTextEdit(null);
     setLinkFromNodeId(null);
     setHoverLinkNodeId(null);
+    setLinkNodePicker(null);
+    setInputHighlightNodeId(null);
+    setImagePreview(null);
   }
 
   function finishLink(targetNodeId) {
@@ -1145,9 +1248,16 @@ function App() {
       return;
     }
 
+    appendConnection(linkFromNodeId, targetNodeId);
+    clearLinkDraft();
+  }
+
+  function appendConnection(fromNodeId, toNodeId) {
+    if (!fromNodeId || fromNodeId === toNodeId) return;
+
     updateActiveCanvas((doc) => {
       const exists = doc.connections.some(
-        (link) => link.fromNodeId === linkFromNodeId && link.toNodeId === targetNodeId
+        (link) => link.fromNodeId === fromNodeId && link.toNodeId === toNodeId
       );
 
       if (exists) return doc;
@@ -1158,13 +1268,49 @@ function App() {
           ...doc.connections,
           {
             id: uid('link'),
-            fromNodeId: linkFromNodeId,
-            toNodeId: targetNodeId,
+            fromNodeId,
+            toNodeId,
           },
         ],
       };
     });
+  }
 
+  function createLinkedNode(type) {
+    if (!linkNodePicker) return;
+
+    const { fromNodeId, canvasX, canvasY } = linkNodePicker;
+    const node = createNode(type, canvasX, canvasY);
+    const positionedNode = {
+      ...node,
+      x: canvasX,
+      y: canvasY - node.height / 2,
+    };
+
+    updateActiveCanvas((doc) => {
+      const exists = doc.connections.some(
+        (link) => link.fromNodeId === fromNodeId && link.toNodeId === positionedNode.id
+      );
+
+      return {
+        ...doc,
+        nodes: [...doc.nodes, positionedNode],
+        connections: exists
+          ? doc.connections
+          : [
+              ...doc.connections,
+              {
+                id: uid('link'),
+                fromNodeId,
+                toNodeId: positionedNode.id,
+              },
+            ],
+      };
+    });
+
+    setSelectedNodeId(positionedNode.id);
+    setSelectedConnectionId(null);
+    setEnlargedTextEdit(null);
     clearLinkDraft();
   }
 
@@ -1233,7 +1379,18 @@ function App() {
       if (target) {
         finishLink(target.id);
       } else {
-        clearLinkDraft();
+        const point = getStagePoint(event);
+        if (point) {
+          setLinkNodePicker({
+            fromNodeId: linkFromNodeId,
+            canvasX: point.x,
+            canvasY: point.y,
+            screenX: event.clientX,
+            screenY: event.clientY,
+          });
+        } else {
+          clearLinkDraft();
+        }
       }
     }
   }
@@ -1290,7 +1447,8 @@ function App() {
       setSelectedNodeId(null);
       setSelectedConnectionId(null);
       setEnlargedTextEdit(null);
-      if (linkFromNodeId) clearLinkDraft();
+      setInputHighlightNodeId(null);
+      if (linkNodePicker || linkFromNodeId) clearLinkDraft();
 
       panRef.current = {
         startX: event.clientX,
@@ -1306,6 +1464,7 @@ function App() {
   function selectConnection(connectionId) {
     setSelectedNodeId(null);
     setSelectedConnectionId(connectionId);
+    setInputHighlightNodeId(null);
     clearLinkDraft();
   }
 
@@ -1437,6 +1596,25 @@ function App() {
         />
       ) : null}
 
+      {imagePreview ? (
+        <ImagePreviewModal
+          images={imagePreview.images}
+          activeIndex={imagePreview.index}
+          title={imagePreview.title}
+          onSelectIndex={(index) => setImagePreview((current) => ({ ...current, index }))}
+          onClose={closeImagePreview}
+        />
+      ) : null}
+
+      {linkNodePicker ? (
+        <NodeTypePickerPopover
+          screenX={linkNodePicker.screenX}
+          screenY={linkNodePicker.screenY}
+          onSelect={createLinkedNode}
+          onClose={closeLinkNodePicker}
+        />
+      ) : null}
+
       {assetPicker.nodeId ? (
         <AssetPickerModal
           assets={assetPicker.assets}
@@ -1486,20 +1664,25 @@ function App() {
               nodes={nodes}
               connections={connections}
               selectedConnectionId={selectedConnectionId}
+              highlightedConnectionIds={highlightedConnectionIds}
               linkFromNodeId={linkFromNodeId}
               pointerPos={pointerPos}
               onSelectConnection={selectConnection}
             />
 
-            {nodes.map((node) => (
+            {orderedNodes.map((node) => (
               <CanvasNode
                 key={node.id}
                 node={node}
                 isSelected={node.id === selectedNodeId}
                 isRunning={isNodeActivelyRunning(node, runningNodeId)}
                 isTranslating={translatingNodeId === node.id}
+                textInputLinks={
+                  node.type === 'image' ? getTextInputLinks(node.id, nodes, connections) : []
+                }
+                isInputsHighlighted={inputHighlightNodeId === node.id}
                 linkFromNodeId={linkFromNodeId}
-                onSelectNode={setSelectedNodeId}
+                onSelectNode={selectNode}
                 onClearConnectionSelection={() => setSelectedConnectionId(null)}
                 onBeginDrag={beginDrag}
                 onBeginResize={beginResize}
@@ -1512,6 +1695,12 @@ function App() {
                 onRunVideoGeneration={runVideoGeneration}
                 onOpenAssetLibrary={openAssetLibrary}
                 onRemoveImageReference={removeImageReference}
+                onRemoveTextReference={removeTextReference}
+                onHighlightInputs={highlightNodeInputs}
+                onPreviewImage={(images, index) =>
+                  openImagePreview(images, index, node.title || '图片预览')
+                }
+                onSyncImageOutputLayout={syncImageNodeOutputLayout}
                 onRemoveVeoFrame={removeVeoFrame}
                 onPortPointerDown={handlePortPointerDown}
                 onFinishLink={finishLink}

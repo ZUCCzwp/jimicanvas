@@ -1,4 +1,5 @@
 import { waitForImageTask } from './imageApi';
+import { buildImageNodeLayoutPatch } from './imageNodeLayout';
 import { waitForVideoTask } from './videoApi';
 
 const RECOVER_STAGGER_MS = 500;
@@ -309,6 +310,10 @@ export async function executeImageGeneration(
       images,
       status: batch.completed < batch.total ? 'running' : 'idle',
       generationBatch: batch.completed < batch.total ? batch : undefined,
+      ...buildImageNodeLayoutPatch({
+        imageRatio: settings.ratio,
+        imageCount: images.length,
+      }),
       ...clearImageTaskFields(),
     });
     node = {
@@ -327,6 +332,10 @@ export async function executeImageGeneration(
     images,
     status: 'idle',
     generationBatch: undefined,
+    ...buildImageNodeLayoutPatch({
+      imageRatio: settings.ratio,
+      imageCount: images.length,
+    }),
     ...clearImageTaskFields(),
   });
   if (onPersist) onPersist();
