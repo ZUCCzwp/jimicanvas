@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AssetPickerModal } from './components/AssetPickerModal';
+import { TextEditModal } from './components/TextEditModal';
 import { CanvasNode } from './components/CanvasNode';
 import { CanvasPanel } from './components/CanvasPanel';
 import { CanvasZoomControls } from './components/CanvasZoomControls';
@@ -19,7 +20,7 @@ import {
   normalizeVideoModelSettings,
   VEO_REFERENCE_IMAGE_MAX,
 } from './lib/constants';
-import { clampValue, createDocument, createNode, snapScale, uid } from './lib/canvas';
+import { clampValue, createDocument, createNode, duplicateNode, snapScale, uid } from './lib/canvas';
 import {
   fetchCanvasDocuments,
   parseCloudDocuments,
@@ -66,7 +67,7 @@ function App() {
   const [activeCanvasId, setActiveCanvasId] = useState(initial.activeCanvasId);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [selectedConnectionId, setSelectedConnectionId] = useState(null);
-  const [editingNodeId, setEditingNodeId] = useState(null);
+  const [enlargedTextEdit, setEnlargedTextEdit] = useState(null);
   const [linkFromNodeId, setLinkFromNodeId] = useState(null);
   const [hoverLinkNodeId, setHoverLinkNodeId] = useState(null);
   const [pointerPos, setPointerPos] = useState({ x: 0, y: 0 });
@@ -74,6 +75,7 @@ function App() {
   const [viewportOffset, setViewportOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [importError, setImportError] = useState('');
+  const [copyNotice, setCopyNotice] = useState('');
   const [runningNodeId, setRunningNodeId] = useState(null);
   const [translatingNodeId, setTranslatingNodeId] = useState(null);
   const [uploadingNodeId, setUploadingNodeId] = useState(null);
@@ -92,6 +94,9 @@ function App() {
   });
 
   const stageRef = useRef(null);
+  const copiedNodeRef = useRef(null);
+  const pasteGenerationRef = useRef(0);
+  const copyNoticeTimerRef = useRef(null);
   const canvasScaleRef = useRef(canvasScale);
   const viewportOffsetRef = useRef(viewportOffset);
   const fileInputRef = useRef(null);
@@ -319,7 +324,7 @@ function App() {
       setActiveCanvasId(documents[0]?.id || null);
       setSelectedNodeId(null);
       setSelectedConnectionId(null);
-      setEditingNodeId(null);
+      setEnlargedTextEdit(null);
       setHoverLinkNodeId(null);
     }
   }, [documents, activeCanvasId]);
@@ -404,8 +409,27 @@ function App() {
       if (event.key === 'Escape') {
         setLinkFromNodeId(null);
         setHoverLinkNodeId(null);
-        setEditingNodeId(null);
+        setEnlargedTextEdit(null);
         setSelectedConnectionId(null);
+      }
+
+      const isMeta = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+
+      if (isMeta && key === 'c' && selectedNodeId) {
+        event.preventDefault();
+        if (copyNode(selectedNodeId)) {
+          showCopyNotice('已复制节点，按 ⌘V 粘贴');
+        }
+        return;
+      }
+
+      if (isMeta && key === 'v') {
+        event.preventDefault();
+        if (pasteCopiedNode()) {
+          showCopyNotice('已粘贴节点');
+        }
+        return;
       }
 
       if ((event.key === 'Delete' || event.key === 'Backspace') && selectedConnectionId) {
@@ -428,6 +452,9 @@ function App() {
   const nodes = activeCanvas?.nodes || [];
   const connections = activeCanvas?.connections || [];
   const canvasScalePercent = Math.round(canvasScale * 100);
+  const enlargedTextEditNode =
+    enlargedTextEdit &&
+    nodes.find((node) => node.id === enlargedTextEdit.nodeId && node.type === 'note');
 
   function setCanvasScaleClamped(nextScale) {
     setCanvasScale(snapScale(clampValue(nextScale, MIN_CANVAS_SCALE, MAX_CANVAS_SCALE)));
@@ -514,7 +541,63 @@ function App() {
     }));
     setSelectedNodeId(node.id);
     setSelectedConnectionId(null);
-    setEditingNodeId(null);
+    setEnlargedTextEdit(null);
+  }
+
+  function openEnlargedTextEdit(nodeId, field = 'content') {
+    setEnlargedTextEdit({ nodeId, field });
+  }
+
+  function closeEnlargedTextEdit() {
+    setEnlargedTextEdit(null);
+  }
+
+  function showCopyNotice(message) {
+    setCopyNotice(message);
+    if (copyNoticeTimerRef.current) {
+      clearTimeout(copyNoticeTimerRef.current);
+    }
+    copyNoticeTimerRef.current = window.setTimeout(() => setCopyNotice(''), 2200);
+  }
+
+  function copyNode(nodeId) {
+    const canvasId = activeCanvasIdRef.current;
+    const doc =
+      documentsRef.current.find((item) => item.id === canvasId) || documentsRef.current[0];
+    const node = doc?.nodes?.find((item) => item.id === nodeId);
+    if (!node) return false;
+
+    copiedNodeRef.current = JSON.parse(JSON.stringify(node));
+    pasteGenerationRef.current = 0;
+    setSelectedNodeId(node.id);
+    setSelectedConnectionId(null);
+    return true;
+  }
+
+  function duplicateNodeById(nodeId) {
+    if (!copyNode(nodeId)) return false;
+    if (!pasteCopiedNode()) return false;
+    showCopyNotice('已复制节点');
+    return true;
+  }
+
+  function pasteCopiedNode() {
+    const source = copiedNodeRef.current;
+    if (!source) return false;
+
+    pasteGenerationRef.current += 1;
+    const step = 28;
+    const offset = step * pasteGenerationRef.current;
+    const node = duplicateNode(source, offset, offset);
+
+    updateActiveCanvas((doc) => ({
+      ...doc,
+      nodes: [...doc.nodes, node],
+    }));
+    setSelectedNodeId(node.id);
+    setSelectedConnectionId(null);
+    setEnlargedTextEdit(null);
+    return true;
   }
 
   function updateNode(nodeId, patch) {
@@ -628,8 +711,8 @@ function App() {
     if (selectedNodeId === nodeId) {
       setSelectedNodeId(null);
     }
-    if (editingNodeId === nodeId) {
-      setEditingNodeId(null);
+    if (enlargedTextEdit?.nodeId === nodeId) {
+      setEnlargedTextEdit(null);
     }
     if (selectedConnectionId) {
       const selectedLink = connections.find((link) => link.id === selectedConnectionId);
@@ -686,12 +769,14 @@ function App() {
         updateNode(node.id, { content: generated, status: 'idle' });
       }
       setSelectedNodeId(node.id);
-      setEditingNodeId(mode === 'translate-en' ? null : node.id);
+      if (mode !== 'translate-en') {
+        openEnlargedTextEdit(node.id, 'content');
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : '生成失败';
       updateNode(node.id, { content: message, status: 'error' });
       setSelectedNodeId(node.id);
-      setEditingNodeId(null);
+      setEnlargedTextEdit(null);
     } finally {
       if (mode === 'translate-en') {
         setTranslatingNodeId(null);
@@ -1039,7 +1124,7 @@ function App() {
   function clearSelection() {
     setSelectedNodeId(null);
     setSelectedConnectionId(null);
-    setEditingNodeId(null);
+    setEnlargedTextEdit(null);
     setLinkFromNodeId(null);
     setHoverLinkNodeId(null);
   }
@@ -1137,7 +1222,6 @@ function App() {
     event.stopPropagation();
     setSelectedNodeId(node.id);
     setSelectedConnectionId(null);
-    setEditingNodeId(null);
     dragRef.current = {
       nodeId: node.id,
       startX: event.clientX,
@@ -1167,7 +1251,7 @@ function App() {
     if (isStageBackgroundTarget(event)) {
       setSelectedNodeId(null);
       setSelectedConnectionId(null);
-      setEditingNodeId(null);
+      setEnlargedTextEdit(null);
       if (linkFromNodeId) clearLinkDraft();
 
       panRef.current = {
@@ -1208,7 +1292,7 @@ function App() {
     setActiveCanvasId(backup[0].id);
     setSelectedNodeId(null);
     setSelectedConnectionId(null);
-    setEditingNodeId(null);
+    setEnlargedTextEdit(null);
     clearLinkDraft();
     writeStorage(backup);
     dismissStorageNotice();
@@ -1246,7 +1330,7 @@ function App() {
         setActiveCanvasId(parsed[0].id);
         setSelectedNodeId(null);
         setSelectedConnectionId(null);
-        setEditingNodeId(null);
+        setEnlargedTextEdit(null);
         clearLinkDraft();
         setImportError('');
       } catch (error) {
@@ -1286,6 +1370,7 @@ function App() {
       ) : null}
 
       {importError ? <div className="toast-error">{importError}</div> : null}
+      {copyNotice ? <div className="toast-info toast-copy">{copyNotice}</div> : null}
       {storageNotice ? (
         <div className="toast-info">
           <span>{storageNotice}</span>
@@ -1303,6 +1388,15 @@ function App() {
             ×
           </button>
         </div>
+      ) : null}
+
+      {enlargedTextEditNode ? (
+        <TextEditModal
+          node={enlargedTextEditNode}
+          field={enlargedTextEdit.field}
+          onUpdateNode={updateNode}
+          onClose={closeEnlargedTextEdit}
+        />
       ) : null}
 
       {assetPicker.nodeId ? (
@@ -1364,15 +1458,14 @@ function App() {
                 key={node.id}
                 node={node}
                 isSelected={node.id === selectedNodeId}
-                isEditing={node.id === editingNodeId}
                 isRunning={isNodeActivelyRunning(node, runningNodeId)}
                 isTranslating={translatingNodeId === node.id}
                 linkFromNodeId={linkFromNodeId}
                 onSelectNode={setSelectedNodeId}
                 onClearConnectionSelection={() => setSelectedConnectionId(null)}
                 onBeginDrag={beginDrag}
-                onEdit={setEditingNodeId}
-                onStopEditing={() => setEditingNodeId(null)}
+                onOpenTextEdit={openEnlargedTextEdit}
+                onCopyNode={duplicateNodeById}
                 onUpdateNode={updateNode}
                 onRemoveNode={removeNode}
                 onRunTextGeneration={runTextGeneration}

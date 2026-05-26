@@ -170,3 +170,22 @@ export function isImageContent(content) {
 export function isVideoContent(content) {
   return typeof content === 'string' && (content.startsWith('data:video') || /^https?:\/\//.test(content));
 }
+
+export function duplicateNode(source, offsetX = 28, offsetY = 28) {
+  const cloned = JSON.parse(JSON.stringify(source));
+  cloned.id = uid('node');
+  cloned.x = (Number(source.x) || 0) + offsetX;
+  cloned.y = (Number(source.y) || 0) + offsetY;
+
+  if (cloned.status === 'running') {
+    cloned.status = 'idle';
+  }
+
+  delete cloned.imageTaskId;
+  delete cloned.videoTaskId;
+  delete cloned.pendingTasks;
+  delete cloned.generationJob;
+  delete cloned.generationBatch;
+
+  return cloned;
+}

@@ -1,18 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
 import {
   Bot,
-  Check,
-  ChevronDown,
   FileText,
   Film,
   FolderOpen,
   Image as ImageIcon,
+  Copy,
   Languages,
   LoaderCircle,
+  Maximize2,
   Play,
   Trash2,
   X,
 } from 'lucide-react';
+import { getNoteContentStyleCss } from '../lib/noteContentStyle';
 import {
   DEFAULT_TEXT_MODEL,
   getImageCountOptions,
@@ -36,90 +36,13 @@ import {
 import { normalizeVideoUrl } from '../lib/videoApi';
 import { isImageContent, isVideoContent } from '../lib/canvas';
 import { normalizeImageUrl } from '../lib/imageApi';
+import { CustomSelect } from './CustomSelect';
 import { NodeGenerationState } from './NodeGenerationState';
 
 function NodeIcon({ type }) {
   if (type === 'image') return <ImageIcon size={14} />;
   if (type === 'video') return <Film size={14} />;
   return <FileText size={14} />;
-}
-
-function CustomSelect({
-  icon,
-  label,
-  title,
-  value,
-  options,
-  onChange,
-  compact = false,
-  className = '',
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef(null);
-  const selected = options.find((option) => option.value === value) || options[0];
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    const handlePointerDown = (event) => {
-      if (!rootRef.current?.contains(event.target)) {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener('pointerdown', handlePointerDown);
-    return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [open]);
-
-  return (
-    <div
-      ref={rootRef}
-      className={`custom-select ${open ? 'open' : ''} ${compact ? 'compact' : ''} ${className}`}
-      title={title}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          setOpen(false);
-        }
-      }}
-    >
-      <button
-        type="button"
-        className="custom-select-trigger"
-        onClick={() => setOpen((value) => !value)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-      >
-        {icon}
-        {label ? <span className="custom-select-prefix">{label}</span> : null}
-        <span className="custom-select-value">{selected?.label}</span>
-        <ChevronDown size={13} className="custom-select-arrow" />
-      </button>
-      {open ? (
-        <div className="custom-select-menu" role="listbox">
-          {options.map((option) => {
-            const isSelected = option.value === value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                className={`custom-select-option ${isSelected ? 'selected' : ''}`}
-                onClick={() => {
-                  onChange(option.value);
-                  setOpen(false);
-                }}
-                role="option"
-                aria-selected={isSelected}
-              >
-                <span>{option.label}</span>
-                {isSelected ? <Check size={13} /> : null}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 function OptionSegment({ title, options, value, onChange, renderIcon }) {
@@ -162,15 +85,23 @@ function RatioIcon({ value }) {
   );
 }
 
-function NoteBody({
-  node,
-  isEditing,
-  isRunning,
-  onBeginDrag,
-  onEdit,
-  onUpdateNode,
-  onStopEditing,
-}) {
+function NodeEnlargeButton({ title, onClick }) {
+  return (
+    <button
+      className="node-enlarge-button"
+      type="button"
+      title={title}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={onClick}
+    >
+      <Maximize2 size={12} />
+    </button>
+  );
+}
+
+function NoteBody({ node, isSelected, isRunning, onBeginDrag, onOpenTextEdit }) {
+  const contentStyleCss = getNoteContentStyleCss(node.contentStyle);
+
   if (isRunning) {
     return (
       <NodeGenerationState
@@ -182,51 +113,42 @@ function NoteBody({
     );
   }
 
-  if (node.status === 'error' && !isEditing) {
+  function openContentEdit(event) {
+    event?.stopPropagation?.();
+    onOpenTextEdit(node.id, 'content');
+  }
+
+  if (node.status === 'error') {
     return (
-      <div
-        className="node-error-display"
-        onPointerDown={(event) => onBeginDrag(event, node)}
-        onDoubleClick={(event) => {
-          event.stopPropagation();
-          onEdit(node.id);
-        }}
-      >
-        <strong>运行失败</strong>
-        <span>{node.content || '生成失败'}</span>
+      <div className="node-field-wrap node-text-display-wrap">
+        {isSelected ? (
+          <NodeEnlargeButton title="放大编辑结果" onClick={(event) => openContentEdit(event)} />
+        ) : null}
+        <div
+          className="node-error-display"
+          onPointerDown={(event) => onBeginDrag(event, node)}
+          onDoubleClick={(event) => openContentEdit(event)}
+        >
+          <strong>运行失败</strong>
+          <span style={contentStyleCss}>{node.content || '生成失败'}</span>
+        </div>
       </div>
     );
   }
 
-  if (isEditing) {
-    return (
-      <textarea
-        autoFocus
-        value={node.content}
-        onChange={(event) => onUpdateNode(node.id, { content: event.target.value, status: 'idle' })}
-        onBlur={onStopEditing}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            onStopEditing();
-          }
-        }}
-        onPointerDown={(event) => event.stopPropagation()}
-        placeholder="编辑结果文字"
-      />
-    );
-  }
-
   return (
-    <div
-      className="node-text-display"
-      onPointerDown={(event) => onBeginDrag(event, node)}
-      onDoubleClick={(event) => {
-        event.stopPropagation();
-        onEdit(node.id);
-      }}
-    >
-      {node.content || '暂无结果'}
+    <div className="node-field-wrap node-text-display-wrap">
+      {isSelected ? (
+        <NodeEnlargeButton title="放大编辑结果" onClick={(event) => openContentEdit(event)} />
+      ) : null}
+      <div
+        className="node-text-display"
+        style={contentStyleCss}
+        onPointerDown={(event) => onBeginDrag(event, node)}
+        onDoubleClick={(event) => openContentEdit(event)}
+      >
+        {node.content || '暂无结果'}
+      </div>
     </div>
   );
 }
@@ -772,17 +694,24 @@ function NoteToolbar({
   isTranslating,
   onRunTextGeneration,
   onUpdateNode,
+  onOpenTextEdit,
 }) {
   const isPromptEmpty = !String(node.prompt || '').trim();
 
   return (
     <div className="node-bottom-toolbar" onPointerDown={(event) => event.stopPropagation()}>
-      <textarea
-        className="node-prompt-input"
-        value={node.prompt || ''}
-        onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
-        placeholder="输入文字"
-      />
+      <div className="node-field-wrap node-prompt-wrap">
+        <textarea
+          className="node-prompt-input"
+          value={node.prompt || ''}
+          onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
+          placeholder="输入文字"
+        />
+        <NodeEnlargeButton
+          title="放大编辑输入"
+          onClick={() => onOpenTextEdit(node.id, 'prompt')}
+        />
+      </div>
       <div className="node-bottom-actions">
         <CustomSelect
           title="模型"
@@ -819,15 +748,14 @@ function NoteToolbar({
 export function CanvasNode({
   node,
   isSelected,
-  isEditing,
   isRunning,
   isTranslating,
   linkFromNodeId,
   onSelectNode,
   onClearConnectionSelection,
   onBeginDrag,
-  onEdit,
-  onStopEditing,
+  onOpenTextEdit,
+  onCopyNode,
   onUpdateNode,
   onRemoveNode,
   onRunTextGeneration,
@@ -856,7 +784,7 @@ export function CanvasNode({
       }}
       onDoubleClick={() => {
         if (node.type === 'note') {
-          onEdit(node.id);
+          onOpenTextEdit(node.id, 'content');
         }
       }}
     >
@@ -876,7 +804,24 @@ export function CanvasNode({
             onPointerDown={(event) => event.stopPropagation()}
           />
         </div>
-        <div className="node-header-actions">
+        <div
+          className="node-header-actions"
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerUp={(event) => event.stopPropagation()}
+        >
+          <button
+            className="icon-mini"
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onCopyNode(node.id);
+            }}
+            title="复制节点"
+          >
+            <Copy size={14} />
+          </button>
           <button
             className="icon-mini danger"
             onPointerDown={(event) => event.stopPropagation()}
@@ -895,12 +840,10 @@ export function CanvasNode({
         {node.type === 'note' ? (
           <NoteBody
             node={node}
-            isEditing={isEditing}
+            isSelected={isSelected}
             isRunning={isRunning}
             onBeginDrag={onBeginDrag}
-            onEdit={onEdit}
-            onUpdateNode={onUpdateNode}
-            onStopEditing={onStopEditing}
+            onOpenTextEdit={onOpenTextEdit}
           />
         ) : node.type === 'image' ? (
           <ImageBody node={node} isRunning={isRunning} onBeginDrag={onBeginDrag} />
@@ -916,6 +859,7 @@ export function CanvasNode({
           isTranslating={isTranslating}
           onRunTextGeneration={onRunTextGeneration}
           onUpdateNode={onUpdateNode}
+          onOpenTextEdit={onOpenTextEdit}
         />
       ) : node.type === 'image' && isSelected ? (
         <ImageToolbar
