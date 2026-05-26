@@ -20,6 +20,12 @@ import {
   VEO_REFERENCE_IMAGE_MAX,
 } from './lib/constants';
 import { clampValue, createDocument, createNode, snapScale, uid } from './lib/canvas';
+import {
+  fetchCanvasDocuments,
+  parseCloudDocuments,
+  saveCanvasDocuments,
+  saveCanvasDocumentsKeepalive,
+} from './lib/canvasApi';
 import { getStoredChatToken, runChatCompletion } from './lib/chatApi';
 import {
   createImageGenerationTask,
@@ -27,15 +33,26 @@ import {
   normalizeImageUrl,
   readImageFile,
   uploadAsset,
-  waitForImageTask,
 } from './lib/imageApi';
 import {
+  executeImageGeneration,
+  executeVideoGeneration,
+  isNodeActivelyRunning,
+  mergeDocumentsPreservePending,
+  recoverPendingTasks,
+  recoverTaskKey,
+  countDocumentNodes,
+  documentMaxUpdatedAt,
+  shouldPreferLocalDocuments,
+} from './lib/generationResume';
+import {
   hasStorageBackup,
+  isBackupDifferentFrom,
   loadInitialState,
   readStorageBackup,
   writeStorage,
 } from './lib/storage';
-import { createVideoGenerationTask, waitForVideoTask } from './lib/videoApi';
+import { createVideoGenerationTask } from './lib/videoApi';
 
 function App() {
   const initial = useMemo(() => loadInitialState(), []);
@@ -78,6 +95,177 @@ function App() {
   const fileInputRef = useRef(null);
   const dragRef = useRef(null);
   const panRef = useRef(null);
+  const cloudVersionRef = useRef(0);
+  const cloudSyncReadyRef = useRef(false);
+  const skipCloudSaveRef = useRef(true);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState(() =>
+    getStoredChatToken() ? 'loading' : 'offline'
+  );
+  const [cloudLastSyncedAt, setCloudLastSyncedAt] = useState(null);
+  const [hydrationDone, setHydrationDone] = useState(false);
+  const recoveredTaskKeysRef = useRef(new Set());
+  const recoveryStartedRef = useRef(false);
+  const documentsRef = useRef(documents);
+  const activeCanvasIdRef = useRef(activeCanvasId);
+
+  useEffect(() => {
+    documentsRef.current = documents;
+  }, [documents]);
+
+  useEffect(() => {
+    activeCanvasIdRef.current = activeCanvasId;
+  }, [activeCanvasId]);
+
+  const flushPersist = async () => {
+    writeStorage(documentsRef.current);
+    const token = getStoredChatToken();
+    if (!token || skipCloudSaveRef.current) return;
+    try {
+      const saved = await saveCanvasDocuments(token, {
+        documents: documentsRef.current,
+        activeCanvasId: activeCanvasIdRef.current,
+        version: cloudVersionRef.current,
+      });
+      if (saved?.version != null) {
+        cloudVersionRef.current = saved.version;
+      }
+      setCloudLastSyncedAt(Date.now());
+      setCloudSyncStatus('synced');
+    } catch {
+      setCloudSyncStatus('pending');
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateFromCloud() {
+      const token = getStoredChatToken();
+      if (!token) {
+        setCloudSyncStatus('offline');
+        cloudSyncReadyRef.current = true;
+        skipCloudSaveRef.current = false;
+        setHydrationDone(true);
+        return;
+      }
+
+      setCloudSyncStatus('loading');
+
+      try {
+        const cloud = await fetchCanvasDocuments(token);
+        if (cancelled) return;
+
+        const cloudDocs = parseCloudDocuments(cloud?.documents);
+        const localDocs = documentsRef.current;
+        const localChangedSinceMount =
+          documentMaxUpdatedAt(localDocs) > documentMaxUpdatedAt(initial.documents) ||
+          countDocumentNodes(localDocs) > countDocumentNodes(initial.documents);
+        if (cloudDocs?.length) {
+          const preferLocal =
+            localChangedSinceMount ||
+            shouldPreferLocalDocuments(localDocs, cloudDocs, cloud?.updated_at);
+          const nextDocs = preferLocal
+            ? mergeDocumentsPreservePending(localDocs, cloudDocs)
+            : cloudDocs;
+          setDocuments(nextDocs);
+          setActiveCanvasId(
+            (preferLocal ? activeCanvasIdRef.current : cloud.active_canvas_id) ||
+              nextDocs[0]?.id
+          );
+          cloudVersionRef.current = Number(cloud.version) || 0;
+          writeStorage(nextDocs);
+          setStorageNotice((prev) =>
+            preferLocal
+              ? localChangedSinceMount
+                ? '已保留你刚编辑的画布，并与云端合并'
+                : '已保留本地进行中的任务，并与云端画布合并'
+              : prev && !prev.includes('云端')
+                ? prev
+                : '已从云端同步画布'
+          );
+        } else if (
+          initial.loadedFrom !== 'default' ||
+          countDocumentNodes(localDocs) > 0
+        ) {
+          const saved = await saveCanvasDocuments(token, {
+            documents: localDocs,
+            activeCanvasId: activeCanvasIdRef.current,
+            version: Number(cloud?.version) || 0,
+          });
+          if (!cancelled && saved?.version != null) {
+            cloudVersionRef.current = saved.version;
+          }
+        }
+        if (!cancelled) {
+          setCloudLastSyncedAt(Date.now());
+          setCloudSyncStatus('synced');
+        }
+      } catch {
+        if (!cancelled) {
+          setCloudSyncStatus('error');
+        }
+      } finally {
+        if (!cancelled) {
+          cloudSyncReadyRef.current = true;
+          skipCloudSaveRef.current = false;
+          setHydrationDone(true);
+        }
+      }
+    }
+
+    hydrateFromCloud();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!cloudSyncReadyRef.current || skipCloudSaveRef.current) return undefined;
+
+    const token = getStoredChatToken();
+    if (!token) {
+      setCloudSyncStatus('offline');
+      return undefined;
+    }
+
+    setCloudSyncStatus('pending');
+
+    const timer = window.setTimeout(async () => {
+      setCloudSyncStatus('saving');
+      try {
+        const saved = await saveCanvasDocuments(token, {
+          documents,
+          activeCanvasId,
+          version: cloudVersionRef.current,
+        });
+        if (saved?.version != null) {
+          cloudVersionRef.current = saved.version;
+        }
+        setCloudLastSyncedAt(Date.now());
+        setCloudSyncStatus('synced');
+      } catch (error) {
+        if (error?.isConflict && error.latest) {
+          cloudVersionRef.current = Number(error.latest.version) || cloudVersionRef.current;
+          const latestDocs = parseCloudDocuments(error.latest.documents);
+          if (latestDocs?.length) {
+            setDocuments((prev) => {
+              const merged = mergeDocumentsPreservePending(prev, latestDocs);
+              writeStorage(merged);
+              return merged;
+            });
+            setActiveCanvasId((current) => current || error.latest.active_canvas_id || latestDocs[0]?.id);
+          }
+          setCloudLastSyncedAt(Date.now());
+          setCloudSyncStatus('synced');
+          setStorageNotice('云端画布已被其他设备更新，已为你拉取最新版本');
+          return;
+        }
+        setCloudSyncStatus('error');
+      }
+    }, 600);
+
+    return () => window.clearTimeout(timer);
+  }, [documents, activeCanvasId]);
 
   useEffect(() => {
     const result = writeStorage(documents);
@@ -93,12 +281,28 @@ function App() {
   }, [documents]);
 
   useEffect(() => {
-    function handleBeforeUnload() {
-      writeStorage(documents);
+    function persistOnExit() {
+      writeStorage(documentsRef.current);
+      const token = getStoredChatToken();
+      if (token && cloudSyncReadyRef.current && !skipCloudSaveRef.current) {
+        saveCanvasDocumentsKeepalive(token, {
+          documents: documentsRef.current,
+          activeCanvasId: activeCanvasIdRef.current,
+          version: cloudVersionRef.current,
+        });
+      }
     }
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [documents]);
+
+    window.addEventListener('beforeunload', persistOnExit);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        persistOnExit();
+      }
+    });
+    return () => {
+      window.removeEventListener('beforeunload', persistOnExit);
+    };
+  }, []);
 
   useEffect(() => {
     if (!documents.some((doc) => doc.id === activeCanvasId)) {
@@ -207,13 +411,15 @@ function App() {
   }
 
   function updateActiveCanvas(updater) {
-    setDocuments((prev) =>
-      prev.map((doc) => {
+    setDocuments((prev) => {
+      const next = prev.map((doc) => {
         if (doc.id !== activeCanvasId) return doc;
-        const next = updater(doc);
-        return { ...next, updatedAt: Date.now() };
-      })
-    );
+        const updated = updater(doc);
+        return { ...updated, updatedAt: Date.now() };
+      });
+      documentsRef.current = next;
+      return next;
+    });
   }
 
   function createCanvas() {
@@ -276,6 +482,87 @@ function App() {
       nodes: doc.nodes.map((node) => (node.id === nodeId ? { ...node, ...patch } : node)),
     }));
   }
+
+  function updateNodeInCanvas(canvasId, nodeId, patch) {
+    setDocuments((prev) =>
+      prev.map((doc) => {
+        if (doc.id !== canvasId) return doc;
+        return {
+          ...doc,
+          updatedAt: Date.now(),
+          nodes: doc.nodes.map((node) => (node.id === nodeId ? { ...node, ...patch } : node)),
+        };
+      })
+    );
+  }
+
+  function getNodeFromDocuments(canvasId, nodeId) {
+    const doc = documentsRef.current.find((item) => item.id === canvasId);
+    return doc?.nodes?.find((node) => node.id === nodeId) || null;
+  }
+
+  useEffect(() => {
+    if (!hydrationDone || recoveryStartedRef.current) return undefined;
+    recoveryStartedRef.current = true;
+
+    const token = getStoredChatToken();
+    if (!token) return undefined;
+
+    const recovered = recoverPendingTasks(documentsRef.current, ({ canvasId, node, kind }) => {
+      const taskKey = recoverTaskKey(canvasId, node);
+      if (recoveredTaskKeysRef.current.has(taskKey)) return;
+      recoveredTaskKeysRef.current.add(taskKey);
+
+      (async () => {
+        setRunningNodeId(node.id);
+        const getNode = () => getNodeFromDocuments(canvasId, node.id) || node;
+        const updateNodeForCanvas = (nodeId, patch) => updateNodeInCanvas(canvasId, nodeId, patch);
+
+        try {
+          if (kind === 'video') {
+            await executeVideoGeneration(getNode(), {
+              token,
+              updateNode: updateNodeForCanvas,
+              createVideoGenerationTask,
+              normalizeVideoModelSettings,
+              inferVideoFamily,
+              onPersist: flushPersist,
+            });
+          } else {
+            await executeImageGeneration(getNode(), {
+              token,
+              updateNode: updateNodeForCanvas,
+              createImageGenerationTask,
+              normalizeImageModelSettings,
+              onPersist: flushPersist,
+            });
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '任务恢复失败';
+          updateNodeInCanvas(canvasId, node.id, {
+            content: message,
+            status: 'error',
+            imageTaskId: undefined,
+            videoTaskId: undefined,
+            generationBatch: undefined,
+            generationJob: undefined,
+            pendingTasks: undefined,
+          });
+          flushPersist();
+        } finally {
+          setRunningNodeId((current) => (current === node.id ? null : current));
+        }
+      })();
+    });
+
+    if (recovered > 0) {
+      setStorageNotice((prev) =>
+        prev && !prev.includes('恢复') ? prev : `已恢复 ${recovered} 个进行中的生成任务`
+      );
+    }
+
+    return undefined;
+  }, [hydrationDone]);
 
   function getOrRequestToken() {
     let token = getStoredChatToken();
@@ -407,46 +694,29 @@ function App() {
     }
 
     setRunningNodeId(node.id);
-    updateNode(node.id, { status: 'running' });
+    recoveredTaskKeysRef.current.delete(recoverTaskKey(activeCanvasId, node));
 
     try {
-      const settings = normalizeImageModelSettings({
-        model: node.imageModel,
-        resolution: node.imageResolution,
-        ratio: node.imageRatio,
-        count: node.imageCount,
-      });
-      const count = settings.count;
-      const images = [];
-
-      for (let index = 0; index < count; index += 1) {
-        const taskId = await createImageGenerationTask({
-          token,
-          prompt: promptText,
-          model: settings.model,
-          ratio: settings.ratio,
-          resolution: settings.resolution,
-          referenceImages: node.referenceImages || [],
-        });
-        const taskImages = await waitForImageTask({ token, taskId });
-        images.push(...taskImages);
-        updateNode(node.id, {
-          content: images[0],
-          images,
-          status: 'running',
-        });
-      }
-
-      updateNode(node.id, {
-        content: images[0],
-        images,
-        status: 'idle',
+      await executeImageGeneration(getNodeFromDocuments(activeCanvasId, node.id) || node, {
+        token,
+        updateNode,
+        createImageGenerationTask,
+        normalizeImageModelSettings,
+        onPersist: flushPersist,
       });
       setSelectedNodeId(node.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : '图片生成失败';
-      updateNode(node.id, { content: message, status: 'error' });
+      updateNode(node.id, {
+        content: message,
+        status: 'error',
+        generationBatch: undefined,
+        imageTaskId: undefined,
+        pendingTasks: undefined,
+        generationJob: undefined,
+      });
       setSelectedNodeId(node.id);
+      flushPersist();
     } finally {
       setRunningNodeId(null);
     }
@@ -486,66 +756,30 @@ function App() {
     }
 
     setRunningNodeId(node.id);
-    updateNode(node.id, { status: 'running' });
+    recoveredTaskKeysRef.current.delete(recoverTaskKey(activeCanvasId, node));
 
     try {
-      const family = inferVideoFamily(node);
-      const settings = normalizeVideoModelSettings({
-        family,
-        model: node.videoModel,
-        size: node.videoSize,
-        resolution: node.videoResolution,
-        orientation: node.videoOrientation,
-        ratio: node.videoRatio,
-        quality: node.videoQuality,
-        duration: node.videoDuration,
-        generationType: node.videoGenerationType,
-        count: node.videoCount,
-        route: node.videoRoute,
-      });
-      const videos = [];
-
-      for (let index = 0; index < settings.count; index += 1) {
-        const { taskId, provider, queryModel, veoSource } = await createVideoGenerationTask({
-          token,
-          prompt: promptText,
-          settings,
-          referenceImages: node.referenceImages || [],
-          veoFrames:
-            family === 'veo'
-              ? {
-                  firstFrame: node.videoFirstFrame,
-                  lastFrame: node.videoLastFrame,
-                }
-              : {},
-        });
-        const videoUrl = await waitForVideoTask({
-          token,
-          taskId,
-          provider,
-          queryModel,
-          veoSource: veoSource || node.videoTaskSource,
-        });
-        videos.push(videoUrl);
-        updateNode(node.id, {
-          content: videos[0],
-          videos,
-          videoFamily: settings.family,
-          videoTaskSource: veoSource || node.videoTaskSource,
-          status: 'running',
-        });
-      }
-
-      updateNode(node.id, {
-        content: videos[0],
-        videos,
-        status: 'idle',
+      await executeVideoGeneration(getNodeFromDocuments(activeCanvasId, node.id) || node, {
+        token,
+        updateNode,
+        createVideoGenerationTask,
+        normalizeVideoModelSettings,
+        inferVideoFamily,
+        onPersist: flushPersist,
       });
       setSelectedNodeId(node.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : '视频生成失败';
-      updateNode(node.id, { content: message, status: 'error' });
+      updateNode(node.id, {
+        content: message,
+        status: 'error',
+        generationBatch: undefined,
+        videoTaskId: undefined,
+        pendingTasks: undefined,
+        generationJob: undefined,
+      });
       setSelectedNodeId(node.id);
+      flushPersist();
     } finally {
       setRunningNodeId(null);
     }
@@ -912,6 +1146,10 @@ function App() {
     clearLinkDraft();
   }
 
+  function dismissStorageNotice() {
+    setStorageNotice('');
+  }
+
   function restoreStorageBackup() {
     const backup = readStorageBackup();
     if (!backup || backup.length === 0) {
@@ -919,6 +1157,12 @@ function App() {
       return;
     }
 
+    if (!isBackupDifferentFrom(documentsRef.current)) {
+      dismissStorageNotice();
+      return;
+    }
+
+    documentsRef.current = backup;
     setDocuments(backup);
     setActiveCanvasId(backup[0].id);
     setSelectedNodeId(null);
@@ -926,7 +1170,8 @@ function App() {
     setEditingNodeId(null);
     clearLinkDraft();
     writeStorage(backup);
-    setStorageNotice('已从本地备份恢复画布');
+    dismissStorageNotice();
+    void flushPersist();
   }
 
   function exportJson() {
@@ -994,7 +1239,7 @@ function App() {
           onSelectCanvas={selectCanvas}
           onDeleteCanvas={deleteCanvas}
           onRestoreBackup={restoreStorageBackup}
-          hasStorageBackup={hasStorageBackup()}
+          hasStorageBackup={hasStorageBackup() && isBackupDifferentFrom(documents)}
           onClose={() => setShowCanvasPanel(false)}
         />
       ) : null}
@@ -1003,11 +1248,19 @@ function App() {
       {storageNotice ? (
         <div className="toast-info">
           <span>{storageNotice}</span>
-          {hasStorageBackup() ? (
+          {hasStorageBackup() && isBackupDifferentFrom(documents) ? (
             <button type="button" className="toast-action" onClick={restoreStorageBackup}>
               恢复备份
             </button>
           ) : null}
+          <button
+            type="button"
+            className="toast-dismiss"
+            onClick={dismissStorageNotice}
+            aria-label="关闭提示"
+          >
+            ×
+          </button>
         </div>
       ) : null}
 
@@ -1038,6 +1291,8 @@ function App() {
           nodesCount={nodes.length}
           connectionsCount={connections.length}
           onRenameCanvas={renameCanvas}
+          cloudSyncStatus={cloudSyncStatus}
+          cloudLastSyncedAt={cloudLastSyncedAt}
         />
 
         <section
@@ -1069,7 +1324,7 @@ function App() {
                 node={node}
                 isSelected={node.id === selectedNodeId}
                 isEditing={node.id === editingNodeId}
-                isRunning={runningNodeId === node.id}
+                isRunning={isNodeActivelyRunning(node, runningNodeId)}
                 isTranslating={translatingNodeId === node.id}
                 linkFromNodeId={linkFromNodeId}
                 onSelectNode={setSelectedNodeId}

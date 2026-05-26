@@ -3,7 +3,7 @@ import { createDocument } from './canvas';
 
 export const STORAGE_BACKUP_KEY = `${STORAGE_KEY}.backup`;
 
-function normalizeDocuments(raw) {
+export function normalizeDocuments(raw) {
   if (!Array.isArray(raw)) return null;
 
   const documents = raw
@@ -45,6 +45,36 @@ export function readStorageBackup() {
   return readDocumentsFromKey(STORAGE_BACKUP_KEY);
 }
 
+export function documentsEqual(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return false;
+  }
+}
+
+export function isBackupDifferentFrom(documents) {
+  const backup = readStorageBackup();
+  if (!backup || backup.length === 0) return false;
+  return !documentsEqual(backup, documents);
+}
+
+/** 启动时从备份恢复主存储，避免 writeStorage 用损坏的主数据覆盖备份 */
+export function promoteBackupToPrimary(backup) {
+  if (typeof window === 'undefined' || !Array.isArray(backup) || backup.length === 0) {
+    return { ok: false };
+  }
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(backup));
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '保存失败';
+    return { ok: false, error: message };
+  }
+}
+
 export function writeStorage(documents) {
   if (typeof window === 'undefined') {
     return { ok: true };
@@ -76,7 +106,7 @@ export function loadInitialState() {
 
   const backup = readDocumentsFromKey(STORAGE_BACKUP_KEY);
   if (backup && backup.length > 0) {
-    writeStorage(backup);
+    promoteBackupToPrimary(backup);
     return {
       documents: backup,
       activeCanvasId: backup[0].id,
