@@ -231,6 +231,7 @@ function clearImageTaskFields() {
     pendingTasks: undefined,
     generationJob: undefined,
     taskStatus: undefined,
+    taskProgress: undefined,
   };
 }
 
@@ -243,6 +244,7 @@ function clearVideoTaskFields() {
     taskQueryModel: undefined,
     taskVeoSource: undefined,
     taskStatus: undefined,
+    taskProgress: undefined,
   };
 }
 
@@ -289,7 +291,16 @@ export async function executeImageGeneration(
       if (onPersist) onPersist();
     }
 
-    const taskImages = await waitForImageTask({ token, taskId });
+    const taskImages = await waitForImageTask({
+      token,
+      taskId,
+      onProgress: ({ status, progress }) => {
+        updateNode(node.id, {
+          taskStatus: status,
+          taskProgress: progress,
+        });
+      },
+    });
     images = [...images, ...taskImages];
     batch = { ...batch, completed: batch.completed + 1 };
 
@@ -352,12 +363,6 @@ export async function executeVideoGeneration(
 
   while (batch.completed < batch.total) {
     let taskId = getVideoTaskId(node) || '';
-    let provider = node.taskProvider || node.generationJob?.pendingTasks?.[0]?.provider || 'sora';
-    let queryModel = node.taskQueryModel || node.generationJob?.pendingTasks?.[0]?.queryModel;
-    let veoSource =
-      node.taskVeoSource ||
-      node.generationJob?.pendingTasks?.[0]?.veoSource ||
-      node.videoTaskSource;
 
     if (!taskId) {
       const created = await createVideoGenerationTask({
@@ -374,9 +379,9 @@ export async function executeVideoGeneration(
             : {},
       });
       taskId = created.taskId;
-      provider = created.provider;
-      queryModel = created.queryModel;
-      veoSource = created.veoSource;
+      const provider = created.provider;
+      const queryModel = created.queryModel;
+      const veoSource = created.veoSource;
 
       updateNode(node.id, {
         status: 'running',
@@ -403,9 +408,12 @@ export async function executeVideoGeneration(
     const videoUrl = await waitForVideoTask({
       token,
       taskId,
-      provider,
-      queryModel,
-      veoSource,
+      onProgress: ({ status, progress }) => {
+        updateNode(node.id, {
+          taskStatus: status,
+          taskProgress: progress,
+        });
+      },
     });
     videos = [...videos, videoUrl];
     batch = { ...batch, completed: batch.completed + 1 };
@@ -414,7 +422,7 @@ export async function executeVideoGeneration(
       content: videos[0] || node.content,
       videos,
       videoFamily: settings.family,
-      videoTaskSource: veoSource || node.videoTaskSource,
+      videoTaskSource: node.taskVeoSource || node.videoTaskSource,
       status: batch.completed < batch.total ? 'running' : 'idle',
       generationBatch: batch.completed < batch.total ? batch : undefined,
       ...clearVideoTaskFields(),

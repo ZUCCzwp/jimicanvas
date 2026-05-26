@@ -36,6 +36,7 @@ import {
 import { normalizeVideoUrl } from '../lib/videoApi';
 import { isImageContent, isVideoContent } from '../lib/canvas';
 import { normalizeImageUrl } from '../lib/imageApi';
+import { NodeGenerationState } from './NodeGenerationState';
 
 function NodeIcon({ type }) {
   if (type === 'image') return <ImageIcon size={14} />;
@@ -172,10 +173,12 @@ function NoteBody({
 }) {
   if (isRunning) {
     return (
-      <div className="node-run-state">
-        <LoaderCircle size={22} className="spin-icon" />
-        <span>正在运行</span>
-      </div>
+      <NodeGenerationState
+        node={node}
+        kind="text"
+        label="正在运行"
+        onBeginDrag={onBeginDrag}
+      />
     );
   }
 
@@ -234,10 +237,12 @@ function ImageBody({ node, isRunning, onBeginDrag }) {
 
   if (isRunning) {
     return (
-      <div className="image-output-state" onPointerDown={(event) => onBeginDrag(event, node)}>
-        <LoaderCircle size={24} className="spin-icon" />
-        <span>正在生成图片</span>
-      </div>
+      <NodeGenerationState
+        node={node}
+        kind="image"
+        label="正在生成图片"
+        onBeginDrag={onBeginDrag}
+      />
     );
   }
 
@@ -285,10 +290,12 @@ function VideoBody({ node, isRunning, onBeginDrag }) {
 
   if (isRunning) {
     return (
-      <div className="video-output-state" onPointerDown={(event) => onBeginDrag(event, node)}>
-        <LoaderCircle size={24} className="spin-icon" />
-        <span>正在生成视频</span>
-      </div>
+      <NodeGenerationState
+        node={node}
+        kind="video"
+        label="正在生成视频"
+        onBeginDrag={onBeginDrag}
+      />
     );
   }
 
@@ -834,7 +841,7 @@ export function CanvasNode({
 }) {
   return (
     <article
-      className={`node ${isSelected ? 'selected' : ''} ${node.type}`}
+      className={`node ${isSelected ? 'selected' : ''} ${isRunning ? 'is-running' : ''} ${node.type}`}
       style={{
         transform: `translate(${node.x}px, ${node.y}px)`,
         width: node.width,

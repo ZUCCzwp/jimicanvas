@@ -266,10 +266,23 @@ export async function getImageTask({ token, taskId }) {
   return requestJson(`/api/imageTask/${encodeURIComponent(taskId)}`, { token });
 }
 
-export async function waitForImageTask({ token, taskId, maxAttempts = 400, intervalMs = 3000 }) {
+export async function waitForImageTask({
+  token,
+  taskId,
+  maxAttempts = 400,
+  intervalMs = 3000,
+  onProgress,
+}) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const task = await getImageTask({ token, taskId });
     const status = String(task?.status || '').toLowerCase();
+
+    if (onProgress) {
+      onProgress({
+        status: task?.status,
+        progress: Number(task?.progress) || 0,
+      });
+    }
 
     if (FINISHED_STATUS.has(status)) {
       const resultImages = Array.isArray(task?.result_images)

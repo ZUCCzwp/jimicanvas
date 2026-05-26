@@ -2,10 +2,16 @@ import { DEFAULT_VIDEO_FAMILY, DEFAULT_VIDEO_ROUTE } from './constants';
 import { getChatApiBaseUrl } from './chatApi';
 import { normalizeImageUrl } from './imageApi';
 
-const SORA_SUCCESS_STATUS = new Set([1, '1', 'success', 'completed']);
-const SORA_FAILED_STATUS = new Set([2, '2', 'failed', 'error']);
-const GENERIC_SUCCESS_STATUS = new Set(['success', 'completed', 'succeeded']);
-const GENERIC_FAILED_STATUS = new Set(['failed', 'error', 'failure']);
+const TASK_SUCCESS_STATUS = new Set(['success', 'completed', 'succeed', '1']);
+const TASK_FAILED_STATUS = new Set(['failed', 'error', 'failure', 'fail', 'cancelled', 'canceled', '2']);
+const TASK_PENDING_STATUS = new Set([
+  'pending',
+  'queued',
+  'processing',
+  'in_progress',
+  'running',
+  '0',
+]);
 
 export function normalizeVideoUrl(url) {
   return normalizeImageUrl(url);
@@ -282,144 +288,66 @@ export async function createVideoGenerationTask({
   }
 }
 
-function pickVideoUrl(payload) {
-  if (!payload) return '';
-  return normalizeVideoUrl(
-    payload.mediaUrl ||
-      payload.media_url ||
-      payload.video_url ||
-      payload.videoUrl ||
-      payload.originUrl ||
-      payload.origin_url ||
-      payload.result?.video_url ||
-      payload.result?.video_path ||
-      payload.result?.videoUrl
-  );
+function pickTaskVideoUrl(task) {
+  if (!task) return '';
+  return normalizeVideoUrl(task.videoPath || task.video_path || '');
 }
 
-async function querySoraTask({ token, taskId }) {
-  const params = new URLSearchParams({ projectId: taskId });
-  return requestJson(`/api/video/sora2/result?${params.toString()}`, { token });
+function normalizeTaskStatus(status) {
+  return String(status ?? '').trim().toLowerCase();
 }
 
-async function queryVeoTask({ token, taskId, veoSource = 'KYY_VEO' }) {
-  const params = new URLSearchParams({
-    taskId,
-    source: veoSource === 'SC_VEO' ? 'SC_VEO' : 'KYY_VEO',
-  });
-  return requestJson(`/api/video/veo/query?${params.toString()}`, { token });
+function isTaskSuccess(status) {
+  const normalized = normalizeTaskStatus(status);
+  return TASK_SUCCESS_STATUS.has(normalized);
 }
 
-async function queryOmniTask({ token, taskId, model }) {
-  const params = new URLSearchParams({ id: taskId, model: model || 'Gemini-Omini' });
-  return requestJson(`/api/video/gemini/query?${params.toString()}`, { token });
+function isTaskFailed(status) {
+  const normalized = normalizeTaskStatus(status);
+  return TASK_FAILED_STATUS.has(normalized);
 }
 
-async function querySeedanceStandardTask({ token, taskId, model }) {
-  const params = new URLSearchParams({ id: taskId, model: model || 'doubao-seedance-2.0' });
-  return requestJson(`/api/video/seedance/2/query?${params.toString()}`, { token });
+function isTaskPending(status) {
+  const normalized = normalizeTaskStatus(status);
+  return !normalized || TASK_PENDING_STATUS.has(normalized);
 }
 
-async function querySeedanceManxueTask({ token, taskId }) {
-  const params = new URLSearchParams({ projectId: taskId });
-  return requestJson(`/api/video/sd2manxue/query?${params.toString()}`, { token });
-}
-
-async function queryGrokTask({ token, taskId }) {
-  const params = new URLSearchParams({ id: taskId });
-  return requestJson(`/api/video/grok/query?${params.toString()}`, { token });
+export async function getTaskDetail({ token, taskId }) {
+  return requestJson(`/api/task/${encodeURIComponent(taskId)}`, { token });
 }
 
 export async function waitForVideoTask({
   token,
   taskId,
-  provider = 'sora',
-  queryModel,
-  veoSource = 'KYY_VEO',
   maxAttempts = 400,
   intervalMs = 3000,
+  onProgress,
 }) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    if (provider === 'sora') {
-      const result = await querySoraTask({ token, taskId });
-      const status = result?.status;
+    const task = await getTaskDetail({ token, taskId });
+    const status = task?.status;
 
-      if (SORA_SUCCESS_STATUS.has(status)) {
-        const videoUrl = pickVideoUrl(result);
-        if (!videoUrl) throw new Error('视频任务已完成，但未返回视频地址');
-        return videoUrl;
-      }
+    if (onProgress) {
+      onProgress({
+        status,
+        progress: Number(task?.progress) || 0,
+      });
+    }
 
-      if (SORA_FAILED_STATUS.has(status)) {
-        throw new Error(result?.reason || '视频生成失败');
+    if (isTaskSuccess(status)) {
+      const videoUrl = pickTaskVideoUrl(task);
+      if (!videoUrl) {
+        throw new Error('视频任务已完成，但未返回视频地址');
       }
-    } else if (provider === 'veo') {
-      const result = await queryVeoTask({ token, taskId, veoSource });
-      const status = String(result?.status || '').toLowerCase();
+      return videoUrl;
+    }
 
-      if (GENERIC_SUCCESS_STATUS.has(status) || result?.video_url) {
-        const videoUrl = pickVideoUrl(result);
-        if (!videoUrl) throw new Error('VEO 任务已完成，但未返回视频地址');
-        return videoUrl;
-      }
+    if (isTaskFailed(status)) {
+      throw new Error(task?.remark || '视频生成失败');
+    }
 
-      if (GENERIC_FAILED_STATUS.has(status)) {
-        throw new Error(result?.reason || 'VEO 视频生成失败');
-      }
-    } else if (provider === 'omni') {
-      const result = await queryOmniTask({ token, taskId, model: queryModel });
-      const status = String(result?.status || '').toLowerCase();
-
-      if (GENERIC_SUCCESS_STATUS.has(status)) {
-        const videoUrl = pickVideoUrl(result);
-        if (!videoUrl) throw new Error('Omni 任务已完成，但未返回视频地址');
-        return videoUrl;
-      }
-
-      if (GENERIC_FAILED_STATUS.has(status)) {
-        throw new Error(result?.error?.message || result?.error || 'Omni 视频生成失败');
-      }
-    } else if (provider === 'seedance-manxue') {
-      const result = await querySeedanceManxueTask({ token, taskId });
-      const status = result?.status;
-
-      if (SORA_SUCCESS_STATUS.has(status)) {
-        const videoUrl = pickVideoUrl(result);
-        if (!videoUrl) throw new Error('Seedance 2.0 满血版任务已完成，但未返回视频地址');
-        return videoUrl;
-      }
-
-      if (SORA_FAILED_STATUS.has(status)) {
-        throw new Error(result?.reason || 'Seedance 2.0 满血版视频生成失败');
-      }
-    } else if (provider === 'seedance') {
-      const result = await querySeedanceStandardTask({ token, taskId, model: queryModel });
-      const status = String(result?.status || '').toLowerCase();
-
-      if (GENERIC_SUCCESS_STATUS.has(status)) {
-        const videoUrl = pickVideoUrl(result);
-        if (!videoUrl) throw new Error('Seedance 任务已完成，但未返回视频地址');
-        return videoUrl;
-      }
-
-      if (GENERIC_FAILED_STATUS.has(status)) {
-        throw new Error(result?.error?.message || result?.error || 'Seedance 视频生成失败');
-      }
-    } else if (provider === 'grok') {
-      const result = await queryGrokTask({ token, taskId });
-      const status = result?.status;
-
-      if (SORA_SUCCESS_STATUS.has(status)) {
-        const videoUrl = pickVideoUrl(result);
-        if (!videoUrl) throw new Error('Grok 任务已完成，但未返回视频地址');
-        return videoUrl;
-      }
-
-      if (SORA_FAILED_STATUS.has(status)) {
-        throw new Error(result?.reason || 'Grok 视频生成失败');
-      }
-    } else {
-      throw new Error(`暂不支持 ${provider} 的任务轮询`);
+    if (!isTaskPending(status)) {
+      throw new Error(`未知的视频任务状态: ${status || 'unknown'}`);
     }
 
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
