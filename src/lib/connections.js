@@ -1,3 +1,5 @@
+import { PLACEHOLDER_IMAGE } from './constants';
+
 export function getIncomingConnections(nodeId, connections = []) {
   return connections.filter((link) => link.toNodeId === nodeId);
 }
@@ -60,7 +62,11 @@ export function getImageNodeOutputUrl(node) {
   if (images[0]) return images[0];
 
   const content = String(node.content || '').trim();
-  if (content.startsWith('data:image') || /^https?:\/\//.test(content)) {
+  if (
+    content &&
+    content !== PLACEHOLDER_IMAGE &&
+    (content.startsWith('data:image') || /^https?:\/\//.test(content))
+  ) {
     return content;
   }
 

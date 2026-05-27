@@ -6,6 +6,7 @@ import {
   CloudUpload,
   Keyboard,
   Loader2,
+  MessageCircle,
   SquarePen,
   Wand2,
 } from 'lucide-react';
@@ -71,6 +72,7 @@ export function Topbar({
   connectionsCount,
   onRenameCanvas,
   onOpenKeyboardShortcuts,
+  onOpenCustomerService,
   cloudSyncStatus = 'offline',
   cloudLastSyncedAt = null,
 }) {
@@ -106,6 +108,17 @@ export function Topbar({
         </div>
 
         <div className="toolbar-row">
+          <button
+            type="button"
+            className="topbar-shortcuts-button"
+            onClick={onOpenCustomerService}
+            title="联系客服"
+            aria-label="联系客服"
+          >
+            <MessageCircle size={15} aria-hidden="true" />
+            <span>联系客服</span>
+          </button>
+
           <button
             type="button"
             className="topbar-shortcuts-button"

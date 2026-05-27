@@ -9,6 +9,7 @@ import { CanvasPanel } from './components/CanvasPanel';
 import { CanvasZoomControls } from './components/CanvasZoomControls';
 import { ConnectionLayer } from './components/ConnectionLayer';
 import { FloatingDock } from './components/FloatingDock';
+import { CustomerServiceModal } from './components/CustomerServiceModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { Topbar } from './components/Topbar';
 import { isEditableKeyboardTarget } from './lib/keyboardShortcuts';
@@ -33,6 +34,8 @@ import {
   createDocument,
   createNode,
   duplicateNode,
+  getNodesInSelectionRect,
+  normalizeSelectionRect,
   snapScale,
   uid,
 } from './lib/canvas';
@@ -50,6 +53,7 @@ import {
   saveCanvasDocumentsKeepalive,
 } from './lib/canvasApi';
 import { getStoredChatToken, runChatCompletion } from './lib/chatApi';
+import { fetchSiteKefuQrUrl } from './lib/siteApi';
 import {
   createImageGenerationTask,
   getAssetList,
@@ -57,6 +61,7 @@ import {
   readImageFile,
   uploadAsset,
 } from './lib/imageApi';
+import { buildImageNodeLayoutPatch } from './lib/imageNodeLayout';
 import {
   executeImageGeneration,
   executeVideoGeneration,
@@ -87,7 +92,8 @@ function App() {
     return '';
   });
   const [activeCanvasId, setActiveCanvasId] = useState(initial.activeCanvasId);
-  const [selectedNodeId, setSelectedNodeId] = useState(null);
+  const [selectedNodeIds, setSelectedNodeIds] = useState([]);
+  const [selectionMarquee, setSelectionMarquee] = useState(null);
   const [selectedConnectionId, setSelectedConnectionId] = useState(null);
   const [enlargedTextEdit, setEnlargedTextEdit] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -108,6 +114,8 @@ function App() {
   const [uploadingNodeId, setUploadingNodeId] = useState(null);
   const [showCanvasPanel, setShowCanvasPanel] = useState(false);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
+  const [showCustomerService, setShowCustomerService] = useState(false);
+  const [kefuQrUrl, setKefuQrUrl] = useState('');
   const [assetPicker, setAssetPicker] = useState({
     nodeId: null,
     pickMode: 'reference',
@@ -131,6 +139,8 @@ function App() {
   const dragRef = useRef(null);
   const resizeRef = useRef(null);
   const panRef = useRef(null);
+  const marqueeRef = useRef(null);
+  const spaceKeyRef = useRef(false);
   const cloudVersionRef = useRef(0);
   const cloudSyncReadyRef = useRef(false);
   const skipCloudSaveRef = useRef(true);
@@ -351,7 +361,7 @@ function App() {
   useEffect(() => {
     if (!documents.some((doc) => doc.id === activeCanvasId)) {
       setActiveCanvasId(documents[0]?.id || null);
-      setSelectedNodeId(null);
+      setSelectedNodeIds([]);
       setSelectedConnectionId(null);
       setEnlargedTextEdit(null);
       setHoverLinkNodeId(null);
@@ -362,6 +372,20 @@ function App() {
     if (!assetPicker.nodeId) return;
     loadAssetPickerAssets(assetPicker.source);
   }, [assetPicker.nodeId, assetPicker.source]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchSiteKefuQrUrl().then((url) => {
+      if (!cancelled && url) {
+        setKefuQrUrl(url);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     setViewportOffset({ x: 0, y: 0 });
@@ -429,8 +453,39 @@ function App() {
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (isEditableKeyboardTarget(event.target)) return;
+      if (event.code === 'Space') {
+        event.preventDefault();
+        spaceKeyRef.current = true;
+      }
+    };
+    const handleKeyUp = (event) => {
+      if (event.code === 'Space') {
+        spaceKeyRef.current = false;
+      }
+    };
+    const handleBlur = () => {
+      spaceKeyRef.current = false;
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (isEditableKeyboardTarget(event.target)) return;
 
       if (event.key === 'Escape') {
+        if (showCustomerService) {
+          setShowCustomerService(false);
+          return;
+        }
         if (showKeyboardShortcuts) {
           setShowKeyboardShortcuts(false);
           return;
@@ -443,6 +498,7 @@ function App() {
         setImagePreview(null);
         setVideoPreview(null);
         setSelectedConnectionId(null);
+        setSelectedNodeIds([]);
         return;
       }
 
@@ -454,10 +510,11 @@ function App() {
 
       const isMeta = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
+      const primarySelectedNodeId = selectedNodeIds[selectedNodeIds.length - 1];
 
-      if (isMeta && key === 'c' && selectedNodeId) {
+      if (isMeta && key === 'c' && primarySelectedNodeId) {
         event.preventDefault();
-        if (copyNode(selectedNodeId)) {
+        if (copyNode(primarySelectedNodeId)) {
           showCopyNotice('已复制节点，按 ⌘V 粘贴');
         }
         return;
@@ -471,9 +528,9 @@ function App() {
         return;
       }
 
-      if (isMeta && key === 'd' && selectedNodeId) {
+      if (isMeta && key === 'd' && primarySelectedNodeId) {
         event.preventDefault();
-        duplicateNodeById(selectedNodeId);
+        duplicateNodeById(primarySelectedNodeId);
         return;
       }
 
@@ -507,19 +564,21 @@ function App() {
         return;
       }
 
-      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedNodeId) {
+      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedNodeIds.length > 0) {
         event.preventDefault();
-        removeNode(selectedNodeId);
+        removeNodes(selectedNodeIds);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedConnectionId, selectedNodeId, showKeyboardShortcuts]);
+  }, [selectedConnectionId, selectedNodeIds, showCustomerService, showKeyboardShortcuts]);
 
   const activeCanvas = documents.find((doc) => doc.id === activeCanvasId) || documents[0];
   const nodes = activeCanvas?.nodes || [];
   const connections = activeCanvas?.connections || [];
+  const primarySelectedNodeId =
+    selectedNodeIds.length > 0 ? selectedNodeIds[selectedNodeIds.length - 1] : null;
   const highlightedConnectionIds = useMemo(() => {
     if (!inputHighlightNodeId) return [];
     return connections
@@ -527,11 +586,13 @@ function App() {
       .map((link) => link.id);
   }, [connections, inputHighlightNodeId]);
   const orderedNodes = useMemo(() => {
-    if (!selectedNodeId) return nodes;
-    const selected = nodes.find((node) => node.id === selectedNodeId);
-    if (!selected) return nodes;
-    return [...nodes.filter((node) => node.id !== selectedNodeId), selected];
-  }, [nodes, selectedNodeId]);
+    if (selectedNodeIds.length === 0) return nodes;
+    const selectedSet = new Set(selectedNodeIds);
+    return [
+      ...nodes.filter((node) => !selectedSet.has(node.id)),
+      ...nodes.filter((node) => selectedSet.has(node.id)),
+    ];
+  }, [nodes, selectedNodeIds]);
   const canvasScalePercent = Math.round(canvasScale * 100);
   const enlargedTextEditNode =
     enlargedTextEdit &&
@@ -620,7 +681,7 @@ function App() {
       ...doc,
       nodes: [...doc.nodes, node],
     }));
-    setSelectedNodeId(node.id);
+    setSelectedNodeIds([node.id]);
     setSelectedConnectionId(null);
     setEnlargedTextEdit(null);
   }
@@ -685,7 +746,7 @@ function App() {
 
     copiedNodeRef.current = JSON.parse(JSON.stringify(node));
     pasteGenerationRef.current = 0;
-    setSelectedNodeId(node.id);
+    setSelectedNodeIds([node.id]);
     setSelectedConnectionId(null);
     return true;
   }
@@ -710,7 +771,7 @@ function App() {
       ...doc,
       nodes: [...doc.nodes, node],
     }));
-    setSelectedNodeId(node.id);
+    setSelectedNodeIds([node.id]);
     setSelectedConnectionId(null);
     setEnlargedTextEdit(null);
     return true;
@@ -847,32 +908,42 @@ function App() {
     return token;
   }
 
-  function removeNode(nodeId) {
+  function removeNodes(nodeIds) {
+    const idSet = new Set(nodeIds.filter(Boolean));
+    if (idSet.size === 0) return;
+
     updateActiveCanvas((doc) => ({
       ...doc,
-      nodes: doc.nodes.filter((node) => node.id !== nodeId),
+      nodes: doc.nodes.filter((node) => !idSet.has(node.id)),
       connections: doc.connections.filter(
-        (link) => link.fromNodeId !== nodeId && link.toNodeId !== nodeId
+        (link) => !idSet.has(link.fromNodeId) && !idSet.has(link.toNodeId)
       ),
     }));
-    if (selectedNodeId === nodeId) {
-      setSelectedNodeId(null);
-    }
-    if (enlargedTextEdit?.nodeId === nodeId) {
+
+    setSelectedNodeIds((prev) => prev.filter((id) => !idSet.has(id)));
+
+    if (enlargedTextEdit && idSet.has(enlargedTextEdit.nodeId)) {
       setEnlargedTextEdit(null);
     }
     if (selectedConnectionId) {
       const selectedLink = connections.find((link) => link.id === selectedConnectionId);
-      if (selectedLink && (selectedLink.fromNodeId === nodeId || selectedLink.toNodeId === nodeId)) {
+      if (
+        selectedLink &&
+        (idSet.has(selectedLink.fromNodeId) || idSet.has(selectedLink.toNodeId))
+      ) {
         setSelectedConnectionId(null);
       }
     }
-    if (linkFromNodeId === nodeId) {
+    if (linkFromNodeId && idSet.has(linkFromNodeId)) {
       clearLinkDraft();
     }
-    if (inputHighlightNodeId === nodeId) {
+    if (inputHighlightNodeId && idSet.has(inputHighlightNodeId)) {
       setInputHighlightNodeId(null);
     }
+  }
+
+  function removeNode(nodeId) {
+    removeNodes([nodeId]);
   }
 
   function removeConnection(connectionId) {
@@ -905,8 +976,20 @@ function App() {
     setSelectedConnectionId(null);
   }
 
-  function selectNode(nodeId) {
-    setSelectedNodeId(nodeId);
+  function selectNode(nodeId, options = {}) {
+    const { additive = false } = options;
+    setSelectedConnectionId(null);
+
+    setSelectedNodeIds((prev) => {
+      if (additive) {
+        return prev.includes(nodeId) ? prev.filter((id) => id !== nodeId) : [...prev, nodeId];
+      }
+      if (prev.includes(nodeId) && prev.length > 1) {
+        return prev;
+      }
+      return [nodeId];
+    });
+
     const node = nodes.find((item) => item.id === nodeId);
     if (node?.type !== 'image') {
       setInputHighlightNodeId(null);
@@ -946,14 +1029,14 @@ function App() {
       } else {
         updateNode(node.id, { content: generated, status: 'idle' });
       }
-      setSelectedNodeId(node.id);
+      setSelectedNodeIds([node.id]);
       if (mode !== 'translate-en') {
         openEnlargedTextEdit(node.id, 'content');
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '生成失败';
       updateNode(node.id, { content: message, status: 'error' });
-      setSelectedNodeId(node.id);
+      setSelectedNodeIds([node.id]);
       setEnlargedTextEdit(null);
     } finally {
       if (mode === 'translate-en') {
@@ -986,11 +1069,11 @@ function App() {
           content: `Detect whether the following image prompt is primarily Chinese or English. If it is Chinese, translate it into natural English. If it is English, translate it into natural Chinese. Return only the translation, with no explanations:\n\n${promptText}`,
         });
         updateNode(node.id, { prompt: translated, status: 'idle' });
-        setSelectedNodeId(node.id);
+        setSelectedNodeIds([node.id]);
       } catch (error) {
         const message = error instanceof Error ? error.message : '翻译失败';
         updateNode(node.id, { content: message, status: 'error' });
-        setSelectedNodeId(node.id);
+        setSelectedNodeIds([node.id]);
       } finally {
         setTranslatingNodeId(null);
       }
@@ -1012,7 +1095,7 @@ function App() {
           onPersist: flushPersist,
         }
       );
-      setSelectedNodeId(node.id);
+      setSelectedNodeIds([node.id]);
     } catch (error) {
       const message = error instanceof Error ? error.message : '图片生成失败';
       updateNode(node.id, {
@@ -1023,7 +1106,7 @@ function App() {
         pendingTasks: undefined,
         generationJob: undefined,
       });
-      setSelectedNodeId(node.id);
+      setSelectedNodeIds([node.id]);
       flushPersist();
     } finally {
       setRunningNodeId(null);
@@ -1052,11 +1135,11 @@ function App() {
           content: `Detect whether the following video prompt is primarily Chinese or English. If it is Chinese, translate it into natural English. If it is English, translate it into natural Chinese. Return only the translation, with no explanations:\n\n${promptText}`,
         });
         updateNode(node.id, { prompt: translated, status: 'idle' });
-        setSelectedNodeId(node.id);
+        setSelectedNodeIds([node.id]);
       } catch (error) {
         const message = error instanceof Error ? error.message : '翻译失败';
         updateNode(node.id, { content: message, status: 'error' });
-        setSelectedNodeId(node.id);
+        setSelectedNodeIds([node.id]);
       } finally {
         setTranslatingNodeId(null);
       }
@@ -1083,7 +1166,7 @@ function App() {
           onPersist: flushPersist,
         }
       );
-      setSelectedNodeId(node.id);
+      setSelectedNodeIds([node.id]);
     } catch (error) {
       const message = error instanceof Error ? error.message : '视频生成失败';
       updateNode(node.id, {
@@ -1094,7 +1177,7 @@ function App() {
         pendingTasks: undefined,
         generationJob: undefined,
       });
-      setSelectedNodeId(node.id);
+      setSelectedNodeIds([node.id]);
       flushPersist();
     } finally {
       setRunningNodeId(null);
@@ -1114,6 +1197,14 @@ function App() {
         maxCount: Math.max(1, VEO_REFERENCE_IMAGE_MAX - currentCount),
         title: '资产库',
         subtitle: `选择参考图（最多 ${VEO_REFERENCE_IMAGE_MAX} 张）`,
+      };
+    }
+    if (pickMode === 'output') {
+      const maxOutput = Math.min(4, Math.max(1, Number(node?.imageCount) || 1));
+      return {
+        maxCount: maxOutput,
+        title: '资产库',
+        subtitle: `选择输出图片（最多 ${maxOutput} 张）`,
       };
     }
     return { maxCount: 5, title: '资产库', subtitle: '选择图片作为参考图' };
@@ -1141,6 +1232,26 @@ function App() {
         ...node,
         referenceImages: [...current, ...normalized].slice(0, VEO_REFERENCE_IMAGE_MAX),
         status: 'idle',
+      };
+    }
+    if (pickMode === 'output') {
+      const urls = normalized.map((asset) => asset.url).filter(Boolean);
+      if (urls.length === 0) return node;
+      return {
+        ...node,
+        images: urls,
+        content: urls[0],
+        status: 'idle',
+        imageTaskId: undefined,
+        pendingTasks: undefined,
+        generationJob: undefined,
+        generationBatch: undefined,
+        taskStatus: undefined,
+        taskProgress: undefined,
+        ...buildImageNodeLayoutPatch({
+          imageRatio: node.imageRatio,
+          imageCount: urls.length,
+        }),
       };
     }
 
@@ -1319,7 +1430,7 @@ function App() {
   }
 
   function clearSelection() {
-    setSelectedNodeId(null);
+    setSelectedNodeIds([]);
     setSelectedConnectionId(null);
     setEnlargedTextEdit(null);
     setLinkFromNodeId(null);
@@ -1396,7 +1507,7 @@ function App() {
       };
     });
 
-    setSelectedNodeId(positionedNode.id);
+    setSelectedNodeIds([positionedNode.id]);
     setSelectedConnectionId(null);
     setEnlargedTextEdit(null);
     clearLinkDraft();
@@ -1446,17 +1557,83 @@ function App() {
     }
 
     const drag = dragRef.current;
-    if (!drag) return;
+    if (drag) {
+      const dx = (event.clientX - drag.startX) / canvasScale;
+      const dy = (event.clientY - drag.startY) / canvasScale;
 
-    const dx = (event.clientX - drag.startX) / canvasScale;
-    const dy = (event.clientY - drag.startY) / canvasScale;
-    const nextX = drag.originX + dx;
-    const nextY = drag.originY + dy;
+      updateActiveCanvas((doc) => ({
+        ...doc,
+        nodes: doc.nodes.map((node) => {
+          const origin = drag.origins[node.id];
+          if (!origin) return node;
+          return {
+            ...node,
+            x: origin.x + dx,
+            y: origin.y + dy,
+          };
+        }),
+      }));
+      return;
+    }
 
-    updateNode(drag.nodeId, { x: nextX, y: nextY });
+    const marquee = marqueeRef.current;
+    if (!marquee) return;
+
+    marquee.currentX = point.x;
+    marquee.currentY = point.y;
+
+    const moved =
+      Math.abs(marquee.currentX - marquee.startX) > 4 ||
+      Math.abs(marquee.currentY - marquee.startY) > 4;
+
+    if (moved && !marquee.active) {
+      marquee.active = true;
+    }
+
+    if (marquee.active) {
+      setSelectionMarquee({
+        startX: marquee.startX,
+        startY: marquee.startY,
+        currentX: marquee.currentX,
+        currentY: marquee.currentY,
+      });
+    }
   }
 
   function handleStagePointerUp(event) {
+    const marquee = marqueeRef.current;
+    if (marquee) {
+      const rect = normalizeSelectionRect(
+        marquee.startX,
+        marquee.startY,
+        marquee.currentX,
+        marquee.currentY
+      );
+
+      if (marquee.active) {
+        const hits = getNodesInSelectionRect(nodes, rect, DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT);
+        if (marquee.additive) {
+          setSelectedNodeIds((prev) => {
+            const next = new Set(prev);
+            hits.forEach((node) => next.add(node.id));
+            return [...next];
+          });
+        } else {
+          setSelectedNodeIds(hits.map((node) => node.id));
+        }
+        setSelectedConnectionId(null);
+        setInputHighlightNodeId(null);
+      } else if (!marquee.additive) {
+        setSelectedNodeIds([]);
+        setSelectedConnectionId(null);
+        setEnlargedTextEdit(null);
+        setInputHighlightNodeId(null);
+      }
+
+      marqueeRef.current = null;
+      setSelectionMarquee(null);
+    }
+
     dragRef.current = null;
     resizeRef.current = null;
     panRef.current = null;
@@ -1486,22 +1663,40 @@ function App() {
   function beginDrag(event, node) {
     event.preventDefault();
     event.stopPropagation();
-    setSelectedNodeId(node.id);
     setSelectedConnectionId(null);
     resizeRef.current = null;
+    marqueeRef.current = null;
+    setSelectionMarquee(null);
+
+    const dragNodeIds =
+      selectedNodeIds.includes(node.id) && selectedNodeIds.length > 1
+        ? selectedNodeIds
+        : [node.id];
+
+    if (!selectedNodeIds.includes(node.id)) {
+      setSelectedNodeIds([node.id]);
+    }
+
+    const origins = {};
+    dragNodeIds.forEach((nodeId) => {
+      const item = nodes.find((entry) => entry.id === nodeId);
+      if (item) {
+        origins[nodeId] = { x: item.x, y: item.y };
+      }
+    });
+
     dragRef.current = {
-      nodeId: node.id,
+      nodeIds: dragNodeIds,
       startX: event.clientX,
       startY: event.clientY,
-      originX: node.x,
-      originY: node.y,
+      origins,
     };
   }
 
   function beginResize(event, node) {
     event.preventDefault();
     event.stopPropagation();
-    setSelectedNodeId(node.id);
+    setSelectedNodeIds([node.id]);
     setSelectedConnectionId(null);
     dragRef.current = null;
     resizeRef.current = {
@@ -1530,27 +1725,48 @@ function App() {
     );
   }
 
-  function handleStagePointerDown(event) {
-    if (isStageBackgroundTarget(event)) {
-      setSelectedNodeId(null);
-      setSelectedConnectionId(null);
-      setEnlargedTextEdit(null);
-      setInputHighlightNodeId(null);
-      if (linkNodePicker || linkFromNodeId) clearLinkDraft();
+  function beginPan(event) {
+    panRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: viewportOffset.x,
+      originY: viewportOffset.y,
+    };
+    setIsPanning(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
 
-      panRef.current = {
-        startX: event.clientX,
-        startY: event.clientY,
-        originX: viewportOffset.x,
-        originY: viewportOffset.y,
-      };
-      setIsPanning(true);
-      event.currentTarget.setPointerCapture(event.pointerId);
+  function handleStagePointerDown(event) {
+    if (!isStageBackgroundTarget(event)) return;
+
+    setSelectedConnectionId(null);
+    setEnlargedTextEdit(null);
+    setInputHighlightNodeId(null);
+    if (linkNodePicker || linkFromNodeId) clearLinkDraft();
+
+    if (event.button === 1 || spaceKeyRef.current) {
+      beginPan(event);
+      return;
     }
+
+    if (event.button !== 0) return;
+
+    const point = getStagePoint(event);
+    if (!point) return;
+
+    marqueeRef.current = {
+      startX: point.x,
+      startY: point.y,
+      currentX: point.x,
+      currentY: point.y,
+      additive: event.shiftKey,
+      active: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function selectConnection(connectionId) {
-    setSelectedNodeId(null);
+    setSelectedNodeIds([]);
     setSelectedConnectionId(connectionId);
     setInputHighlightNodeId(null);
     clearLinkDraft();
@@ -1575,7 +1791,7 @@ function App() {
     documentsRef.current = backup;
     setDocuments(backup);
     setActiveCanvasId(backup[0].id);
-    setSelectedNodeId(null);
+    setSelectedNodeIds([]);
     setSelectedConnectionId(null);
     setEnlargedTextEdit(null);
     clearLinkDraft();
@@ -1613,7 +1829,7 @@ function App() {
 
         setDocuments(parsed);
         setActiveCanvasId(parsed[0].id);
-        setSelectedNodeId(null);
+        setSelectedNodeIds([]);
         setSelectedConnectionId(null);
         setEnlargedTextEdit(null);
         clearLinkDraft();
@@ -1706,6 +1922,10 @@ function App() {
         <KeyboardShortcutsModal onClose={() => setShowKeyboardShortcuts(false)} />
       ) : null}
 
+      {showCustomerService ? (
+        <CustomerServiceModal qrUrl={kefuQrUrl} onClose={() => setShowCustomerService(false)} />
+      ) : null}
+
       {linkNodePicker ? (
         <NodeTypePickerPopover
           screenX={linkNodePicker.screenX}
@@ -1743,12 +1963,13 @@ function App() {
           connectionsCount={connections.length}
           onRenameCanvas={renameCanvas}
           onOpenKeyboardShortcuts={() => setShowKeyboardShortcuts(true)}
+          onOpenCustomerService={() => setShowCustomerService(true)}
           cloudSyncStatus={cloudSyncStatus}
           cloudLastSyncedAt={cloudLastSyncedAt}
         />
 
         <section
-          className={`stage ${linkFromNodeId ? 'link-mode' : ''} ${isPanning ? 'is-panning' : ''} ${isResizing ? 'is-resizing' : ''}`}
+          className={`stage ${linkFromNodeId ? 'link-mode' : ''} ${isPanning ? 'is-panning' : ''} ${isResizing ? 'is-resizing' : ''} ${selectionMarquee ? 'is-marquee-selecting' : ''}`}
           ref={stageRef}
           style={{
             '--canvas-scale': canvasScale,
@@ -1771,11 +1992,24 @@ function App() {
               onSelectConnection={selectConnection}
             />
 
+            {selectionMarquee ? (
+              <div
+                className="selection-marquee"
+                style={{
+                  left: `${Math.min(selectionMarquee.startX, selectionMarquee.currentX)}px`,
+                  top: `${Math.min(selectionMarquee.startY, selectionMarquee.currentY)}px`,
+                  width: `${Math.abs(selectionMarquee.currentX - selectionMarquee.startX)}px`,
+                  height: `${Math.abs(selectionMarquee.currentY - selectionMarquee.startY)}px`,
+                }}
+              />
+            ) : null}
+
             {orderedNodes.map((node) => (
               <CanvasNode
                 key={node.id}
                 node={node}
-                isSelected={node.id === selectedNodeId}
+                isSelected={selectedNodeIds.includes(node.id)}
+                showToolbar={selectedNodeIds.length === 1 && selectedNodeIds[0] === node.id}
                 isRunning={isNodeActivelyRunning(node, runningNodeId)}
                 isTranslating={translatingNodeId === node.id}
                 textInputLinks={

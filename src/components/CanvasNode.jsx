@@ -34,6 +34,7 @@ import {
   normalizeImageModelSettings,
   normalizeVideoModelSettings,
   VEO_GENERATION_TYPE_OPTIONS,
+  PLACEHOLDER_IMAGE,
   VEO_REFERENCE_IMAGE_MAX,
   VIDEO_FAMILY_OPTIONS,
 } from '../lib/constants';
@@ -60,7 +61,8 @@ function NodeIcon({ type }) {
 function getImageDisplayImages(node) {
   const images = Array.isArray(node.images) && node.images.length > 0 ? node.images : [];
   if (images.length > 0) return images;
-  if (isImageContent(node.content)) return [node.content];
+  const content = String(node.content || '').trim();
+  if (content && content !== PLACEHOLDER_IMAGE && isImageContent(content)) return [content];
   return [];
 }
 
@@ -220,6 +222,7 @@ function ImageBody({
   isInputsHighlighted = false,
   onBeginDrag,
   onHighlightInputs,
+  onOpenAssetLibrary,
   onSyncOutputLayout,
 }) {
   const displayImages = getImageDisplayImages(node);
@@ -285,7 +288,22 @@ function ImageBody({
           </div>
         ))
       ) : (
-        <div className="image-empty">点击节点，在下方输入提示词生成图片</div>
+        <div className="image-empty">
+          <span>输入提示词生成图片</span>
+          {onOpenAssetLibrary ? (
+            <button
+              type="button"
+              className="image-empty-asset-link"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenAssetLibrary(node.id, 'output');
+              }}
+            >
+              从资产库选择
+            </button>
+          ) : null}
+        </div>
       )}
     </div>
   );
@@ -892,15 +910,26 @@ function ImageToolbar({
           onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
           placeholder="输入图片提示词"
         />
-        <button
-          className="prompt-asset-button"
-          onClick={() => onOpenAssetLibrary(node.id)}
-          disabled={isRunning}
-          title="从资产库选择"
-        >
-          <FolderOpen size={14} />
-          资产库
-        </button>
+        <div className="prompt-asset-actions">
+          <button
+            className="prompt-asset-button"
+            onClick={() => onOpenAssetLibrary(node.id, 'reference')}
+            disabled={isRunning}
+            title="从资产库选择参考图"
+          >
+            <FolderOpen size={14} />
+            参考图
+          </button>
+          <button
+            className="prompt-asset-button"
+            onClick={() => onOpenAssetLibrary(node.id, 'output')}
+            disabled={isRunning}
+            title="从资产库选择输出图片"
+          >
+            <FolderOpen size={14} />
+            输出图
+          </button>
+        </div>
       </div>
       <div className="image-options-row">
         <OptionSegment
@@ -1083,6 +1112,7 @@ function NoteToolbar({
 export function CanvasNode({
   node,
   isSelected,
+  showToolbar = false,
   isRunning,
   isTranslating,
   textInputLinks = [],
@@ -1125,7 +1155,7 @@ export function CanvasNode({
         height: node.height ?? DEFAULT_NODE_HEIGHT,
       }}
       onPointerDown={(event) => {
-        onSelectNode(node.id);
+        onSelectNode(node.id, { additive: event.shiftKey });
         onClearConnectionSelection();
         if (node.type === 'note') {
           onBeginDrag(event, node);
@@ -1246,6 +1276,7 @@ export function CanvasNode({
             isInputsHighlighted={isInputsHighlighted}
             onBeginDrag={onBeginDrag}
             onHighlightInputs={onHighlightInputs}
+            onOpenAssetLibrary={onOpenAssetLibrary}
             onSyncOutputLayout={onSyncImageOutputLayout}
           />
         ) : (
@@ -1260,7 +1291,7 @@ export function CanvasNode({
         )}
       </div>
 
-      {node.type === 'note' && isSelected ? (
+      {node.type === 'note' && showToolbar ? (
         <NoteToolbar
           node={node}
           isRunning={isRunning}
@@ -1269,7 +1300,7 @@ export function CanvasNode({
           onUpdateNode={onUpdateNode}
           onOpenTextEdit={onOpenTextEdit}
         />
-      ) : node.type === 'image' && isSelected ? (
+      ) : node.type === 'image' && showToolbar ? (
         <ImageToolbar
           node={node}
           isRunning={isRunning}
@@ -1281,7 +1312,7 @@ export function CanvasNode({
           onRemoveTextReference={onRemoveTextReference}
           onUpdateNode={onUpdateNode}
         />
-      ) : node.type === 'video' && isSelected ? (
+      ) : node.type === 'video' && showToolbar ? (
         <VideoToolbar
           node={node}
           isRunning={isRunning}
@@ -1297,7 +1328,7 @@ export function CanvasNode({
         />
       ) : null}
 
-      {node.type === 'note' && isSelected ? (
+      {node.type === 'note' && showToolbar ? (
         <button
           type="button"
           className="node-resize-handle"

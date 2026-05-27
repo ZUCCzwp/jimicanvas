@@ -227,3 +227,38 @@ export function duplicateNode(source, offsetX = 28, offsetY = 28) {
 
   return cloned;
 }
+
+export function getNodeBounds(node, fallbackWidth = DEFAULT_NODE_WIDTH, fallbackHeight = DEFAULT_NODE_HEIGHT) {
+  return {
+    x: Number(node?.x) || 0,
+    y: Number(node?.y) || 0,
+    width: Number(node?.width) || fallbackWidth,
+    height: Number(node?.height) || fallbackHeight,
+  };
+}
+
+export function normalizeSelectionRect(startX, startY, endX, endY) {
+  const x = Math.min(startX, endX);
+  const y = Math.min(startY, endY);
+  return {
+    x,
+    y,
+    width: Math.abs(endX - startX),
+    height: Math.abs(endY - startY),
+  };
+}
+
+export function rectsIntersect(a, b) {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
+}
+
+export function getNodesInSelectionRect(nodes, rect, fallbackWidth = DEFAULT_NODE_WIDTH, fallbackHeight = DEFAULT_NODE_HEIGHT) {
+  if (rect.width <= 0 && rect.height <= 0) return [];
+
+  return nodes.filter((node) => rectsIntersect(getNodeBounds(node, fallbackWidth, fallbackHeight), rect));
+}

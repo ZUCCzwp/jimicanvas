@@ -33,8 +33,13 @@ export const KEYBOARD_SHORTCUT_GROUPS = [
       },
       {
         id: 'pan-drag',
+        keys: ['Space', '拖拽空白区域'],
+        description: '按住空格并拖动平移画布',
+      },
+      {
+        id: 'marquee-select',
         keys: ['拖拽空白区域'],
-        description: '按住拖动平移画布',
+        description: '框选多个节点',
       },
       {
         id: 'zoom-in',
@@ -57,6 +62,16 @@ export const KEYBOARD_SHORTCUT_GROUPS = [
     id: 'nodes',
     title: '节点与连线',
     items: [
+      {
+        id: 'multi-select',
+        keys: ['Shift', '点击节点'],
+        description: '多选或取消选中节点',
+      },
+      {
+        id: 'multi-drag',
+        keys: ['拖拽已选节点'],
+        description: '整体移动框选的节点',
+      },
       {
         id: 'copy',
         keys: [formatModKey(), 'C'],
