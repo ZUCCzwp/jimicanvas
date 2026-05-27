@@ -12,6 +12,7 @@ import { ConnectionLayer } from './components/ConnectionLayer';
 import { FloatingDock } from './components/FloatingDock';
 import { CustomerServiceModal } from './components/CustomerServiceModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
+import { RechargeModal } from './components/RechargeModal';
 import { Topbar } from './components/Topbar';
 import { isEditableKeyboardTarget } from './lib/keyboardShortcuts';
 import {
@@ -57,6 +58,7 @@ import {
   saveCanvasDocumentsKeepalive,
 } from './lib/canvasApi';
 import { getStoredChatToken, runChatCompletion } from './lib/chatApi';
+import { fetchUserInfo } from './lib/userApi';
 import { fetchSiteConfig, getDefaultSiteSettings } from './lib/siteApi';
 import {
   createImageGenerationTask,
@@ -153,6 +155,13 @@ function App() {
     getStoredChatToken() ? 'loading' : 'offline'
   );
   const [cloudLastSyncedAt, setCloudLastSyncedAt] = useState(null);
+  const [userQuota, setUserQuota] = useState(() => ({
+    loading: Boolean(getStoredChatToken()),
+    remaining: null,
+    percentage: null,
+    profile: null,
+  }));
+  const [showRechargeModal, setShowRechargeModal] = useState(false);
   const [hydrationDone, setHydrationDone] = useState(false);
   const recoveredTaskKeysRef = useRef(new Set());
   const recoveryStartedRef = useRef(false);
@@ -174,6 +183,48 @@ function App() {
   useEffect(() => {
     viewportOffsetRef.current = viewportOffset;
   }, [viewportOffset]);
+
+  const refreshUserQuota = async () => {
+    const token = getStoredChatToken();
+    if (!token) {
+      setUserQuota({ loading: false, remaining: null, percentage: null, profile: null });
+      return;
+    }
+
+    setUserQuota((prev) => ({
+      ...prev,
+      loading: true,
+    }));
+
+    try {
+      const info = await fetchUserInfo(token);
+      setUserQuota({
+        loading: false,
+        remaining: info.remaining,
+        percentage: info.percentage,
+        profile: info.profile || null,
+      });
+    } catch {
+      setUserQuota((prev) => ({
+        ...prev,
+        loading: false,
+      }));
+    }
+  };
+
+  useEffect(() => {
+    refreshUserQuota();
+  }, []);
+
+  function openRechargeModal() {
+    const token = getStoredChatToken();
+    if (!token) {
+      const requested = getOrRequestToken();
+      if (!requested) return;
+    }
+    refreshUserQuota();
+    setShowRechargeModal(true);
+  }
 
   const flushPersist = async () => {
     writeStorage(documentsRef.current);
@@ -949,6 +1000,7 @@ function App() {
           flushPersist();
         } finally {
           setRunningNodeId((current) => (current === node.id ? null : current));
+          refreshUserQuota();
         }
       })();
     });
@@ -969,6 +1021,7 @@ function App() {
       if (input) {
         token = String(input).trim();
         window.localStorage.setItem(JIMIAIGO_TOKEN_STORAGE_KEY, token);
+        refreshUserQuota();
       }
     }
     return token;
@@ -1110,6 +1163,7 @@ function App() {
       } else {
         setRunningNodeId(null);
       }
+      refreshUserQuota();
     }
   }
 
@@ -1176,6 +1230,7 @@ function App() {
       flushPersist();
     } finally {
       setRunningNodeId(null);
+      refreshUserQuota();
     }
   }
 
@@ -1247,6 +1302,7 @@ function App() {
       flushPersist();
     } finally {
       setRunningNodeId(null);
+      refreshUserQuota();
     }
   }
 
@@ -1997,6 +2053,15 @@ function App() {
         />
       ) : null}
 
+      {showRechargeModal ? (
+        <RechargeModal
+          isOpen={showRechargeModal}
+          user={userQuota.profile}
+          onClose={() => setShowRechargeModal(false)}
+          onSuccess={refreshUserQuota}
+        />
+      ) : null}
+
       {linkNodePicker ? (
         <NodeTypePickerPopover
           screenX={linkNodePicker.screenX}
@@ -2042,6 +2107,11 @@ function App() {
           onOpenCustomerService={() => setShowCustomerService(true)}
           cloudSyncStatus={cloudSyncStatus}
           cloudLastSyncedAt={cloudLastSyncedAt}
+          quotaVisible={Boolean(getStoredChatToken())}
+          quotaLoading={Boolean(getStoredChatToken()) && userQuota.loading}
+          quotaRemaining={userQuota.remaining}
+          quotaPercentage={userQuota.percentage}
+          onRecharge={openRechargeModal}
         />
 
         <section

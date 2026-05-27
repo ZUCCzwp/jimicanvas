@@ -7,8 +7,10 @@ import {
   Keyboard,
   Loader2,
   MessageCircle,
+  Wallet,
   Wand2,
 } from 'lucide-react';
+import { formatBalanceAmount } from '../lib/userApi';
 
 const CLOUD_SYNC_META = {
   offline: {
@@ -79,6 +81,11 @@ export function Topbar({
   onOpenCustomerService,
   cloudSyncStatus = 'offline',
   cloudLastSyncedAt = null,
+  quotaVisible = false,
+  quotaLoading = false,
+  quotaRemaining = null,
+  quotaPercentage = null,
+  onRecharge,
 }) {
   const cloudMeta = CLOUD_SYNC_META[cloudSyncStatus] || CLOUD_SYNC_META.offline;
   const CloudIcon = cloudMeta.Icon;
@@ -128,6 +135,50 @@ export function Topbar({
 
       <div className="topbar-meta">
         <div className="toolbar-row">
+          {quotaVisible ? (
+            <span
+              className={`quota-chip ${
+                quotaPercentage != null && quotaPercentage <= 5
+                  ? 'quota-chip-critical'
+                  : quotaPercentage != null && quotaPercentage <= 20
+                    ? 'quota-chip-low'
+                    : ''
+              }`}
+              title={
+                quotaLoading
+                  ? '正在加载个人额度'
+                  : quotaPercentage != null
+                    ? `剩余额度 ${quotaPercentage}%（${formatBalanceAmount(quotaRemaining ?? 0)}）`
+                    : `剩余额度 ${formatBalanceAmount(quotaRemaining ?? 0)}`
+              }
+            >
+              {quotaLoading ? (
+                <Loader2 size={14} aria-hidden="true" className="sync-chip-spin" />
+              ) : (
+                <Wallet size={14} aria-hidden="true" />
+              )}
+              <span className="quota-chip-label">
+                {quotaLoading ? '额度加载中' : formatBalanceAmount(quotaRemaining ?? 0)}
+              </span>
+              {!quotaLoading && quotaPercentage != null ? (
+                <span className="quota-chip-hint">{quotaPercentage}%</span>
+              ) : null}
+            </span>
+          ) : null}
+
+          {onRecharge ? (
+            <button
+              type="button"
+              className="topbar-shortcuts-button topbar-recharge-button"
+              onClick={onRecharge}
+              title="前往充值"
+              aria-label="充值"
+            >
+              <Wallet size={15} aria-hidden="true" />
+              <span>充值</span>
+            </button>
+          ) : null}
+
           <button
             type="button"
             className="topbar-shortcuts-button"

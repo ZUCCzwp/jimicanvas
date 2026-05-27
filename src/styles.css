@@ -2012,6 +2012,61 @@ button {
   color: #f8fafc;
 }
 
+.quota-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  color: #a7f3d0;
+  background: rgba(16, 185, 129, 0.1);
+  font-size: 12px;
+}
+
+.quota-chip-label {
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-chip-hint {
+  color: inherit;
+  opacity: 0.72;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.quota-chip-hint::before {
+  content: '·';
+  margin: 0 4px 0 2px;
+  opacity: 0.5;
+}
+
+.quota-chip-low {
+  border-color: rgba(251, 191, 36, 0.28);
+  color: #fde68a;
+  background: rgba(120, 53, 15, 0.22);
+}
+
+.quota-chip-critical {
+  border-color: rgba(248, 113, 113, 0.28);
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.22);
+}
+
+.topbar-recharge-button {
+  border-color: rgba(16, 185, 129, 0.28);
+  color: #a7f3d0;
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.topbar-recharge-button:hover {
+  border-color: rgba(52, 211, 153, 0.45);
+  color: #ecfdf5;
+  background: rgba(16, 185, 129, 0.22);
+}
+
 .topbar-shortcuts-button {
   display: inline-flex;
   align-items: center;
@@ -2178,6 +2233,380 @@ button {
   font-size: 13px;
   line-height: 1.5;
   text-align: center;
+}
+
+.recharge-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.recharge-modal {
+  width: min(960px, 100%);
+  max-height: min(860px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.98);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.48);
+}
+
+.recharge-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(2, 6, 23, 0.35);
+}
+
+.recharge-modal-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+}
+
+.recharge-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.recharge-mode-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  margin-bottom: 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(2, 6, 23, 0.45);
+}
+
+.recharge-mode-tabs button {
+  flex: 1;
+  min-height: 38px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.recharge-mode-tabs button.active {
+  color: #f8fafc;
+  background: rgba(30, 41, 59, 0.95);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.2);
+}
+
+.recharge-modal-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(260px, 1fr);
+  gap: 20px;
+}
+
+.recharge-modal-main,
+.recharge-modal-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.recharge-step-label {
+  margin: 0 0 8px;
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.recharge-pay-options {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.recharge-pay-options.is-multi {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.recharge-pay-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 14px;
+  border: 2px solid rgba(148, 163, 184, 0.14);
+  background: rgba(2, 6, 23, 0.35);
+  color: #cbd5e1;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+
+.recharge-pay-option strong,
+.recharge-pay-option span span {
+  display: block;
+}
+
+.recharge-pay-option strong {
+  color: #f8fafc;
+  font-size: 13px;
+}
+
+.recharge-pay-option span span {
+  margin-top: 2px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.recharge-pay-option-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.recharge-pay-option.is-active.recharge-pay-option-alipay {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(120, 53, 15, 0.22);
+  color: #fde68a;
+}
+
+.recharge-pay-option.is-active.recharge-pay-option-wechat {
+  border-color: rgba(52, 211, 153, 0.4);
+  background: rgba(6, 78, 59, 0.22);
+  color: #a7f3d0;
+}
+
+.recharge-amount-control {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 2px solid rgba(251, 191, 36, 0.28);
+  background: rgba(2, 6, 23, 0.45);
+}
+
+.recharge-amount-control button {
+  width: 52px;
+  height: 52px;
+  border: 0;
+  background: transparent;
+  color: #fbbf24;
+  font-size: 24px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.recharge-amount-control input {
+  flex: 1;
+  min-width: 0;
+  height: 52px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #f8fafc;
+  font-size: 20px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.recharge-hint {
+  margin: 8px 0 14px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.recharge-submit-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  border-radius: 14px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.recharge-submit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.recharge-submit-button.is-alipay {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+
+.recharge-submit-button.is-wechat {
+  background: linear-gradient(135deg, #059669, #047857);
+}
+
+.recharge-submit-button.is-redeem {
+  background: linear-gradient(135deg, #f59e0b, #ea580c);
+}
+
+.recharge-redeem-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.recharge-redeem-tip {
+  color: #fbbf24;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.recharge-redeem-input {
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 2px solid rgba(148, 163, 184, 0.14);
+  background: rgba(2, 6, 23, 0.35);
+  color: #f8fafc;
+  font-size: 15px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  outline: none;
+}
+
+.recharge-redeem-input:focus {
+  border-color: rgba(245, 158, 11, 0.45);
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.12);
+}
+
+.recharge-side-card {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(2, 6, 23, 0.35);
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.recharge-side-card.is-highlight {
+  border-color: rgba(251, 191, 36, 0.24);
+  background: rgba(120, 53, 15, 0.18);
+  color: #fde68a;
+}
+
+.recharge-side-card.is-highlight strong {
+  color: #fff;
+  font-size: 16px;
+}
+
+.recharge-side-card ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.recharge-side-card li + li {
+  margin-top: 4px;
+}
+
+.recharge-balance-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.recharge-balance-row span {
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.recharge-balance-row strong {
+  color: #34d399;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.recharge-side-label {
+  margin: 0 0 6px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.recharge-qr-card {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px dashed rgba(251, 191, 36, 0.35);
+  background: rgba(120, 53, 15, 0.14);
+  text-align: center;
+}
+
+.recharge-qr-card p {
+  margin: 0 0 10px;
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.recharge-qr-image {
+  width: 220px;
+  height: 220px;
+  border-radius: 12px;
+  background: #fff;
+  padding: 8px;
+}
+
+.recharge-qr-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.recharge-order-no {
+  display: block;
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+@media (max-width: 860px) {
+  .recharge-modal-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .recharge-pay-options.is-multi {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .text-edit-modal {
