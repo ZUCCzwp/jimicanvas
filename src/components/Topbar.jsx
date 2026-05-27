@@ -7,7 +7,6 @@ import {
   Keyboard,
   Loader2,
   MessageCircle,
-  SquarePen,
   Wand2,
 } from 'lucide-react';
 
@@ -68,9 +67,14 @@ function formatSyncedAt(timestamp) {
 
 export function Topbar({
   activeCanvas,
+  siteTitle,
+  siteSlogan,
+  siteLogoUrl,
   nodesCount,
   connectionsCount,
+  showCanvasPanel = false,
   onRenameCanvas,
+  onToggleCanvasPanel,
   onOpenKeyboardShortcuts,
   onOpenCustomerService,
   cloudSyncStatus = 'offline',
@@ -86,27 +90,43 @@ export function Topbar({
   return (
     <header className="topbar">
       <div className="topbar-brand">
-        <div className="brand-mark">
-          <Wand2 size={18} />
-        </div>
+        <button
+          type="button"
+          className={`brand-mark-button ${showCanvasPanel ? 'active' : ''}`}
+          onClick={onToggleCanvasPanel}
+          title="画布管理：新增、切换、删除画布"
+          aria-label="画布管理"
+          aria-expanded={showCanvasPanel}
+        >
+          <span className={`brand-mark ${siteLogoUrl ? 'has-logo' : ''}`}>
+            {siteLogoUrl ? (
+              <img src={siteLogoUrl} alt={siteTitle || '网站 Logo'} className="brand-mark-logo" />
+            ) : (
+              <Wand2 size={18} />
+            )}
+          </span>
+        </button>
+
         <div className="brand-copy">
-          <strong>JimiCanvas</strong>
-          <span>轻量画布工作台</span>
+          <strong>{siteTitle}</strong>
+          {siteSlogan ? <span>{siteSlogan}</span> : null}
         </div>
+
+        <span className="topbar-divider" aria-hidden="true" />
+
+        <input
+          className="canvas-name"
+          value={activeCanvas?.name || ''}
+          onChange={(event) => onRenameCanvas(event.target.value)}
+          placeholder="画布名称"
+          aria-label="画布名称"
+        />
+
+        <span className="meta-pill">{nodesCount} 节点</span>
+        <span className="meta-pill">{connectionsCount} 连线</span>
       </div>
 
       <div className="topbar-meta">
-        <div className="canvas-meta">
-          <SquarePen size={16} />
-          <input
-            className="canvas-name"
-            value={activeCanvas?.name || ''}
-            onChange={(event) => onRenameCanvas(event.target.value)}
-          />
-          <span className="meta-pill">{nodesCount} 节点</span>
-          <span className="meta-pill">{connectionsCount} 连线</span>
-        </div>
-
         <div className="toolbar-row">
           <button
             type="button"

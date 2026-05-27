@@ -7,6 +7,7 @@ import { TextEditModal } from './components/TextEditModal';
 import { CanvasNode } from './components/CanvasNode';
 import { CanvasPanel } from './components/CanvasPanel';
 import { CanvasZoomControls } from './components/CanvasZoomControls';
+import { FocusContentPrompt } from './components/FocusContentPrompt';
 import { ConnectionLayer } from './components/ConnectionLayer';
 import { FloatingDock } from './components/FloatingDock';
 import { CustomerServiceModal } from './components/CustomerServiceModal';
@@ -34,7 +35,10 @@ import {
   createDocument,
   createNode,
   duplicateNode,
+  computeViewportFocusForNodes,
   getNodesInSelectionRect,
+  getViewportRectInCanvas,
+  hasVisibleNodesInViewport,
   normalizeSelectionRect,
   snapScale,
   uid,
@@ -53,7 +57,7 @@ import {
   saveCanvasDocumentsKeepalive,
 } from './lib/canvasApi';
 import { getStoredChatToken, runChatCompletion } from './lib/chatApi';
-import { fetchSiteKefuQrUrl } from './lib/siteApi';
+import { fetchSiteConfig, getDefaultSiteSettings } from './lib/siteApi';
 import {
   createImageGenerationTask,
   getAssetList,
@@ -105,6 +109,7 @@ function App() {
   const [pointerPos, setPointerPos] = useState({ x: 0, y: 0 });
   const [canvasScale, setCanvasScale] = useState(1);
   const [viewportOffset, setViewportOffset] = useState({ x: 0, y: 0 });
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [importError, setImportError] = useState('');
@@ -115,7 +120,7 @@ function App() {
   const [showCanvasPanel, setShowCanvasPanel] = useState(false);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [showCustomerService, setShowCustomerService] = useState(false);
-  const [kefuQrUrl, setKefuQrUrl] = useState('');
+  const [siteSettings, setSiteSettings] = useState(getDefaultSiteSettings);
   const [assetPicker, setAssetPicker] = useState({
     nodeId: null,
     pickMode: 'reference',
@@ -376,9 +381,20 @@ function App() {
   useEffect(() => {
     let cancelled = false;
 
-    fetchSiteKefuQrUrl().then((url) => {
-      if (!cancelled && url) {
-        setKefuQrUrl(url);
+    fetchSiteConfig().then((settings) => {
+      if (cancelled) return;
+      setSiteSettings(settings);
+      if (settings.title) {
+        document.title = settings.title;
+      }
+      if (settings.logoUrl) {
+        let link = document.querySelector('link[rel*="icon"]');
+        if (!link) {
+          link = document.createElement('link');
+          link.rel = 'icon';
+          document.head.appendChild(link);
+        }
+        link.href = settings.logoUrl;
       }
     });
 
@@ -390,6 +406,26 @@ function App() {
   useEffect(() => {
     setViewportOffset({ x: 0, y: 0 });
   }, [activeCanvasId]);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return undefined;
+
+    const updateStageSize = () => {
+      const rect = stage.getBoundingClientRect();
+      setStageSize({ width: rect.width, height: rect.height });
+    };
+
+    updateStageSize();
+    const observer = new ResizeObserver(updateStageSize);
+    observer.observe(stage);
+    window.addEventListener('resize', updateStageSize);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateStageSize);
+    };
+  }, []);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -490,6 +526,10 @@ function App() {
           setShowKeyboardShortcuts(false);
           return;
         }
+        if (showCanvasPanel) {
+          setShowCanvasPanel(false);
+          return;
+        }
         setLinkFromNodeId(null);
         setHoverLinkNodeId(null);
         setLinkNodePicker(null);
@@ -572,7 +612,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedConnectionId, selectedNodeIds, showCustomerService, showKeyboardShortcuts]);
+  }, [selectedConnectionId, selectedNodeIds, showCanvasPanel, showCustomerService, showKeyboardShortcuts]);
 
   const activeCanvas = documents.find((doc) => doc.id === activeCanvasId) || documents[0];
   const nodes = activeCanvas?.nodes || [];
@@ -594,6 +634,19 @@ function App() {
     ];
   }, [nodes, selectedNodeIds]);
   const canvasScalePercent = Math.round(canvasScale * 100);
+  const showFocusContentPrompt = useMemo(() => {
+    if (nodes.length === 0 || stageSize.width <= 0 || stageSize.height <= 0) return false;
+
+    const viewportRect = getViewportRectInCanvas(
+      stageSize.width,
+      stageSize.height,
+      canvasScale,
+      viewportOffset.x,
+      viewportOffset.y
+    );
+
+    return !hasVisibleNodesInViewport(nodes, viewportRect);
+  }, [canvasScale, nodes, stageSize.height, stageSize.width, viewportOffset.x, viewportOffset.y]);
   const enlargedTextEditNode =
     enlargedTextEdit &&
     nodes.find((node) => node.id === enlargedTextEdit.nodeId && node.type === 'note');
@@ -608,6 +661,19 @@ function App() {
 
   function resetCanvasScale() {
     setCanvasScale(1);
+  }
+
+  function focusViewportOnContent() {
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const next = computeViewportFocusForNodes(nodes, rect.width, rect.height, {
+      minScale: MIN_CANVAS_SCALE,
+      maxScale: MAX_CANVAS_SCALE,
+    });
+
+    setCanvasScaleClamped(next.scale);
+    setViewportOffset({ x: next.offsetX, y: next.offsetY });
   }
 
   function getStagePoint(event) {
@@ -1847,27 +1913,29 @@ function App() {
       <input ref={fileInputRef} type="file" accept="application/json" hidden onChange={handleImport} />
 
       <FloatingDock
-        activeCanvas={activeCanvas}
-        showCanvasPanel={showCanvasPanel}
-        onToggleCanvasPanel={() => setShowCanvasPanel((value) => !value)}
         onAddNode={addNode}
         onImport={triggerImport}
         onExport={exportJson}
       />
 
       {showCanvasPanel ? (
-        <CanvasPanel
-          documents={documents}
-          activeCanvas={activeCanvas}
-          activeCanvasId={activeCanvasId}
-          onCreateCanvas={createCanvas}
-          onRenameCanvas={renameCanvas}
-          onSelectCanvas={selectCanvas}
-          onDeleteCanvas={deleteCanvas}
-          onRestoreBackup={restoreStorageBackup}
-          hasStorageBackup={hasStorageBackup() && isBackupDifferentFrom(documents)}
-          onClose={() => setShowCanvasPanel(false)}
-        />
+        <>
+          <div
+            className="canvas-panel-backdrop"
+            onPointerDown={() => setShowCanvasPanel(false)}
+            aria-hidden="true"
+          />
+          <CanvasPanel
+            documents={documents}
+            activeCanvasId={activeCanvasId}
+            onCreateCanvas={createCanvas}
+            onSelectCanvas={selectCanvas}
+            onDeleteCanvas={deleteCanvas}
+            onRestoreBackup={restoreStorageBackup}
+            hasStorageBackup={hasStorageBackup() && isBackupDifferentFrom(documents)}
+            onClose={() => setShowCanvasPanel(false)}
+          />
+        </>
       ) : null}
 
       {importError ? <div className="toast-error">{importError}</div> : null}
@@ -1923,7 +1991,10 @@ function App() {
       ) : null}
 
       {showCustomerService ? (
-        <CustomerServiceModal qrUrl={kefuQrUrl} onClose={() => setShowCustomerService(false)} />
+        <CustomerServiceModal
+          qrUrl={siteSettings.kefuQrUrl}
+          onClose={() => setShowCustomerService(false)}
+        />
       ) : null}
 
       {linkNodePicker ? (
@@ -1959,9 +2030,14 @@ function App() {
       <main className="workspace">
         <Topbar
           activeCanvas={activeCanvas}
+          siteTitle={siteSettings.title}
+          siteSlogan={siteSettings.slogan}
+          siteLogoUrl={siteSettings.logoUrl}
           nodesCount={nodes.length}
           connectionsCount={connections.length}
+          showCanvasPanel={showCanvasPanel}
           onRenameCanvas={renameCanvas}
+          onToggleCanvasPanel={() => setShowCanvasPanel((value) => !value)}
           onOpenKeyboardShortcuts={() => setShowKeyboardShortcuts(true)}
           onOpenCustomerService={() => setShowCustomerService(true)}
           cloudSyncStatus={cloudSyncStatus}
@@ -2050,6 +2126,10 @@ function App() {
               />
             ))}
           </div>
+
+          {showFocusContentPrompt ? (
+            <FocusContentPrompt nodeCount={nodes.length} onFocus={focusViewportOnContent} />
+          ) : null}
 
           <CanvasZoomControls
             canvasScalePercent={canvasScalePercent}

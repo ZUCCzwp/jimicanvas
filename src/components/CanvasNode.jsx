@@ -219,6 +219,7 @@ function applyImageNodeLayout(node, displayImages, onSyncOutputLayout, aspectWid
 function ImageBody({
   node,
   isRunning,
+  showOutputActions = false,
   isInputsHighlighted = false,
   onBeginDrag,
   onHighlightInputs,
@@ -276,6 +277,22 @@ function ImageBody({
         onBeginDrag(event, node);
       }}
     >
+      {showOutputActions && onOpenAssetLibrary ? (
+        <button
+          type="button"
+          className="image-output-asset-button"
+          title="从资产库选择输出图"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenAssetLibrary(node.id, 'output');
+          }}
+        >
+          <FolderOpen size={12} />
+          <span>输出图</span>
+        </button>
+      ) : null}
+
       {displayImages.length > 0 ? (
         displayImages.map((imageUrl, index) => (
           <div className="image-output-thumb" key={`${imageUrl}-${index}`}>
@@ -290,19 +307,6 @@ function ImageBody({
       ) : (
         <div className="image-empty">
           <span>输入提示词生成图片</span>
-          {onOpenAssetLibrary ? (
-            <button
-              type="button"
-              className="image-empty-asset-link"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                onOpenAssetLibrary(node.id, 'output');
-              }}
-            >
-              从资产库选择
-            </button>
-          ) : null}
         </div>
       )}
     </div>
@@ -910,26 +914,15 @@ function ImageToolbar({
           onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
           placeholder="输入图片提示词"
         />
-        <div className="prompt-asset-actions">
-          <button
-            className="prompt-asset-button"
-            onClick={() => onOpenAssetLibrary(node.id, 'reference')}
-            disabled={isRunning}
-            title="从资产库选择参考图"
-          >
-            <FolderOpen size={14} />
-            参考图
-          </button>
-          <button
-            className="prompt-asset-button"
-            onClick={() => onOpenAssetLibrary(node.id, 'output')}
-            disabled={isRunning}
-            title="从资产库选择输出图片"
-          >
-            <FolderOpen size={14} />
-            输出图
-          </button>
-        </div>
+        <button
+          className="prompt-asset-button"
+          onClick={() => onOpenAssetLibrary(node.id, 'reference')}
+          disabled={isRunning}
+          title="从资产库选择参考图"
+        >
+          <FolderOpen size={14} />
+          参考图
+        </button>
       </div>
       <div className="image-options-row">
         <OptionSegment
@@ -1273,6 +1266,7 @@ export function CanvasNode({
           <ImageBody
             node={node}
             isRunning={isRunning}
+            showOutputActions={showToolbar}
             isInputsHighlighted={isInputsHighlighted}
             onBeginDrag={onBeginDrag}
             onHighlightInputs={onHighlightInputs}

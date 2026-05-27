@@ -2,10 +2,8 @@ import { Plus, RotateCcw, SquarePen, Trash2, X } from 'lucide-react';
 
 export function CanvasPanel({
   documents,
-  activeCanvas,
   activeCanvasId,
   onCreateCanvas,
-  onRenameCanvas,
   onSelectCanvas,
   onDeleteCanvas,
   onRestoreBackup,
@@ -28,11 +26,6 @@ export function CanvasPanel({
           </button>
         </div>
       </header>
-
-      <div className="current-canvas">
-        <span>当前画布</span>
-        <input value={activeCanvas?.name || ''} onChange={(event) => onRenameCanvas(event.target.value)} />
-      </div>
 
       {hasStorageBackup ? (
         <button type="button" className="canvas-restore-backup" onClick={onRestoreBackup}>

@@ -4,29 +4,11 @@ import {
   FileUp,
   Film,
   Image as ImageIcon,
-  SquarePen,
 } from 'lucide-react';
 
-export function FloatingDock({
-  activeCanvas,
-  showCanvasPanel,
-  onToggleCanvasPanel,
-  onAddNode,
-  onImport,
-  onExport,
-}) {
+export function FloatingDock({ onAddNode, onImport, onExport }) {
   return (
     <aside className="floating-dock" onPointerDown={(event) => event.stopPropagation()}>
-      <button
-        className={`dock-button canvas-toggle ${showCanvasPanel ? 'active' : ''}`}
-        onClick={onToggleCanvasPanel}
-        title={activeCanvas?.name || '画布管理'}
-      >
-        <SquarePen size={18} />
-      </button>
-
-      <div className="dock-divider" />
-
       <button className="dock-button" onClick={() => onAddNode('note')} title="文本节点">
         <FileText size={18} />
       </button>

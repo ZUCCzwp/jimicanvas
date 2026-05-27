@@ -22,6 +22,8 @@ import {
   DEFAULT_VIDEO_ROUTE,
   DEFAULT_VIDEO_URL,
   PLACEHOLDER_IMAGE,
+  MIN_CANVAS_SCALE,
+  MAX_CANVAS_SCALE,
 } from './constants';
 import { computeImageOutputSize, parseRatioValue } from './imageNodeLayout';
 import { buildVideoNodeLayoutPatch } from './videoNodeLayout';
@@ -261,4 +263,92 @@ export function getNodesInSelectionRect(nodes, rect, fallbackWidth = DEFAULT_NOD
   if (rect.width <= 0 && rect.height <= 0) return [];
 
   return nodes.filter((node) => rectsIntersect(getNodeBounds(node, fallbackWidth, fallbackHeight), rect));
+}
+
+export function getNodesContentBounds(
+  nodes,
+  fallbackWidth = DEFAULT_NODE_WIDTH,
+  fallbackHeight = DEFAULT_NODE_HEIGHT
+) {
+  if (!Array.isArray(nodes) || nodes.length === 0) return null;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  nodes.forEach((node) => {
+    const bounds = getNodeBounds(node, fallbackWidth, fallbackHeight);
+    minX = Math.min(minX, bounds.x);
+    minY = Math.min(minY, bounds.y);
+    maxX = Math.max(maxX, bounds.x + bounds.width);
+    maxY = Math.max(maxY, bounds.y + bounds.height);
+  });
+
+  if (!Number.isFinite(minX)) return null;
+
+  const width = Math.max(1, maxX - minX);
+  const height = Math.max(1, maxY - minY);
+
+  return {
+    x: minX,
+    y: minY,
+    width,
+    height,
+    centerX: minX + width / 2,
+    centerY: minY + height / 2,
+  };
+}
+
+export function getViewportRectInCanvas(stageWidth, stageHeight, scale, offsetX, offsetY) {
+  const safeScale = Math.max(scale, 0.0001);
+  return {
+    x: -offsetX / safeScale,
+    y: -offsetY / safeScale,
+    width: stageWidth / safeScale,
+    height: stageHeight / safeScale,
+  };
+}
+
+export function hasVisibleNodesInViewport(
+  nodes,
+  viewportRect,
+  fallbackWidth = DEFAULT_NODE_WIDTH,
+  fallbackHeight = DEFAULT_NODE_HEIGHT
+) {
+  if (!Array.isArray(nodes) || nodes.length === 0) return false;
+
+  return nodes.some((node) =>
+    rectsIntersect(getNodeBounds(node, fallbackWidth, fallbackHeight), viewportRect)
+  );
+}
+
+export function computeViewportFocusForNodes(
+  nodes,
+  stageWidth,
+  stageHeight,
+  {
+    padding = 96,
+    minScale = MIN_CANVAS_SCALE,
+    maxScale = MAX_CANVAS_SCALE,
+    fallbackWidth = DEFAULT_NODE_WIDTH,
+    fallbackHeight = DEFAULT_NODE_HEIGHT,
+  } = {}
+) {
+  const bounds = getNodesContentBounds(nodes, fallbackWidth, fallbackHeight);
+  if (!bounds || stageWidth <= 0 || stageHeight <= 0) {
+    return { scale: 1, offsetX: 0, offsetY: 0 };
+  }
+
+  const paddedWidth = Math.max(bounds.width + padding * 2, 320);
+  const paddedHeight = Math.max(bounds.height + padding * 2, 240);
+  const scaleX = stageWidth / paddedWidth;
+  const scaleY = stageHeight / paddedHeight;
+  const scale = clampValue(Math.min(scaleX, scaleY, maxScale), minScale, maxScale);
+
+  return {
+    scale: snapScale(scale),
+    offsetX: stageWidth / 2 - bounds.centerX * scale,
+    offsetY: stageHeight / 2 - bounds.centerY * scale,
+  };
 }
