@@ -9,12 +9,15 @@ import { CanvasPanel } from './components/CanvasPanel';
 import { CanvasZoomControls } from './components/CanvasZoomControls';
 import { ConnectionLayer } from './components/ConnectionLayer';
 import { FloatingDock } from './components/FloatingDock';
+import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { Topbar } from './components/Topbar';
+import { isEditableKeyboardTarget } from './lib/keyboardShortcuts';
 import {
   DEFAULT_NODE_HEIGHT,
   DEFAULT_NODE_WIDTH,
   JIMIAIGO_TOKEN_STORAGE_KEY,
   CANVAS_GRID_CELL_SIZE,
+  CANVAS_SCALE_STEP,
   CANVAS_WHEEL_PAN_FACTOR,
   CLOUD_SYNC_DEBOUNCE_MS,
   MAX_CANVAS_SCALE,
@@ -104,6 +107,7 @@ function App() {
   const [translatingNodeId, setTranslatingNodeId] = useState(null);
   const [uploadingNodeId, setUploadingNodeId] = useState(null);
   const [showCanvasPanel, setShowCanvasPanel] = useState(false);
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [assetPicker, setAssetPicker] = useState({
     nodeId: null,
     pickMode: 'reference',
@@ -424,14 +428,13 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (event) => {
-      const target = event.target;
-      const isEditableTarget =
-        target instanceof HTMLElement &&
-        (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
-
-      if (isEditableTarget) return;
+      if (isEditableKeyboardTarget(event.target)) return;
 
       if (event.key === 'Escape') {
+        if (showKeyboardShortcuts) {
+          setShowKeyboardShortcuts(false);
+          return;
+        }
         setLinkFromNodeId(null);
         setHoverLinkNodeId(null);
         setLinkNodePicker(null);
@@ -440,6 +443,13 @@ function App() {
         setImagePreview(null);
         setVideoPreview(null);
         setSelectedConnectionId(null);
+        return;
+      }
+
+      if (event.key === '?' || (event.key === '/' && event.shiftKey)) {
+        event.preventDefault();
+        setShowKeyboardShortcuts(true);
+        return;
       }
 
       const isMeta = event.metaKey || event.ctrlKey;
@@ -461,6 +471,36 @@ function App() {
         return;
       }
 
+      if (isMeta && key === 'd' && selectedNodeId) {
+        event.preventDefault();
+        duplicateNodeById(selectedNodeId);
+        return;
+      }
+
+      if (isMeta && key === '0') {
+        event.preventDefault();
+        resetCanvasScale();
+        return;
+      }
+
+      if (isMeta && (key === '=' || key === '+' || key === '-')) {
+        event.preventDefault();
+        zoomCanvas(key === '-' ? -CANVAS_SCALE_STEP : CANVAS_SCALE_STEP);
+        return;
+      }
+
+      if (!isMeta && (event.key === '=' || event.key === '+')) {
+        event.preventDefault();
+        zoomCanvas(CANVAS_SCALE_STEP);
+        return;
+      }
+
+      if (!isMeta && event.key === '-') {
+        event.preventDefault();
+        zoomCanvas(-CANVAS_SCALE_STEP);
+        return;
+      }
+
       if ((event.key === 'Delete' || event.key === 'Backspace') && selectedConnectionId) {
         event.preventDefault();
         removeConnection(selectedConnectionId);
@@ -475,7 +515,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedConnectionId, selectedNodeId]);
+  }, [selectedConnectionId, selectedNodeId, showKeyboardShortcuts]);
 
   const activeCanvas = documents.find((doc) => doc.id === activeCanvasId) || documents[0];
   const nodes = activeCanvas?.nodes || [];
@@ -1662,6 +1702,10 @@ function App() {
         />
       ) : null}
 
+      {showKeyboardShortcuts ? (
+        <KeyboardShortcutsModal onClose={() => setShowKeyboardShortcuts(false)} />
+      ) : null}
+
       {linkNodePicker ? (
         <NodeTypePickerPopover
           screenX={linkNodePicker.screenX}
@@ -1698,6 +1742,7 @@ function App() {
           nodesCount={nodes.length}
           connectionsCount={connections.length}
           onRenameCanvas={renameCanvas}
+          onOpenKeyboardShortcuts={() => setShowKeyboardShortcuts(true)}
           cloudSyncStatus={cloudSyncStatus}
           cloudLastSyncedAt={cloudLastSyncedAt}
         />

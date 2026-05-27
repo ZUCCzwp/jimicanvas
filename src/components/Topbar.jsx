@@ -4,6 +4,7 @@ import {
   Cloud,
   CloudOff,
   CloudUpload,
+  Keyboard,
   Loader2,
   SquarePen,
   Wand2,
@@ -69,6 +70,7 @@ export function Topbar({
   nodesCount,
   connectionsCount,
   onRenameCanvas,
+  onOpenKeyboardShortcuts,
   cloudSyncStatus = 'offline',
   cloudLastSyncedAt = null,
 }) {
@@ -104,6 +106,18 @@ export function Topbar({
         </div>
 
         <div className="toolbar-row">
+          <button
+            type="button"
+            className="topbar-shortcuts-button"
+            onClick={onOpenKeyboardShortcuts}
+            title="键盘快捷键 (?)"
+            aria-label="键盘快捷键"
+          >
+            <Keyboard size={15} aria-hidden="true" />
+            <span>快捷键</span>
+            <kbd>?</kbd>
+          </button>
+
           <span
             className={`sync-chip ${cloudMeta.className}`}
             title={syncedHint || cloudMeta.label}
