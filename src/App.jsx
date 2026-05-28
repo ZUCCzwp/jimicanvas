@@ -18,7 +18,6 @@ import { isEditableKeyboardTarget } from './lib/keyboardShortcuts';
 import {
   DEFAULT_NODE_HEIGHT,
   DEFAULT_NODE_WIDTH,
-  JIMIAIGO_TOKEN_STORAGE_KEY,
   CANVAS_GRID_CELL_SIZE,
   CANVAS_SCALE_STEP,
   CANVAS_WHEEL_PAN_FACTOR,
@@ -57,7 +56,7 @@ import {
   saveCanvasDocuments,
   saveCanvasDocumentsKeepalive,
 } from './lib/canvasApi';
-import { getStoredChatToken, runChatCompletion } from './lib/chatApi';
+import { getOrRequestToken, getStoredChatToken, runChatCompletion } from './lib/chatApi';
 import { fetchUserInfo } from './lib/userApi';
 import { fetchSiteConfig, getDefaultSiteSettings } from './lib/siteApi';
 import {
@@ -219,29 +218,49 @@ function App() {
   function openRechargeModal() {
     const token = getStoredChatToken();
     if (!token) {
-      const requested = getOrRequestToken();
+      const requested = getOrRequestToken({ onSaved: refreshUserQuota });
       if (!requested) return;
     }
     refreshUserQuota();
     setShowRechargeModal(true);
   }
 
+  const runWithToken = async (action) => {
+    let token = getStoredChatToken();
+    if (!token) return null;
+    try {
+      return await action(token);
+    } catch (error) {
+      if (!error?.isTokenExpired) throw error;
+      token = getOrRequestToken({ expired: true, onSaved: refreshUserQuota });
+      if (!token) throw error;
+      refreshUserQuota();
+      return action(token);
+    }
+  };
+
   const flushPersist = async () => {
     writeStorage(documentsRef.current);
-    const token = getStoredChatToken();
-    if (!token || skipCloudSaveRef.current) return;
+    if (skipCloudSaveRef.current) return;
     try {
-      const saved = await saveCanvasDocuments(token, {
-        documents: documentsRef.current,
-        activeCanvasId: activeCanvasIdRef.current,
-        version: cloudVersionRef.current,
+      await runWithToken(async (token) => {
+        const saved = await saveCanvasDocuments(token, {
+          documents: documentsRef.current,
+          activeCanvasId: activeCanvasIdRef.current,
+          version: cloudVersionRef.current,
+        });
+        if (saved?.version != null) {
+          cloudVersionRef.current = saved.version;
+        }
+        setCloudLastSyncedAt(Date.now());
+        setCloudSyncStatus('synced');
       });
-      if (saved?.version != null) {
-        cloudVersionRef.current = saved.version;
+    } catch (error) {
+      if (error?.isTokenExpired) {
+        setCloudSyncStatus('offline');
+        setStorageNotice('Token 已过期，请重新输入 AT 后可同步云端');
+        return;
       }
-      setCloudLastSyncedAt(Date.now());
-      setCloudSyncStatus('synced');
-    } catch {
       setCloudSyncStatus('pending');
     }
   };
@@ -262,57 +281,64 @@ function App() {
       setCloudSyncStatus('loading');
 
       try {
-        const cloud = await fetchCanvasDocuments(token);
-        if (cancelled) return;
+        await runWithToken(async (authToken) => {
+          const cloud = await fetchCanvasDocuments(authToken);
+          if (cancelled) return;
 
-        const cloudDocs = parseCloudDocuments(cloud?.documents);
-        const localDocs = documentsRef.current;
-        const localChangedSinceMount =
-          documentMaxUpdatedAt(localDocs) > documentMaxUpdatedAt(initial.documents) ||
-          countDocumentNodes(localDocs) > countDocumentNodes(initial.documents);
-        if (cloudDocs?.length) {
-          const preferLocal =
-            localChangedSinceMount ||
-            shouldPreferLocalDocuments(localDocs, cloudDocs, cloud?.updated_at);
-          const nextDocs = preferLocal
-            ? mergeDocumentsPreservePending(localDocs, cloudDocs)
-            : cloudDocs;
-          setDocuments(nextDocs);
-          setActiveCanvasId(
-            (preferLocal ? activeCanvasIdRef.current : cloud.active_canvas_id) ||
-              nextDocs[0]?.id
-          );
-          cloudVersionRef.current = Number(cloud.version) || 0;
-          writeStorage(nextDocs);
-          setStorageNotice((prev) =>
-            preferLocal
-              ? localChangedSinceMount
-                ? '已保留你刚编辑的画布，并与云端合并'
-                : '已保留本地进行中的任务，并与云端画布合并'
-              : prev && !prev.includes('云端')
-                ? prev
-                : '已从云端同步画布'
-          );
-        } else if (
-          initial.loadedFrom !== 'default' ||
-          countDocumentNodes(localDocs) > 0
-        ) {
-          const saved = await saveCanvasDocuments(token, {
-            documents: localDocs,
-            activeCanvasId: activeCanvasIdRef.current,
-            version: Number(cloud?.version) || 0,
-          });
-          if (!cancelled && saved?.version != null) {
-            cloudVersionRef.current = saved.version;
+          const cloudDocs = parseCloudDocuments(cloud?.documents);
+          const localDocs = documentsRef.current;
+          const localChangedSinceMount =
+            documentMaxUpdatedAt(localDocs) > documentMaxUpdatedAt(initial.documents) ||
+            countDocumentNodes(localDocs) > countDocumentNodes(initial.documents);
+          if (cloudDocs?.length) {
+            const preferLocal =
+              localChangedSinceMount ||
+              shouldPreferLocalDocuments(localDocs, cloudDocs, cloud?.updated_at);
+            const nextDocs = preferLocal
+              ? mergeDocumentsPreservePending(localDocs, cloudDocs)
+              : cloudDocs;
+            setDocuments(nextDocs);
+            setActiveCanvasId(
+              (preferLocal ? activeCanvasIdRef.current : cloud.active_canvas_id) ||
+                nextDocs[0]?.id
+            );
+            cloudVersionRef.current = Number(cloud.version) || 0;
+            writeStorage(nextDocs);
+            setStorageNotice((prev) =>
+              preferLocal
+                ? localChangedSinceMount
+                  ? '已保留你刚编辑的画布，并与云端合并'
+                  : '已保留本地进行中的任务，并与云端画布合并'
+                : prev && !prev.includes('云端')
+                  ? prev
+                  : '已从云端同步画布'
+            );
+          } else if (
+            initial.loadedFrom !== 'default' ||
+            countDocumentNodes(localDocs) > 0
+          ) {
+            const saved = await saveCanvasDocuments(authToken, {
+              documents: localDocs,
+              activeCanvasId: activeCanvasIdRef.current,
+              version: Number(cloud?.version) || 0,
+            });
+            if (!cancelled && saved?.version != null) {
+              cloudVersionRef.current = saved.version;
+            }
           }
-        }
+          if (!cancelled) {
+            setCloudLastSyncedAt(Date.now());
+            setCloudSyncStatus('synced');
+          }
+        });
+      } catch (error) {
         if (!cancelled) {
-          setCloudLastSyncedAt(Date.now());
-          setCloudSyncStatus('synced');
-        }
-      } catch {
-        if (!cancelled) {
-          setCloudSyncStatus('error');
+          if (error?.isTokenExpired) {
+            setCloudSyncStatus('offline');
+            setStorageNotice('Token 已过期，请重新输入 AT 后可同步云端');
+          } else {
+            setCloudSyncStatus('error');
+          }
         }
       } finally {
         if (!cancelled) {
@@ -343,16 +369,18 @@ function App() {
     const timer = window.setTimeout(async () => {
       setCloudSyncStatus('saving');
       try {
-        const saved = await saveCanvasDocuments(token, {
-          documents,
-          activeCanvasId,
-          version: cloudVersionRef.current,
+        await runWithToken(async (authToken) => {
+          const saved = await saveCanvasDocuments(authToken, {
+            documents,
+            activeCanvasId,
+            version: cloudVersionRef.current,
+          });
+          if (saved?.version != null) {
+            cloudVersionRef.current = saved.version;
+          }
+          setCloudLastSyncedAt(Date.now());
+          setCloudSyncStatus('synced');
         });
-        if (saved?.version != null) {
-          cloudVersionRef.current = saved.version;
-        }
-        setCloudLastSyncedAt(Date.now());
-        setCloudSyncStatus('synced');
       } catch (error) {
         if (error?.isConflict && error.latest) {
           cloudVersionRef.current = Number(error.latest.version) || cloudVersionRef.current;
@@ -368,6 +396,11 @@ function App() {
           setCloudLastSyncedAt(Date.now());
           setCloudSyncStatus('synced');
           setStorageNotice('云端画布已被其他设备更新，已为你拉取最新版本');
+          return;
+        }
+        if (error?.isTokenExpired) {
+          setCloudSyncStatus('offline');
+          setStorageNotice('Token 已过期，请重新输入 AT 后可同步云端');
           return;
         }
         setCloudSyncStatus('error');
@@ -1014,19 +1047,6 @@ function App() {
     return undefined;
   }, [hydrationDone]);
 
-  function getOrRequestToken() {
-    let token = getStoredChatToken();
-    if (!token && typeof window !== 'undefined') {
-      const input = window.prompt('请输入 Jimiaigo 的 token');
-      if (input) {
-        token = String(input).trim();
-        window.localStorage.setItem(JIMIAIGO_TOKEN_STORAGE_KEY, token);
-        refreshUserQuota();
-      }
-    }
-    return token;
-  }
-
   function removeNodes(nodeIds) {
     const idSet = new Set(nodeIds.filter(Boolean));
     if (idSet.size === 0) return;
@@ -1122,7 +1142,7 @@ function App() {
       return;
     }
 
-    const token = getOrRequestToken();
+    const token = getOrRequestToken({ onSaved: refreshUserQuota });
 
     if (!token) {
       updateNode(node.id, { content: '缺少 token', status: 'error' });
@@ -1174,7 +1194,7 @@ function App() {
       return;
     }
 
-    const token = getOrRequestToken();
+    const token = getOrRequestToken({ onSaved: refreshUserQuota });
 
     if (!token) {
       updateNode(node.id, { content: '缺少 token', status: 'error' });
@@ -1241,7 +1261,7 @@ function App() {
       return;
     }
 
-    const token = getOrRequestToken();
+    const token = getOrRequestToken({ onSaved: refreshUserQuota });
 
     if (!token) {
       updateNode(node.id, { content: '缺少 token', status: 'error' });
@@ -1386,7 +1406,7 @@ function App() {
   }
 
   async function uploadImageReferences(nodeId, files, pickMode = 'reference') {
-    const token = getOrRequestToken();
+    const token = getOrRequestToken({ onSaved: refreshUserQuota });
     if (!token) {
       updateNode(nodeId, { content: '缺少 token', status: 'error' });
       return;
@@ -1461,7 +1481,7 @@ function App() {
   }
 
   async function loadAssetPickerAssets(source) {
-    const token = getOrRequestToken();
+    const token = getOrRequestToken({ onSaved: refreshUserQuota });
     if (!token) {
       setAssetPicker((current) => ({ ...current, loading: false }));
       return;

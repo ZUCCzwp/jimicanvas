@@ -1,4 +1,4 @@
-import { getChatApiBaseUrl } from './chatApi';
+import { requestJimiaigo } from './jimiaigoApi';
 
 export function parseUserPayment(payment) {
   const jimicoin = parseFloat(payment?.jimicoin ?? 0) || 0;
@@ -34,34 +34,20 @@ export function getRechargeUrl() {
 }
 
 export async function fetchUserInfo(token) {
-  const baseUrl = getChatApiBaseUrl().replace(/\/$/, '');
-  const response = await fetch(`${baseUrl}/api/user/info`, {
+  const data = await requestJimiaigo('/api/user/info', {
+    token,
     method: 'GET',
-    headers: {
-      Authorization: token,
-    },
+    fallback: '获取用户信息失败',
   });
 
-  const rawText = await response.text();
-  let parsed = null;
-  try {
-    parsed = rawText ? JSON.parse(rawText) : null;
-  } catch {
-    parsed = null;
-  }
-
-  if (!response.ok || (parsed?.code && parsed.code !== 20000)) {
-    throw new Error(parsed?.msg || parsed?.message || rawText || '获取用户信息失败');
-  }
-
-  if (!parsed?.data) {
+  if (!data) {
     throw new Error('用户信息为空');
   }
 
-  const payment = parseUserPayment(parsed.data.payment);
+  const payment = parseUserPayment(data.payment);
   return {
-    nickname: parsed.data.nickname || parsed.data.email || '',
+    nickname: data.nickname || data.email || '',
     ...payment,
-    profile: parsed.data,
+    profile: data,
   };
 }

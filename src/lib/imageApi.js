@@ -1,5 +1,5 @@
 import { DEFAULT_IMAGE_MODEL, DEFAULT_IMAGE_RATIO, DEFAULT_IMAGE_RESOLUTION } from './constants';
-import { getChatApiBaseUrl } from './chatApi';
+import { getChatApiBaseUrl, requestJimiaigo, requestJimiaigoForm } from './jimiaigoApi';
 
 const FINISHED_STATUS = new Set(['success', 'completed']);
 const FAILED_STATUS = new Set(['failed', 'error']);
@@ -21,71 +21,20 @@ export function normalizeImageUrl(url) {
   return `${baseUrl}/${value}`;
 }
 
-async function requestJson(path, { token, method = 'GET', body } = {}) {
-  const baseUrl = getChatApiBaseUrl().replace(/\/$/, '');
-  let response;
-  try {
-    response = await fetch(`${baseUrl}${path}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: token,
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error('请求失败，无法连接到图片服务');
-    }
-    throw error;
-  }
-
-  const rawText = await response.text();
-  let parsed = null;
-  try {
-    parsed = rawText ? JSON.parse(rawText) : null;
-  } catch {
-    parsed = null;
-  }
-
-  if (!response.ok || (parsed && parsed.code && parsed.code !== 20000)) {
-    throw new Error(parsed?.msg || parsed?.message || rawText || '请求失败');
-  }
-
-  return parsed?.data ?? parsed;
+function requestJson(path, options) {
+  return requestJimiaigo(path, {
+    ...options,
+    networkErrorMessage: '请求失败，无法连接到图片服务',
+  });
 }
 
-async function requestForm(path, { token, formData } = {}) {
-  const baseUrl = getChatApiBaseUrl().replace(/\/$/, '');
-  let response;
-  try {
-    response = await fetch(`${baseUrl}${path}`, {
-      method: 'POST',
-      headers: {
-        Authorization: token,
-      },
-      body: formData,
-    });
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error('上传失败，无法连接到图片服务');
-    }
-    throw error;
-  }
-
-  const rawText = await response.text();
-  let parsed = null;
-  try {
-    parsed = rawText ? JSON.parse(rawText) : null;
-  } catch {
-    parsed = null;
-  }
-
-  if (!response.ok || (parsed && parsed.code && parsed.code !== 20000)) {
-    throw new Error(parsed?.msg || parsed?.message || rawText || '上传失败');
-  }
-
-  return parsed?.data ?? parsed;
+function requestForm(path, { token, formData }) {
+  return requestJimiaigoForm(path, {
+    token,
+    body: formData,
+    fallback: '上传失败',
+    networkErrorMessage: '上传失败，无法连接到图片服务',
+  });
 }
 
 function imagePathForModel(model) {

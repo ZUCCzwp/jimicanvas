@@ -1,4 +1,4 @@
-import { getChatApiBaseUrl, getStoredChatToken } from './chatApi';
+import { getApiUrl, getStoredChatToken, requestJimiaigo } from './jimiaigoApi';
 import { normalizeDocuments } from './storage';
 
 async function requestCanvas(path, { token, method = 'GET', body } = {}) {
@@ -7,42 +7,19 @@ async function requestCanvas(path, { token, method = 'GET', body } = {}) {
     throw new Error('未登录，无法同步画布');
   }
 
-  const baseUrl = getChatApiBaseUrl().replace(/\/$/, '');
-  let response;
-  try {
-    response = await fetch(`${baseUrl}${path}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: authToken,
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error('请求失败，无法连接到画布服务');
-    }
-    throw error;
-  }
-
-  const rawText = await response.text();
-  let parsed = null;
-  try {
-    parsed = rawText ? JSON.parse(rawText) : null;
-  } catch {
-    parsed = null;
-  }
-
-  if (!response.ok || (parsed && parsed.code && parsed.code !== 20000)) {
-    const err = new Error(parsed?.msg || parsed?.message || rawText || '画布同步失败');
-    if (parsed?.data) {
-      err.latest = parsed.data;
-      err.isConflict = /其他端|刷新/.test(String(parsed?.msg || ''));
-    }
-    throw err;
-  }
-
-  return parsed?.data ?? parsed;
+  return requestJimiaigo(path, {
+    token: authToken,
+    method,
+    body,
+    fallback: '画布同步失败',
+    networkErrorMessage: '请求失败，无法连接到画布服务',
+    enrichError(err, parsed) {
+      if (parsed?.data) {
+        err.latest = parsed.data;
+        err.isConflict = /其他端|刷新/.test(String(parsed?.msg || ''));
+      }
+    },
+  });
 }
 
 export function parseCloudDocuments(documentsField) {
@@ -81,9 +58,8 @@ export function saveCanvasDocumentsKeepalive(token, { documents, activeCanvasId,
   const authToken = token || getStoredChatToken();
   if (!authToken || typeof fetch === 'undefined') return;
 
-  const baseUrl = getChatApiBaseUrl().replace(/\/$/, '');
   try {
-    fetch(`${baseUrl}/api/canvas/documents`, {
+    fetch(getApiUrl('/api/canvas/documents'), {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',

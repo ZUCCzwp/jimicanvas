@@ -1,5 +1,5 @@
 import { DEFAULT_SITE_SLOGAN, DEFAULT_SITE_TITLE } from './constants';
-import { getChatApiBaseUrl } from './chatApi';
+import { API_SUCCESS_CODE, getApiUrl, parseResponseBody } from './jimiaigoApi';
 import { normalizeImageUrl } from './imageApi';
 
 export function getDefaultSiteSettings() {
@@ -15,12 +15,11 @@ export async function fetchSiteConfig() {
   const defaults = getDefaultSiteSettings();
 
   try {
-    const baseUrl = getChatApiBaseUrl().replace(/\/$/, '');
-    const response = await fetch(`${baseUrl}/api/site-config`);
+    const response = await fetch(getApiUrl('/api/site-config'));
     if (!response.ok) return defaults;
 
-    const parsed = await response.json();
-    if (parsed?.code !== 20000 || !parsed?.data) return defaults;
+    const parsed = parseResponseBody(await response.text());
+    if (parsed?.code !== API_SUCCESS_CODE || !parsed?.data) return defaults;
 
     const data = parsed.data;
     const kefuUrl = data.kefu_qr_url || data.kefuQrUrl || '';

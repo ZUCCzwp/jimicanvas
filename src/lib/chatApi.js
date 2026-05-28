@@ -1,57 +1,59 @@
 import {
-  DEFAULT_CHAT_API_URL,
   DEFAULT_TEXT_MODEL,
   JIMIAIGO_TOKEN_STORAGE_KEY,
 } from './constants';
+import { assertJimiaigoSuccess, fetchJimiaigo, getStoredChatToken } from './jimiaigoApi';
 
-export function getChatApiBaseUrl() {
-  if (typeof import.meta !== 'undefined') {
-    return import.meta.env.VITE_API_URL || import.meta.env.VITE_JIMIAIGO_API_URL || DEFAULT_CHAT_API_URL;
+export {
+  API_SUCCESS_CODE,
+  LOGIN_AGAIN_CODE,
+  clearStoredChatToken,
+  createApiError,
+  getChatApiBaseUrl,
+  getStoredChatToken,
+} from './jimiaigoApi';
+
+let tokenPromptOpen = false;
+
+export function promptForChatToken(message = '请输入 Jimiaigo 的 Token (AT)', { onSaved } = {}) {
+  if (typeof window === 'undefined') return '';
+  if (tokenPromptOpen) return '';
+  tokenPromptOpen = true;
+  try {
+    const input = window.prompt(message);
+    if (!input) return '';
+    const token = String(input).trim();
+    if (!token) return '';
+    window.localStorage.setItem(JIMIAIGO_TOKEN_STORAGE_KEY, token);
+    onSaved?.();
+    return token;
+  } finally {
+    tokenPromptOpen = false;
   }
-  return DEFAULT_CHAT_API_URL;
 }
 
-export function getStoredChatToken() {
-  if (typeof window === 'undefined') return '';
-
-  const envToken = import.meta.env.VITE_API_TOKEN || import.meta.env.VITE_JIMIAIGO_TOKEN;
-  if (envToken) return String(envToken).trim();
-
-  return (
-    window.localStorage.getItem(JIMIAIGO_TOKEN_STORAGE_KEY) ||
-    window.localStorage.getItem('token') ||
-    window.localStorage.getItem('access_token') ||
-    ''
-  ).trim();
+export function getOrRequestToken({ expired = false, onSaved } = {}) {
+  const existing = getStoredChatToken();
+  if (existing) return existing;
+  const message = expired
+    ? 'Token 已过期，请重新输入 Jimiaigo 的 Token (AT)'
+    : '请输入 Jimiaigo 的 Token (AT)';
+  return promptForChatToken(message, { onSaved });
 }
 
 export async function runChatCompletion({ token, content, model = DEFAULT_TEXT_MODEL }) {
-  const baseUrl = getChatApiBaseUrl().replace(/\/$/, '');
-
-  const response = await fetch(`${baseUrl}/api/chat/completions`, {
+  const { response, rawText, parsed } = await fetchJimiaigo('/api/chat/completions', {
+    token,
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: token,
-    },
-    body: JSON.stringify({
+    body: {
       model,
       stream: false,
       messages: [{ role: 'user', content }],
-    }),
+    },
+    networkErrorMessage: '生成失败，无法连接到服务',
   });
 
-  const rawText = await response.text();
-  let parsed = null;
-  try {
-    parsed = rawText ? JSON.parse(rawText) : null;
-  } catch {
-    parsed = null;
-  }
-
-  if (!response.ok) {
-    throw new Error(parsed?.msg || parsed?.message || rawText || '生成失败');
-  }
+  assertJimiaigoSuccess(response, parsed, { fallback: '生成失败', rawText });
 
   const generated = parsed?.choices?.[0]?.message?.content;
   if (typeof generated !== 'string' || !generated.trim()) {

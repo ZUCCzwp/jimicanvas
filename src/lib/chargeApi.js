@@ -1,45 +1,13 @@
-import { getChatApiBaseUrl, getStoredChatToken } from './chatApi';
+import { requestJimiaigo } from './jimiaigoApi';
 
-async function chargeRequest(path, { method = 'GET', body, query } = {}) {
-  const token = getStoredChatToken();
-  if (!token) {
-    throw new Error('缺少 token，请先登录');
-  }
-
-  const baseUrl = getChatApiBaseUrl().replace(/\/$/, '');
-  const queryString = query
-    ? `?${new URLSearchParams(
-        Object.entries(query).reduce((acc, [key, value]) => {
-          if (value !== undefined && value !== null && String(value) !== '') {
-            acc[key] = String(value);
-          }
-          return acc;
-        }, {})
-      ).toString()}`
-    : '';
-
-  const response = await fetch(`${baseUrl}${path}${queryString}`, {
+function chargeRequest(path, { method = 'GET', body, query } = {}) {
+  return requestJimiaigo(path, {
     method,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: token,
-    },
-    body: body ? JSON.stringify(body) : undefined,
+    body,
+    query,
+    requireToken: true,
+    dataOnly: false,
   });
-
-  const rawText = await response.text();
-  let parsed = null;
-  try {
-    parsed = rawText ? JSON.parse(rawText) : null;
-  } catch {
-    parsed = null;
-  }
-
-  if (!response.ok || (parsed?.code && parsed.code !== 20000)) {
-    throw new Error(parsed?.msg || parsed?.message || rawText || '请求失败');
-  }
-
-  return parsed;
 }
 
 export function getChargeList() {
