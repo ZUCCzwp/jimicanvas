@@ -1377,7 +1377,7 @@ function App() {
       return {
         maxCount: maxOutput,
         title: '资产库',
-        subtitle: `选择输出图片（最多 ${maxOutput} 张）`,
+        subtitle: `选择图片（最多 ${maxOutput} 张）`,
       };
     }
     return { maxCount: 5, title: '资产库', subtitle: '选择图片作为参考图' };
@@ -2214,6 +2214,7 @@ function App() {
                 onRunImageGeneration={runImageGeneration}
                 onRunVideoGeneration={runVideoGeneration}
                 onOpenAssetLibrary={openAssetLibrary}
+                onUploadImageOutput={(nodeId, files) => uploadImageReferences(nodeId, files, 'output')}
                 onRemoveImageReference={removeImageReference}
                 onRemoveTextReference={removeTextReference}
                 onHighlightInputs={highlightNodeInputs}

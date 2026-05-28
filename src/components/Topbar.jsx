@@ -158,7 +158,7 @@ export function Topbar({
               title="前往充值"
               aria-label="充值"
             >
-              <Wallet size={15} aria-hidden="true" />
+              <Wallet size={14} aria-hidden="true" />
               <span>充值</span>
             </button>
           ) : null}
@@ -170,7 +170,7 @@ export function Topbar({
             title="联系客服"
             aria-label="联系客服"
           >
-            <MessageCircle size={15} aria-hidden="true" />
+            <MessageCircle size={14} aria-hidden="true" />
             <span>联系客服</span>
           </button>
 
@@ -181,7 +181,7 @@ export function Topbar({
             title="键盘快捷键 (?)"
             aria-label="键盘快捷键"
           >
-            <Keyboard size={15} aria-hidden="true" />
+            <Keyboard size={14} aria-hidden="true" />
             <span>快捷键</span>
           </button>
 
@@ -194,9 +194,9 @@ export function Topbar({
               aria-label={theme === 'dark' ? '切换浅色主题' : '切换深色主题'}
             >
               {theme === 'dark' ? (
-                <Sun size={15} aria-hidden="true" />
+                <Sun size={14} aria-hidden="true" />
               ) : (
-                <Moon size={15} aria-hidden="true" />
+                <Moon size={14} aria-hidden="true" />
               )}
               <span>{theme === 'dark' ? '浅色' : '深色'}</span>
             </button>

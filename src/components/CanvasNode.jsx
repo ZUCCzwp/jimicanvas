@@ -5,6 +5,7 @@ import {
   Film,
   FolderOpen,
   Image as ImageIcon,
+  Upload,
   Copy,
   Download,
   Languages,
@@ -224,11 +225,14 @@ function ImageBody({
   onBeginDrag,
   onHighlightInputs,
   onOpenAssetLibrary,
+  onUploadImageOutput,
   onSyncOutputLayout,
 }) {
   const displayImages = getImageDisplayImages(node);
   const imageCount = Math.min(Math.max(displayImages.length || 1, 1), 4);
+  const maxUploadCount = Math.min(4, Math.max(1, Number(node.imageCount) || 1));
   const loadedAspectRef = useRef('');
+  const outputFileInputRef = useRef(null);
 
   useImageOutputLayout(node, displayImages, onSyncOutputLayout);
 
@@ -281,7 +285,7 @@ function ImageBody({
         <button
           type="button"
           className="image-output-asset-button"
-          title="从资产库选择输出图"
+          title="从资产库选择图片"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
@@ -289,8 +293,25 @@ function ImageBody({
           }}
         >
           <FolderOpen size={12} />
-          <span>输出图</span>
+          <span>资产库</span>
         </button>
+      ) : null}
+
+      {showOutputActions && onUploadImageOutput ? (
+        <input
+          ref={outputFileInputRef}
+          type="file"
+          accept="image/*"
+          multiple={maxUploadCount > 1}
+          hidden
+          onChange={(event) => {
+            const files = Array.from(event.target.files || []);
+            if (files.length > 0) {
+              onUploadImageOutput(node.id, files);
+            }
+            event.target.value = '';
+          }}
+        />
       ) : null}
 
       {displayImages.length > 0 ? (
@@ -305,9 +326,28 @@ function ImageBody({
           </div>
         ))
       ) : (
-        <div className="image-empty">
-          <span>输入提示词生成图片</span>
-        </div>
+        <button
+          type="button"
+          className={`image-empty ${showOutputActions && onUploadImageOutput ? 'image-empty-upload' : ''}`}
+          disabled={!showOutputActions || !onUploadImageOutput}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (showOutputActions && onUploadImageOutput) {
+              outputFileInputRef.current?.click();
+            }
+          }}
+        >
+          {showOutputActions && onUploadImageOutput ? (
+            <>
+              <Upload size={20} />
+              <span>点击上传本地图片</span>
+              <span className="image-empty-hint">或输入提示词生成图片</span>
+            </>
+          ) : (
+            <span>输入提示词生成图片</span>
+          )}
+        </button>
       )}
     </div>
   );
@@ -1124,6 +1164,7 @@ export function CanvasNode({
   onRunImageGeneration,
   onRunVideoGeneration,
   onOpenAssetLibrary,
+  onUploadImageOutput,
   onRemoveImageReference,
   onRemoveTextReference,
   onHighlightInputs,
@@ -1271,6 +1312,7 @@ export function CanvasNode({
             onBeginDrag={onBeginDrag}
             onHighlightInputs={onHighlightInputs}
             onOpenAssetLibrary={onOpenAssetLibrary}
+            onUploadImageOutput={onUploadImageOutput}
             onSyncOutputLayout={onSyncImageOutputLayout}
           />
         ) : (

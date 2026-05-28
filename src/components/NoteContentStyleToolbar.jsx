@@ -4,6 +4,8 @@ import {
   NOTE_BACKGROUND_PRESETS,
   NOTE_CONTENT_FONT_SIZES,
   NOTE_TEXT_COLOR_PRESETS,
+  isSameNoteBackground,
+  isSameNoteTextColor,
   normalizeNoteContentStyle,
 } from '../lib/noteContentStyle';
 
@@ -61,7 +63,7 @@ export function NoteContentStyleToolbar({ contentStyle, onChange }) {
             <button
               key={preset.value}
               type="button"
-              className={`note-style-swatch ${style.backgroundColor === preset.value ? 'active' : ''}`}
+              className={`note-style-swatch ${isSameNoteBackground(style.backgroundColor, preset.value) ? 'active' : ''}`}
               style={{ background: preset.value }}
               title={preset.label}
               onClick={() => update({ backgroundColor: preset.value })}
@@ -84,7 +86,7 @@ export function NoteContentStyleToolbar({ contentStyle, onChange }) {
             <button
               key={preset.value}
               type="button"
-              className={`note-style-swatch text ${style.color === preset.value ? 'active' : ''}`}
+              className={`note-style-swatch text ${isSameNoteTextColor(style.color, preset.value) ? 'active' : ''}`}
               style={{ background: preset.value }}
               title={preset.label}
               onClick={() => update({ color: preset.value })}
