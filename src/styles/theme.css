@@ -1,0 +1,219 @@
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --text-primary: #e5eef8;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-strong: #f8fafc;
+  --text-input: #eff6ff;
+  --text-node: #e2e8f0;
+
+  --app-bg-base: #020617;
+  --app-bg-gradient-top: rgba(15, 23, 42, 0.96);
+  --app-bg-gradient-bottom: rgba(2, 6, 23, 0.98);
+  --app-root-bg: #0b1220;
+
+  --surface-1: rgba(15, 23, 42, 0.72);
+  --surface-2: rgba(15, 23, 42, 0.78);
+  --surface-3: rgba(15, 23, 42, 0.9);
+  --surface-4: rgba(15, 23, 42, 0.96);
+  --surface-elevated: rgba(15, 23, 42, 0.98);
+  --surface-overlay: rgba(28, 28, 30, 0.92);
+  --surface-glass: rgba(2, 6, 23, 0.72);
+
+  --border-subtle: rgba(148, 163, 184, 0.14);
+  --border-default: rgba(148, 163, 184, 0.18);
+  --border-strong: rgba(148, 163, 184, 0.2);
+  --border-white-10: rgba(255, 255, 255, 0.1);
+
+  --accent: #38bdf8;
+  --accent-soft: rgba(56, 189, 248, 0.12);
+  --accent-border: rgba(56, 189, 248, 0.42);
+  --accent-hover-border: rgba(56, 189, 248, 0.35);
+  --accent-hover-bg: rgba(14, 116, 144, 0.2);
+  --accent-primary-bg: rgba(14, 165, 233, 0.16);
+  --accent-primary-border: rgba(56, 189, 248, 0.55);
+
+  --topbar-bg: rgba(2, 6, 23, 0.72);
+  --stage-bg: #020617;
+  --stage-grid: rgba(148, 163, 184, 0.09);
+  --stage-glow-1: rgba(56, 189, 248, 0.08);
+  --stage-glow-2: rgba(59, 130, 246, 0.06);
+
+  --node-bg: rgba(15, 23, 42, 0.96);
+  --node-shadow: rgba(2, 6, 23, 0.48);
+  --node-header-bg: rgba(15, 23, 42, 0.9);
+  --node-header-shadow: rgba(2, 6, 23, 0.36);
+
+  --dropdown-bg: rgba(15, 23, 42, 0.96);
+  --dropdown-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
+  --dropdown-ring: rgba(56, 189, 248, 0.06);
+
+  --modal-bg: rgba(15, 23, 42, 0.98);
+  --modal-backdrop: rgba(2, 6, 23, 0.68);
+  --modal-shadow: 0 28px 80px rgba(0, 0, 0, 0.48);
+
+  --dock-bg: rgba(28, 28, 30, 0.92);
+  --dock-shadow: 0 24px 52px rgba(0, 0, 0, 0.38);
+  --dock-button-bg: rgba(255, 255, 255, 0.05);
+  --dock-divider: rgba(255, 255, 255, 0.1);
+
+  --button-ghost-bg: rgba(255, 255, 255, 0.04);
+  --kbd-bg: rgba(2, 6, 23, 0.55);
+  --meta-pill-bg: rgba(15, 23, 42, 0.72);
+
+  --select-menu-bg: rgba(15, 23, 42, 0.98);
+  --select-menu-shadow: 0 14px 34px rgba(2, 6, 23, 0.52);
+  --select-option-hover: rgba(37, 99, 235, 0.22);
+
+  --zoom-bg: rgba(15, 23, 42, 0.88);
+  --shortcut-row-bg: rgba(255, 255, 255, 0.03);
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-strong: #020617;
+  --text-input: #0f172a;
+  --text-node: #1e293b;
+
+  --app-bg-base: #e2e8f0;
+  --app-bg-gradient-top: rgba(248, 250, 252, 0.98);
+  --app-bg-gradient-bottom: rgba(241, 245, 249, 0.98);
+  --app-root-bg: #f8fafc;
+
+  --surface-1: rgba(255, 255, 255, 0.82);
+  --surface-2: rgba(255, 255, 255, 0.92);
+  --surface-3: rgba(255, 255, 255, 0.96);
+  --surface-4: #ffffff;
+  --surface-elevated: #ffffff;
+  --surface-overlay: rgba(255, 255, 255, 0.94);
+  --surface-glass: rgba(255, 255, 255, 0.78);
+
+  --border-subtle: rgba(148, 163, 184, 0.22);
+  --border-default: rgba(148, 163, 184, 0.28);
+  --border-strong: rgba(100, 116, 139, 0.32);
+  --border-white-10: rgba(148, 163, 184, 0.2);
+
+  --accent: #0284c7;
+  --accent-soft: rgba(14, 165, 233, 0.1);
+  --accent-border: rgba(14, 165, 233, 0.38);
+  --accent-hover-border: rgba(14, 165, 233, 0.42);
+  --accent-hover-bg: rgba(14, 165, 233, 0.1);
+  --accent-primary-bg: rgba(14, 165, 233, 0.12);
+  --accent-primary-border: rgba(14, 165, 233, 0.45);
+
+  --topbar-bg: rgba(255, 255, 255, 0.86);
+  --stage-bg: #eef2f7;
+  --stage-grid: rgba(100, 116, 139, 0.14);
+  --stage-glow-1: rgba(14, 165, 233, 0.06);
+  --stage-glow-2: rgba(59, 130, 246, 0.05);
+
+  --node-bg: rgba(255, 255, 255, 0.98);
+  --node-shadow: rgba(15, 23, 42, 0.1);
+  --node-header-bg: rgba(255, 255, 255, 0.96);
+  --node-header-shadow: rgba(15, 23, 42, 0.08);
+
+  --dropdown-bg: rgba(255, 255, 255, 0.98);
+  --dropdown-shadow: 0 18px 48px rgba(15, 23, 42, 0.12);
+  --dropdown-ring: rgba(14, 165, 233, 0.08);
+
+  --modal-bg: rgba(255, 255, 255, 0.98);
+  --modal-backdrop: rgba(15, 23, 42, 0.28);
+  --modal-shadow: 0 28px 80px rgba(15, 23, 42, 0.14);
+
+  --dock-bg: rgba(255, 255, 255, 0.94);
+  --dock-shadow: 0 20px 48px rgba(15, 23, 42, 0.12);
+  --dock-button-bg: rgba(241, 245, 249, 0.95);
+  --dock-divider: rgba(148, 163, 184, 0.24);
+
+  --button-ghost-bg: rgba(241, 245, 249, 0.95);
+  --kbd-bg: rgba(241, 245, 249, 0.95);
+  --meta-pill-bg: rgba(255, 255, 255, 0.88);
+
+  --select-menu-bg: rgba(255, 255, 255, 0.98);
+  --select-menu-shadow: 0 14px 34px rgba(15, 23, 42, 0.1);
+  --select-option-hover: rgba(14, 165, 233, 0.12);
+
+  --zoom-bg: rgba(255, 255, 255, 0.94);
+  --shortcut-row-bg: rgba(241, 245, 249, 0.9);
+}
+
+[data-theme='light'] .brand-project-trigger .brand-mark:not(.has-logo) {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.16), rgba(59, 130, 246, 0.12));
+  color: #0369a1;
+}
+
+[data-theme='light'] .brand-project-dropdown-item:hover,
+[data-theme='light'] .brand-project-dropdown-item:focus-visible {
+  color: var(--text-strong);
+}
+
+[data-theme='light'] .brand-project-dropdown-item:hover svg,
+[data-theme='light'] .brand-project-dropdown-item:focus-visible svg {
+  color: var(--accent);
+}
+
+[data-theme='light'] .sync-chip-offline {
+  color: #475569;
+  background: rgba(241, 245, 249, 0.95);
+  border-color: rgba(148, 163, 184, 0.32);
+}
+
+[data-theme='light'] .node-type-picker-option {
+  color: var(--text-node);
+}
+
+[data-theme='light'] .node-type-picker-option:hover {
+  color: var(--text-strong);
+  background: var(--accent-soft);
+}
+
+[data-theme='light'] .connection-path {
+  stroke: #2563eb;
+}
+
+[data-theme='light'] .connection-path-flow {
+  stroke: rgba(37, 99, 235, 0.75);
+}
+
+[data-theme='light'] .empty-state,
+[data-theme='light'] .error-banner {
+  color: var(--text-secondary);
+}
+
+[data-theme='light'] .asset-modal-title strong,
+[data-theme='light'] .keyboard-shortcuts-header strong,
+[data-theme='light'] .recharge-modal-header strong {
+  color: var(--text-strong);
+}
+
+[data-theme='light'] .asset-modal-title span,
+[data-theme='light'] .keyboard-shortcuts-footer,
+[data-theme='light'] .asset-source-tabs button {
+  color: var(--text-muted);
+}
+
+[data-theme='light'] .asset-source-tabs {
+  background: rgba(241, 245, 249, 0.95);
+}
+
+[data-theme='light'] .asset-search {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+[data-theme='light'] .node-bottom-toolbar,
+[data-theme='light'] .image-toolbar {
+  background: var(--node-header-bg);
+  border-color: var(--border-default);
+}
+
+[data-theme='light'] .toast-info,
+[data-theme='light'] .toast-error {
+  color: var(--text-primary);
+}

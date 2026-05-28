@@ -7,6 +7,8 @@ import {
   Keyboard,
   Loader2,
   MessageCircle,
+  Moon,
+  Sun,
   Wallet,
 } from 'lucide-react';
 import { BrandProjectMenu } from './BrandProjectMenu';
@@ -80,6 +82,8 @@ export function Topbar({
   onDeleteProject,
   onOpenKeyboardShortcuts,
   onOpenCustomerService,
+  theme = 'dark',
+  onToggleTheme,
   cloudSyncStatus = 'offline',
   cloudLastSyncedAt = null,
   quotaVisible = false,
@@ -180,6 +184,23 @@ export function Topbar({
             <Keyboard size={15} aria-hidden="true" />
             <span>快捷键</span>
           </button>
+
+          {onToggleTheme ? (
+            <button
+              type="button"
+              className={`topbar-shortcuts-button topbar-theme-button ${theme === 'light' ? 'is-active' : ''}`}
+              onClick={onToggleTheme}
+              title={theme === 'dark' ? '切换浅色主题' : '切换深色主题'}
+              aria-label={theme === 'dark' ? '切换浅色主题' : '切换深色主题'}
+            >
+              {theme === 'dark' ? (
+                <Sun size={15} aria-hidden="true" />
+              ) : (
+                <Moon size={15} aria-hidden="true" />
+              )}
+              <span>{theme === 'dark' ? '浅色' : '深色'}</span>
+            </button>
+          ) : null}
 
           <span
             className={`sync-chip ${cloudMeta.className}`}

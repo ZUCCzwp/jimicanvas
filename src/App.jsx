@@ -13,6 +13,7 @@ import { CustomerServiceModal } from './components/CustomerServiceModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { RechargeModal } from './components/RechargeModal';
 import { Topbar } from './components/Topbar';
+import { useTheme } from './hooks/useTheme';
 import { navigateToCanvasHome } from './lib/appNavigation';
 import { isEditableKeyboardTarget } from './lib/keyboardShortcuts';
 import {
@@ -92,6 +93,7 @@ import {
 import { createVideoGenerationTask, downloadVideoFile } from './lib/videoApi';
 
 function App() {
+  const { theme, toggleTheme } = useTheme();
   const initial = useMemo(() => loadInitialState(), []);
   const [documents, setDocuments] = useState(initial.documents);
   const [storageNotice, setStorageNotice] = useState(() => {
@@ -2135,6 +2137,8 @@ function App() {
           onDeleteProject={handleDeleteCurrentProject}
           onOpenKeyboardShortcuts={() => setShowKeyboardShortcuts(true)}
           onOpenCustomerService={() => setShowCustomerService(true)}
+          theme={theme}
+          onToggleTheme={toggleTheme}
           cloudSyncStatus={cloudSyncStatus}
           cloudLastSyncedAt={cloudLastSyncedAt}
           quotaVisible={Boolean(getStoredChatToken())}
