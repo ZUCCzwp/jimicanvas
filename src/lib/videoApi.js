@@ -1,6 +1,6 @@
 import { DEFAULT_VIDEO_FAMILY, DEFAULT_VIDEO_ROUTE } from './constants';
 import { requestJimiaigo, requestJimiaigoForm } from './jimiaigoApi';
-import { normalizeImageUrl } from './imageApi';
+import { normalizeImageUrl, uploadAsset } from './imageApi';
 
 const TASK_SUCCESS_STATUS = new Set(['success', 'completed', 'succeed', '1']);
 const TASK_FAILED_STATUS = new Set(['failed', 'error', 'failure', 'fail', 'cancelled', 'canceled', '2']);
@@ -161,17 +161,30 @@ export function pickSeedanceAssetUrl(asset) {
   return '';
 }
 
-function pickSeedancePreviewUrl(asset) {
-  if (!asset) return '';
-  const preview = String(asset.previewUrl || asset.preview || '').trim();
-  if (preview) return preview;
-  const url = String(asset.url || asset.data || '').trim();
-  if (url && !url.startsWith('asset://')) {
-    return url.startsWith('data:') || url.startsWith('blob:') || /^https?:\/\//.test(url)
-      ? normalizeImageUrl(url)
-      : url;
+export function resolveSeedanceMediaPreviewUrl(item, mediaType = 'video') {
+  if (!item) return '';
+  const candidates = [
+    item.previewUrl,
+    item.preview,
+    item.originalUrl,
+    item.original_url,
+    item.url,
+    item.data,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+
+  for (const raw of candidates) {
+    if (raw.startsWith('asset://')) continue;
+    const resolved = mediaType === 'image' ? normalizeImageUrl(raw) : normalizeVideoUrl(raw);
+    if (resolved) return resolved;
   }
   return '';
+}
+
+function pickSeedancePreviewUrl(asset) {
+  const mediaType = asset?.type === 'image' ? 'image' : asset?.type === 'audio' ? 'audio' : 'video';
+  return resolveSeedanceMediaPreviewUrl(asset, mediaType);
 }
 
 function buildSeedanceReferencePayload(referenceImages = []) {
@@ -206,17 +219,91 @@ export async function getSd2ManxueAssetList({
   });
   const list = Array.isArray(data?.list) ? data.list : [];
   return {
-    list: list.map((item) => ({
-      id: item.assetId || item.id,
-      assetId: item.assetId || item.id,
-      url: item.assetId ? `asset://${item.assetId}` : '',
-      previewUrl: item.previewUrl || item.originalUrl || '',
-      name: item.name || '素材',
-      duration: item.duration,
-      type: mediaType,
-    })),
+    list: list.map((item) => {
+      const mapped = {
+        id: item.assetId || item.id,
+        assetId: item.assetId || item.id,
+        url: item.assetId ? `asset://${item.assetId}` : '',
+        originalUrl: item.originalUrl || item.original_url || '',
+        previewUrl: item.previewUrl || item.preview_url || item.originalUrl || item.original_url || '',
+        name: item.name || '素材',
+        duration: item.duration,
+        status: item.status || status,
+        type: mediaType,
+      };
+      return {
+        ...mapped,
+        previewUrl: resolveSeedanceMediaPreviewUrl(mapped, mediaType),
+      };
+    }),
     total: data?.total || list.length,
   };
+}
+
+export async function submitSd2ManxueAudit({ token, mediaType = 'image', urls = [] }) {
+  const payload = { audioUrls: [], imageUrls: [], videoUrls: [] };
+  const list = (urls || []).map((url) => String(url || '').trim()).filter(Boolean);
+  if (mediaType === 'video') payload.videoUrls = list;
+  else if (mediaType === 'audio') payload.audioUrls = list;
+  else payload.imageUrls = list;
+
+  return requestJson('/api/video/sd2manxue/audit/submit', {
+    token,
+    method: 'POST',
+    body: payload,
+    fallback: '提交素材审核失败',
+  });
+}
+
+export async function querySd2ManxueAuditStatus({ token, assetIds = [] }) {
+  return requestJson('/api/video/sd2manxue/audit/status', {
+    token,
+    method: 'POST',
+    body: { assetIds },
+    fallback: '查询审核状态失败',
+  });
+}
+
+function auditWait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function uploadAndAuditSeedanceAssets({ token, mediaType = 'image', files = [] }) {
+  const uploadedUrls = [];
+  for (const file of files) {
+    const uploaded = await uploadAsset({ token, file });
+    const url = mediaType === 'image' ? normalizeImageUrl(uploaded) : normalizeVideoUrl(uploaded);
+    if (url) uploadedUrls.push(url);
+  }
+  if (uploadedUrls.length === 0) {
+    throw new Error('上传失败，未获得有效文件地址');
+  }
+
+  const data = await submitSd2ManxueAudit({ token, mediaType, urls: uploadedUrls });
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const assetIds = items.map((item) => item.assetId).filter(Boolean);
+  if (assetIds.length === 0) {
+    throw new Error('提交审核失败，未返回素材 ID');
+  }
+
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    await auditWait(2000);
+    const statusData = await querySd2ManxueAuditStatus({ token, assetIds });
+    const statusItems = Array.isArray(statusData?.items) ? statusData.items : [];
+    const allActive =
+      statusItems.length > 0 && statusItems.every((item) => item.status === 'Active');
+    const hasFailed = statusItems.some(
+      (item) => item.status === 'Failed' || item.status === 'Rejected'
+    );
+    if (allActive) {
+      return { passed: true, assetIds };
+    }
+    if (hasFailed) {
+      throw new Error('素材审核未通过');
+    }
+  }
+
+  return { passed: false, assetIds };
 }
 
 async function createSeedanceManxueTask({

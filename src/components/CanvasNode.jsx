@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Bot,
   FileText,
@@ -44,7 +44,8 @@ import {
   SEEDANCE_REF_AUDIO_MAX,
   VIDEO_FAMILY_OPTIONS,
 } from '../lib/constants';
-import { normalizeVideoUrl } from '../lib/videoApi';
+import { getStoredChatToken } from '../lib/jimiaigoApi';
+import { getSd2ManxueAssetList, normalizeVideoUrl, resolveSeedanceMediaPreviewUrl } from '../lib/videoApi';
 import { isImageContent, isVideoContent } from '../lib/canvas';
 import {
   formatImageInputLabel,
@@ -615,12 +616,64 @@ function referencePreviewSrc(image) {
   return image.source === 'local' ? value : normalizeImageUrl(value);
 }
 
-function seedanceMediaPreviewUrl(item) {
-  const preview = item?.previewUrl || item?.preview;
-  if (preview) return preview;
-  const url = String(item?.url || '').trim();
-  if (url && !url.startsWith('asset://')) return url;
-  return '';
+function useSeedancePreviewSrc(item, mediaType) {
+  const direct = resolveSeedanceMediaPreviewUrl(item, mediaType);
+  const assetUrl = String(item?.url || '').trim();
+  const assetId =
+    item?.assetId || (assetUrl.startsWith('asset://') ? assetUrl.slice('asset://'.length) : '');
+  const needsFetch = !direct && Boolean(assetId);
+
+  const [src, setSrc] = useState(direct);
+  const [loading, setLoading] = useState(needsFetch);
+
+  useEffect(() => {
+    const resolved = resolveSeedanceMediaPreviewUrl(item, mediaType);
+    if (resolved) {
+      setSrc(resolved);
+      setLoading(false);
+      return undefined;
+    }
+
+    if (!assetId) {
+      setSrc('');
+      setLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const token = getStoredChatToken();
+      if (!token) {
+        if (!cancelled) {
+          setSrc('');
+          setLoading(false);
+        }
+        return;
+      }
+      try {
+        const result = await getSd2ManxueAssetList({
+          token,
+          mediaType,
+          pageSize: 100,
+          status: 'Active',
+        });
+        if (cancelled) return;
+        const found = result.list.find((row) => row.assetId === assetId || row.id === assetId);
+        setSrc(found ? resolveSeedanceMediaPreviewUrl(found, mediaType) : '');
+      } catch {
+        if (!cancelled) setSrc('');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [item, mediaType, assetId]);
+
+  return { src, loading };
 }
 
 function SeedanceMediaPanel({
@@ -661,38 +714,47 @@ function SeedanceMediaPanel({
       </button>
       {items.length > 0 ? (
         <div className={`seedance-media-preview-list ${mediaType === 'audio' ? 'is-audio' : ''}`}>
-          {items.map((item, index) => {
-            const previewUrl = seedanceMediaPreviewUrl(item);
-            return (
-              <div className="seedance-media-preview-item" key={item.id || item.url || index}>
-                {mediaType === 'video' && previewUrl ? (
-                  <video src={previewUrl} muted playsInline preload="metadata" />
-                ) : mediaType === 'audio' && previewUrl ? (
-                  <audio src={previewUrl} controls preload="metadata" />
-                ) : (
-                  <div className="seedance-media-preview-fallback">
-                    <Icon size={18} />
-                  </div>
-                )}
-                <span className="seedance-media-name" title={item.name || `${label} ${index + 1}`}>
-                  {item.name || `${label} ${index + 1}`}
-                </span>
-                <button
-                  type="button"
-                  className="seedance-media-remove"
-                  onClick={() => onRemove(index)}
-                  title={`移除${label}`}
-                >
-                  <X size={11} />
-                </button>
-              </div>
-            );
-          })}
+          {items.map((item, index) => (
+            <SeedanceMediaPreviewCard
+              key={item.id || item.url || index}
+              item={item}
+              mediaType={mediaType}
+              label={label}
+              index={index}
+              icon={Icon}
+              onRemove={() => onRemove(index)}
+            />
+          ))}
         </div>
       ) : (
         <div className="seedance-media-empty">暂未选择{label}</div>
       )}
       {isBlocked ? <p className="seedance-media-hint">{disabledHint}</p> : null}
+    </div>
+  );
+}
+
+function SeedanceMediaPreviewCard({ item, mediaType, label, index, icon: Icon, onRemove }) {
+  const { src: previewUrl, loading } = useSeedancePreviewSrc(item, mediaType);
+
+  return (
+    <div className="seedance-media-preview-item">
+      {mediaType === 'video' && previewUrl ? (
+        <video src={previewUrl} controls playsInline preload="metadata" />
+      ) : mediaType === 'audio' && previewUrl ? (
+        <audio src={previewUrl} controls preload="metadata" />
+      ) : (
+        <div className="seedance-media-preview-fallback">
+          <Icon size={18} />
+          <span>{loading ? '加载预览…' : '无法预览'}</span>
+        </div>
+      )}
+      <span className="seedance-media-name" title={item.name || `${label} ${index + 1}`}>
+        {item.name || `${label} ${index + 1}`}
+      </span>
+      <button type="button" className="seedance-media-remove" onClick={onRemove} title={`移除${label}`}>
+        <X size={11} />
+      </button>
     </div>
   );
 }
@@ -743,6 +805,7 @@ function VideoToolbar({
   onRemoveSeedanceMedia,
   onUpdateNode,
 }) {
+  const toolbarRef = useRef(null);
   const hasTextInput = textInputLinks.length > 0;
   const hasImageInput = imageInputLinks.length > 0;
   const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
@@ -788,6 +851,73 @@ function VideoToolbar({
         : normalizedSettings.resolution;
   const ratioValue = family === 'sora' ? normalizedSettings.orientation : normalizedSettings.ratio;
   const resolutionTitle = family === 'grok' ? '画质' : '分辨率';
+
+  useEffect(() => {
+    if (!isSeedance) return undefined;
+
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return undefined;
+
+    let animationFrame = 0;
+
+    const updateSeedanceViewport = () => {
+      toolbar.style.setProperty('--seedance-toolbar-offset-y', '0px');
+
+      const rect = toolbar.getBoundingClientRect();
+      const stage = toolbar.closest('.stage');
+      const scale = Number.parseFloat(getComputedStyle(stage || document.documentElement).getPropertyValue('--canvas-scale')) || 1;
+      const viewportHeight = window.visualViewport?.height || window.innerHeight;
+      const gap = 12;
+      const naturalTop = rect.top;
+      const naturalAvailable = viewportHeight - naturalTop - gap;
+      const desiredHeight = Math.min(toolbar.scrollHeight * scale, Math.max(280, viewportHeight - gap * 2));
+      const maxOffset = Math.max(0, naturalTop - gap);
+      const offset = Math.min(Math.max(0, desiredHeight - naturalAvailable), maxOffset);
+      const visibleHeight = Math.max(280, viewportHeight - (naturalTop - offset) - gap);
+      const nextMaxHeight = `${Math.round(visibleHeight / scale)}px`;
+      const nextOffset = `${Math.round(-(offset / scale))}px`;
+
+      if (toolbar.style.getPropertyValue('--seedance-toolbar-max-height') !== nextMaxHeight) {
+        toolbar.style.setProperty('--seedance-toolbar-max-height', nextMaxHeight);
+      }
+      if (toolbar.style.getPropertyValue('--seedance-toolbar-offset-y') !== nextOffset) {
+        toolbar.style.setProperty('--seedance-toolbar-offset-y', nextOffset);
+      }
+    };
+
+    const scheduleUpdate = () => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(updateSeedanceViewport);
+    };
+
+    scheduleUpdate();
+    window.addEventListener('resize', scheduleUpdate);
+    window.visualViewport?.addEventListener('resize', scheduleUpdate);
+
+    const stage = toolbar.closest('.stage');
+    const mutationObserver =
+      typeof MutationObserver !== 'undefined' && stage
+        ? new MutationObserver(scheduleUpdate)
+        : null;
+    mutationObserver?.observe(stage, { attributes: true, attributeFilter: ['style', 'class'] });
+
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      window.removeEventListener('resize', scheduleUpdate);
+      window.visualViewport?.removeEventListener('resize', scheduleUpdate);
+      mutationObserver?.disconnect();
+      toolbar.style.removeProperty('--seedance-toolbar-max-height');
+      toolbar.style.removeProperty('--seedance-toolbar-offset-y');
+    };
+  }, [
+    isSeedance,
+    node.id,
+    references.length,
+    referenceVideos.length,
+    referenceAudios.length,
+    hasSeedanceFrames,
+    hasSeedanceReferenceImages,
+  ]);
 
   function patchVideoLayout(overrides = {}) {
     return buildVideoNodeLayoutPatch({ ...node, ...overrides });
@@ -882,6 +1012,7 @@ function VideoToolbar({
 
   return (
     <div
+      ref={toolbarRef}
       className={`node-bottom-toolbar image-toolbar video-toolbar ${isSeedance ? 'video-toolbar-seedance' : ''}`}
       onPointerDown={(event) => event.stopPropagation()}
     >

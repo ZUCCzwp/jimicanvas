@@ -1573,7 +1573,7 @@ button {
 
 .veo-frame-slot-label {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1581,12 +1581,12 @@ button {
 
 .veo-frame-optional {
   font-size: 10px;
-  color: var(--muted-2);
+  color: var(--text-muted);
 }
 
 .veo-frame-hint {
   font-size: 10px;
-  color: var(--muted-2);
+  color: var(--text-muted);
   line-height: 1.4;
 }
 
@@ -1597,8 +1597,8 @@ button {
   height: 40px;
   flex: 0 0 72px;
   border-radius: 6px;
-  border: 1px dashed var(--line);
-  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border-default);
+  background: var(--node-input-bg);
 }
 
 .veo-frame-add {
@@ -1607,7 +1607,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 10px;
   padding: 0;
 }
@@ -1642,16 +1642,26 @@ button {
 }
 
 .video-toolbar-seedance {
-  width: max(100%, 680px);
-  max-width: min(860px, calc(100vw - 40px));
+  width: max(100%, 640px);
+  max-width: min(820px, calc(100vw - 48px));
+  max-height: var(--seedance-toolbar-max-height, min(720px, calc(100vh - 24px)));
+  transform: translate(-50%, var(--seedance-toolbar-offset-y, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.video-toolbar-seedance .node-prompt-input {
+  min-height: 44px;
+  max-height: 96px;
 }
 
 .video-model-fixed-panel {
   min-height: 48px;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 4px;
+  padding: 6px;
   border-radius: 13px;
   background: var(--node-option-panel-bg);
   border: 1px solid var(--node-option-panel-border);
@@ -1659,81 +1669,98 @@ button {
 
 .video-model-fixed-badge {
   flex: 0 0 auto;
-  padding: 2px 8px;
-  border-radius: 999px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 10px;
   font-size: 11px;
-  line-height: 1.4;
-  color: #fde68a;
-  background: rgba(245, 158, 11, 0.16);
-  border: 1px solid rgba(251, 191, 36, 0.35);
+  line-height: 1;
+  color: var(--node-option-label);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
 }
 
 .video-model-fixed-value {
+  min-width: 0;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  border-radius: 10px;
   font-size: 13px;
   font-weight: 600;
   color: var(--node-option-active-text);
+  background: var(--node-option-active-bg);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
   white-space: nowrap;
 }
 
 .seedance-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  border-radius: 13px;
-  border: 1px dashed var(--border-default);
+  gap: 7px;
+  padding: 7px;
+  border-radius: 10px;
+  border: 1px solid var(--node-option-panel-border);
   background: var(--node-option-panel-bg);
 }
 
 .seedance-section-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--node-option-label);
-  letter-spacing: 0.02em;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0;
 }
 
 .seedance-frame-row {
-  padding: 4px 2px 2px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0;
 }
 
 .seedance-frame-row .veo-frame-slot {
-  flex: 1;
-  min-width: 88px;
+  min-width: 0;
+  width: 100%;
+  gap: 5px;
 }
 
 .seedance-frame-row .veo-frame-add,
 .seedance-frame-row .veo-frame-preview {
   width: 100%;
-  max-width: 120px;
-  height: 68px;
+  max-width: none;
+  height: 48px;
   flex: 1 1 auto;
+  border-style: solid;
 }
 
 .seedance-frame-row .veo-frame-preview img {
   width: 100%;
-  height: 68px;
+  height: 48px;
   max-width: none;
-  max-height: 68px;
+  max-height: 48px;
 }
 
 .seedance-media-section {
-  gap: 10px;
+  gap: 7px;
 }
 
 .seedance-media-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 6px;
 }
 
 .seedance-media-panel {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
-  padding: 8px;
+  padding: 7px;
   border-radius: 10px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   background: var(--node-input-bg);
 }
 
@@ -1744,7 +1771,7 @@ button {
 .seedance-media-panel-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
   color: var(--node-option-label);
 }
@@ -1755,15 +1782,19 @@ button {
 }
 
 .seedance-media-panel-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .seedance-optional-tag {
   flex: 0 0 auto;
-  padding: 1px 6px;
-  border-radius: 999px;
+  padding: 1px 5px;
+  border-radius: 7px;
   font-size: 10px;
   color: var(--text-muted);
   background: rgba(148, 163, 184, 0.12);
@@ -1781,12 +1812,12 @@ button {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 32px;
-  padding: 6px 10px;
+  min-height: 30px;
+  padding: 6px 8px;
   border-radius: 10px;
-  border: 1px solid var(--accent-primary-border);
+  border: 1px solid var(--border-default);
   color: var(--text-primary);
-  background: var(--accent-soft);
+  background: var(--surface-3);
   font-size: 12px;
   transition:
     border-color 0.15s ease,
@@ -1794,8 +1825,8 @@ button {
 }
 
 .seedance-pick-btn:hover:not(:disabled) {
-  border-color: var(--accent-hover-border);
-  background: var(--accent-hover-bg);
+  border-color: var(--accent-primary-border);
+  background: var(--accent-soft);
 }
 
 .seedance-pick-btn:disabled {
@@ -1806,8 +1837,8 @@ button {
 .seedance-media-preview-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 180px;
+  gap: 6px;
+  max-height: 160px;
   overflow-y: auto;
 }
 
@@ -1816,7 +1847,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 6px;
+  padding: 5px;
   border-radius: 8px;
   border: 1px solid var(--border-default);
   background: var(--node-media-bg);
@@ -1833,17 +1864,33 @@ button {
 
 .seedance-media-preview-list.is-audio .seedance-media-preview-item audio {
   width: 100%;
+  min-height: 40px;
+}
+
+.asset-audio-preview-playable {
+  padding: 8px;
+  min-height: 52px;
+}
+
+.asset-audio-preview-playable audio {
+  width: 100%;
   height: 36px;
 }
 
 .seedance-media-preview-fallback {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 56px;
+  gap: 6px;
+  min-height: 72px;
   border-radius: 6px;
   color: var(--text-muted);
   background: rgba(148, 163, 184, 0.08);
+}
+
+.seedance-media-preview-fallback span {
+  font-size: 10px;
 }
 
 .seedance-media-name {
@@ -1875,7 +1922,10 @@ button {
 }
 
 .seedance-media-empty {
-  padding: 10px 8px;
+  min-height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 8px;
   border-radius: 8px;
   border: 1px dashed var(--border-subtle);
   font-size: 11px;
@@ -1892,9 +1942,9 @@ button {
 }
 
 .seedance-reference-row {
-  padding: 6px 8px;
+  padding: 7px;
   border-radius: 10px;
-  border: 1px dashed var(--border-subtle);
+  border: 1px solid var(--node-option-panel-border);
   background: var(--node-option-panel-bg);
 }
 
@@ -1918,6 +1968,143 @@ button {
   font-size: 12px;
   color: var(--text-muted);
   line-height: 1.4;
+}
+
+.seedance-asset-modal .asset-modal-toolbar {
+  flex-wrap: wrap;
+}
+
+.seedance-asset-toolbar {
+  align-items: center;
+}
+
+.seedance-status-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.52);
+}
+
+.seedance-status-tabs button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--text-muted);
+  background: transparent;
+  font-size: 12px;
+}
+
+.seedance-status-tabs button.active,
+.seedance-status-tabs button:hover {
+  color: var(--text-primary);
+  background: var(--accent-soft);
+}
+
+.seedance-upload-button {
+  white-space: nowrap;
+}
+
+.seedance-asset-notice {
+  margin: 0 16px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--node-running-text);
+  background: var(--node-running-bg);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+}
+
+.seedance-asset-tip {
+  margin: 0;
+  padding: 0 16px 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.seedance-asset-grid.asset-grid {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 16px 12px;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  align-items: stretch;
+}
+
+.asset-empty-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.seedance-asset-card {
+  text-align: left;
+}
+
+.seedance-asset-card.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.seedance-asset-preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.seedance-asset-preview video,
+.seedance-asset-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+  object-position: center;
+}
+
+.seedance-asset-preview .asset-audio-preview,
+.seedance-asset-preview .asset-audio-preview-playable {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.seedance-asset-preview .asset-audio-preview-playable audio {
+  width: calc(100% - 12px);
+}
+
+.seedance-asset-status {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1.3;
+  color: #fff;
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.seedance-asset-status.is-pending {
+  color: #fde68a;
+  background: rgba(180, 83, 9, 0.85);
+}
+
+.seedance-asset-status.is-failed,
+.seedance-asset-status.is-rejected {
+  background: rgba(220, 38, 38, 0.88);
 }
 
 .image-output-grid.inputs-highlighted {
@@ -4164,6 +4351,7 @@ button {
   .video-toolbar-seedance {
     width: max(100%, 320px);
     max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 156px);
   }
 
   .asset-grid {

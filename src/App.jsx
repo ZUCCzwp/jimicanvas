@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AssetPickerModal } from './components/AssetPickerModal';
+import { SeedanceAssetPickerModal } from './components/SeedanceAssetPickerModal';
 import { ImagePreviewModal } from './components/ImagePreviewModal';
 import { VideoPreviewModal } from './components/VideoPreviewModal';
 import { NodeTypePickerPopover } from './components/NodeTypePickerPopover';
@@ -100,6 +101,8 @@ import {
   downloadVideoFile,
   getSd2ManxueAssetList,
   normalizeVideoUrl,
+  resolveSeedanceMediaPreviewUrl,
+  uploadAndAuditSeedanceAssets,
 } from './lib/videoApi';
 
 function App() {
@@ -148,6 +151,9 @@ function App() {
     selectedAssets: [],
     search: '',
     loading: false,
+    seedanceStatus: 'Active',
+    seedanceAuditing: false,
+    seedanceNotice: '',
   });
 
   const stageRef = useRef(null);
@@ -475,8 +481,17 @@ function App() {
 
   useEffect(() => {
     if (!assetPicker.nodeId) return;
+    if (String(assetPicker.pickMode).startsWith('seedance-')) {
+      loadSeedanceAssetPickerAssets(assetPicker.seedanceStatus);
+      return;
+    }
     loadAssetPickerAssets(assetPicker.source, assetPicker.pickMode);
-  }, [assetPicker.nodeId, assetPicker.source, assetPicker.pickMode]);
+  }, [
+    assetPicker.nodeId,
+    assetPicker.source,
+    assetPicker.pickMode,
+    assetPicker.seedanceStatus,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1427,15 +1442,22 @@ function App() {
   }
 
   function normalizeSeedancePickedAsset(asset, mediaType) {
-    return {
+    const normalized = {
       id: asset.id || asset.assetId,
       assetId: asset.assetId || asset.id,
       name: asset.name || (mediaType === 'video' ? '参考视频' : mediaType === 'audio' ? '参考音频' : '参考图'),
       url: asset.url || (asset.assetId ? `asset://${asset.assetId}` : ''),
-      previewUrl: asset.previewUrl || asset.preview || '',
+      originalUrl: asset.originalUrl || asset.original_url || '',
+      previewUrl: asset.previewUrl || asset.preview || asset.originalUrl || asset.original_url || '',
       duration: asset.duration,
       source: 'seedance',
       type: mediaType,
+    };
+    const previewUrl = resolveSeedanceMediaPreviewUrl(normalized, mediaType);
+    return {
+      ...normalized,
+      previewUrl,
+      originalUrl: previewUrl || normalized.originalUrl,
     };
   }
 
@@ -1644,7 +1666,88 @@ function App() {
       selectedAssets: [],
       search: '',
       loading: true,
+      seedanceStatus: 'Active',
+      seedanceAuditing: false,
+      seedanceNotice: '',
     });
+  }
+
+  function getSeedancePickerMediaType(pickMode = assetPicker.pickMode) {
+    if (pickMode === 'seedance-ref-video') return 'video';
+    if (pickMode === 'seedance-ref-audio') return 'audio';
+    return 'image';
+  }
+
+  async function loadSeedanceAssetPickerAssets(status = 'Active') {
+    const token = getOrRequestToken({ onSaved: refreshUserQuota });
+    if (!token) {
+      setAssetPicker((current) => ({ ...current, loading: false }));
+      return;
+    }
+
+    const mediaType = getSeedancePickerMediaType();
+    setAssetPicker((current) => ({ ...current, loading: true }));
+    try {
+      const result = await getSd2ManxueAssetList({
+        token,
+        page: 1,
+        pageSize: 48,
+        mediaType,
+        status,
+      });
+      setAssetPicker((current) => ({
+        ...current,
+        assets: result.list || [],
+        loading: false,
+      }));
+    } catch {
+      setAssetPicker((current) => ({ ...current, assets: [], loading: false }));
+    }
+  }
+
+  async function uploadSeedanceForAudit(files) {
+    const token = getOrRequestToken({ onSaved: refreshUserQuota });
+    if (!token) {
+      setAssetPicker((current) => ({
+        ...current,
+        seedanceNotice: '缺少 token，请先登录',
+      }));
+      return;
+    }
+
+    const mediaType = getSeedancePickerMediaType();
+    setAssetPicker((current) => ({
+      ...current,
+      seedanceAuditing: true,
+      seedanceNotice: '',
+    }));
+
+    try {
+      const result = await uploadAndAuditSeedanceAssets({ token, mediaType, files });
+      if (result.passed) {
+        setAssetPicker((current) => ({
+          ...current,
+          seedanceStatus: 'Active',
+          seedanceNotice: '素材已审核通过，可直接选择',
+        }));
+        await loadSeedanceAssetPickerAssets('Active');
+      } else {
+        setAssetPicker((current) => ({
+          ...current,
+          seedanceStatus: 'Pending',
+          seedanceNotice: '已提交审核，请在「审核中」查看进度',
+        }));
+        await loadSeedanceAssetPickerAssets('Pending');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '上传或审核失败';
+      setAssetPicker((current) => ({
+        ...current,
+        seedanceNotice: message,
+      }));
+    } finally {
+      setAssetPicker((current) => ({ ...current, seedanceAuditing: false }));
+    }
   }
 
   async function loadAssetPickerAssets(source, pickMode = assetPicker.pickMode) {
@@ -1691,11 +1794,18 @@ function App() {
 
   function toggleAssetSelection(asset) {
     setAssetPicker((current) => {
-      const exists = current.selectedAssets.some((item) => item.id === asset.id);
+      if (String(current.pickMode).startsWith('seedance-') && asset.status !== 'Active') {
+        return current;
+      }
+      const exists = current.selectedAssets.some(
+        (item) => item.id === asset.id || item.assetId === asset.assetId
+      );
       if (exists) {
         return {
           ...current,
-          selectedAssets: current.selectedAssets.filter((item) => item.id !== asset.id),
+          selectedAssets: current.selectedAssets.filter(
+            (item) => item.id !== asset.id && item.assetId !== asset.assetId
+          ),
         };
       }
       if (current.selectedAssets.length >= current.maxCount) return current;
@@ -2279,32 +2389,58 @@ function App() {
       ) : null}
 
       {assetPicker.nodeId ? (
-        <AssetPickerModal
-          assets={assetPicker.assets}
-          loading={assetPicker.loading}
-          source={assetPicker.source}
-          search={assetPicker.search}
-          selectedAssets={assetPicker.selectedAssets}
-          maxCount={assetPicker.maxCount}
-          title={assetPicker.title}
-          subtitle={assetPicker.subtitle}
-          mediaType={
-            assetPicker.pickMode === 'video-output' || assetPicker.pickMode === 'seedance-ref-video'
-              ? 'video'
-              : assetPicker.pickMode === 'seedance-ref-audio'
-                ? 'audio'
-                : 'image'
-          }
-          libraryOnly={String(assetPicker.pickMode).startsWith('seedance-')}
-          onSourceChange={(source) =>
-            setAssetPicker((current) => ({ ...current, source, selectedAssets: [] }))
-          }
-          onSearchChange={(search) => setAssetPicker((current) => ({ ...current, search }))}
-          onToggleAsset={toggleAssetSelection}
-          onUploadImages={(files) => uploadImageReferences(assetPicker.nodeId, files, assetPicker.pickMode)}
-          onConfirm={confirmAssetSelection}
-          onClose={() => setAssetPicker((current) => ({ ...current, nodeId: null }))}
-        />
+        String(assetPicker.pickMode).startsWith('seedance-') ? (
+          <SeedanceAssetPickerModal
+            assets={assetPicker.assets}
+            loading={assetPicker.loading}
+            auditing={assetPicker.seedanceAuditing}
+            statusFilter={assetPicker.seedanceStatus}
+            search={assetPicker.search}
+            selectedAssets={assetPicker.selectedAssets}
+            maxCount={assetPicker.maxCount}
+            title={assetPicker.title}
+            subtitle={assetPicker.subtitle}
+            mediaType={getSeedancePickerMediaType(assetPicker.pickMode)}
+            notice={assetPicker.seedanceNotice}
+            onStatusFilterChange={(seedanceStatus) =>
+              setAssetPicker((current) => ({
+                ...current,
+                seedanceStatus,
+                selectedAssets: [],
+                seedanceNotice: '',
+              }))
+            }
+            onSearchChange={(search) => setAssetPicker((current) => ({ ...current, search }))}
+            onToggleAsset={toggleAssetSelection}
+            onUploadForAudit={uploadSeedanceForAudit}
+            onConfirm={confirmAssetSelection}
+            onClose={() => setAssetPicker((current) => ({ ...current, nodeId: null }))}
+          />
+        ) : (
+          <AssetPickerModal
+            assets={assetPicker.assets}
+            loading={assetPicker.loading}
+            source={assetPicker.source}
+            search={assetPicker.search}
+            selectedAssets={assetPicker.selectedAssets}
+            maxCount={assetPicker.maxCount}
+            title={assetPicker.title}
+            subtitle={assetPicker.subtitle}
+            mediaType={
+              assetPicker.pickMode === 'video-output' ? 'video' : 'image'
+            }
+            onSourceChange={(source) =>
+              setAssetPicker((current) => ({ ...current, source, selectedAssets: [] }))
+            }
+            onSearchChange={(search) => setAssetPicker((current) => ({ ...current, search }))}
+            onToggleAsset={toggleAssetSelection}
+            onUploadImages={(files) =>
+              uploadImageReferences(assetPicker.nodeId, files, assetPicker.pickMode)
+            }
+            onConfirm={confirmAssetSelection}
+            onClose={() => setAssetPicker((current) => ({ ...current, nodeId: null }))}
+          />
+        )
       ) : null}
 
       <main className="workspace">

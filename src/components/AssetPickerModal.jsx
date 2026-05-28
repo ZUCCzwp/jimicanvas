@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { Check, Film, FolderOpen, Headphones, Image as ImageIcon, LoaderCircle, Search, Sparkles, Upload, X } from 'lucide-react';
 import { normalizeImageUrl } from '../lib/imageApi';
-import { normalizeVideoUrl } from '../lib/videoApi';
+import { normalizeVideoUrl, resolveSeedanceMediaPreviewUrl } from '../lib/videoApi';
 
 export function AssetPickerModal({
   assets,
@@ -124,17 +124,21 @@ export function AssetPickerModal({
               <div className="asset-column" key={`asset-column-${columnIndex}`}>
                 {column.map((asset) => {
                   const selected = selectedAssets.some((item) => item.id === asset.id);
-                  const previewUrl = asset.previewUrl
-                    ? asset.previewUrl
-                    : source === 'seedance'
-                      ? isVideo
-                        ? normalizeVideoUrl(asset.url)
-                        : ''
-                      : source === 'local'
-                        ? asset.url
-                        : isVideo
-                          ? normalizeVideoUrl(asset.url)
-                          : normalizeImageUrl(asset.url);
+                  const previewUrl =
+                    source === 'seedance'
+                      ? resolveSeedanceMediaPreviewUrl(
+                          asset,
+                          isAudio ? 'audio' : isVideo ? 'video' : 'image'
+                        )
+                      : asset.previewUrl
+                        ? isVideo || isAudio
+                          ? normalizeVideoUrl(asset.previewUrl)
+                          : normalizeImageUrl(asset.previewUrl)
+                        : source === 'local'
+                          ? asset.url
+                          : isVideo
+                            ? normalizeVideoUrl(asset.url)
+                            : normalizeImageUrl(asset.url);
                   const assetLabel = isVideo ? '视频资产' : isAudio ? '音频资产' : '图片资产';
                   return (
                     <button
@@ -145,6 +149,10 @@ export function AssetPickerModal({
                     >
                       {isVideo ? (
                         <video src={previewUrl} muted playsInline preload="metadata" />
+                      ) : isAudio && previewUrl ? (
+                        <div className="asset-audio-preview asset-audio-preview-playable">
+                          <audio src={previewUrl} controls preload="metadata" onClick={(e) => e.stopPropagation()} />
+                        </div>
                       ) : isAudio ? (
                         <div className="asset-audio-preview">
                           <Headphones size={22} />
