@@ -473,7 +473,22 @@
 }
 
 [data-theme='light'] .image-reference-label,
-[data-theme='light'] .video-manxue-hint,
+[data-theme='light'] .video-manxue-hint {
+  color: #0369a1;
+  background: rgba(14, 165, 233, 0.1);
+  border-color: rgba(14, 165, 233, 0.24);
+}
+
+[data-theme='light'] .video-model-fixed-badge {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(217, 119, 6, 0.28);
+}
+
+[data-theme='light'] .video-model-fixed-value {
+  color: #1e3a8a;
+}
+
 [data-theme='light'] .image-empty {
   color: var(--text-muted);
 }

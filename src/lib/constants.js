@@ -42,6 +42,9 @@ export const DEFAULT_VIDEO_QUALITY = '720p';
 export const DEFAULT_VIDEO_COUNT = 1;
 export const DEFAULT_VEO_GENERATION_TYPE = 'frame';
 export const VEO_REFERENCE_IMAGE_MAX = 3;
+export const SEEDANCE_REF_IMAGE_MAX = 9;
+export const SEEDANCE_REF_VIDEO_MAX = 3;
+export const SEEDANCE_REF_AUDIO_MAX = 3;
 
 export const VEO_GENERATION_TYPE_OPTIONS = [
   { value: 'frame', label: '首尾帧' },
@@ -128,11 +131,8 @@ export const VIDEO_FAMILY_CONFIG = {
     ratioKey: 'ratio',
   },
   seedance: {
-    provider: 'seedance',
-    models: [
-      { value: 'doubao-seedance-2.0', label: 'Seedance 2.0' },
-      { value: 'seedance-2.0-manxue', label: 'Seedance 2.0 满血版' },
-    ],
+    provider: 'seedance-manxue',
+    models: [{ value: 'seedance-2.0-manxue', label: 'Seedance 2.0 满血版' }],
     resolutions: [
       { value: '480p', label: '480p' },
       { value: '720p', label: '720p' },

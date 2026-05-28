@@ -387,6 +387,19 @@ export async function executeVideoGeneration(
                 lastFrame: node.videoLastFrame,
               }
             : {},
+        seedanceInputs:
+          family === 'seedance'
+            ? {
+                firstFrame: node.videoFirstFrame,
+                lastFrame: node.videoLastFrame,
+                referenceVideos: node.videoReferenceVideos || [],
+                referenceAudios: node.videoReferenceAudios || [],
+                videoRefDuration: (node.videoReferenceVideos || []).reduce(
+                  (sum, item) => sum + (Number(item?.duration) || 0),
+                  0
+                ),
+              }
+            : {},
       });
       taskId = created.taskId;
       const provider = created.provider;

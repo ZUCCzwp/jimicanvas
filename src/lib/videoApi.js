@@ -153,30 +153,93 @@ async function createOmniTask({ token, prompt, settings, referenceImages }) {
   return { taskId: String(taskId), provider: 'omni', queryModel: settings.model };
 }
 
-async function createSeedanceStandardTask({ token, prompt, settings, referenceImages }) {
-  const data = await requestJson('/api/video/seedance/2/create', {
-    token,
-    method: 'POST',
-    body: {
-      model: settings.model,
-      prompt,
-      duration: Number(settings.duration) || 5,
-      resolution: settings.resolution,
-      aspect_ratio: settings.ratio,
-      image_urls: buildReferenceImageUrls(referenceImages),
-    },
-  });
-
-  const taskId = extractTaskId(data);
-  if (!taskId) {
-    throw new Error('Seedance 任务创建成功，但未返回任务 ID');
-  }
-
-  return { taskId: String(taskId), provider: 'seedance', queryModel: settings.model };
+export function pickSeedanceAssetUrl(asset) {
+  if (!asset) return '';
+  const url = String(asset.url || asset.assetUrl || '').trim();
+  if (url.startsWith('asset://')) return url;
+  if (asset.assetId) return `asset://${asset.assetId}`;
+  return '';
 }
 
-async function createSeedanceManxueTask({ token, prompt, settings, referenceImages }) {
-  const images = buildReferenceImageUrls(referenceImages);
+function pickSeedancePreviewUrl(asset) {
+  if (!asset) return '';
+  const preview = String(asset.previewUrl || asset.preview || '').trim();
+  if (preview) return preview;
+  const url = String(asset.url || asset.data || '').trim();
+  if (url && !url.startsWith('asset://')) {
+    return url.startsWith('data:') || url.startsWith('blob:') || /^https?:\/\//.test(url)
+      ? normalizeImageUrl(url)
+      : url;
+  }
+  return '';
+}
+
+function buildSeedanceReferencePayload(referenceImages = []) {
+  const referenceImageUrls = [];
+  const referenceImageAssets = [];
+
+  (referenceImages || []).forEach((image) => {
+    const assetUrl = pickSeedanceAssetUrl(image);
+    const previewUrl = pickSeedancePreviewUrl(image) || buildVeoFrameImageUrl(image);
+    if (previewUrl) referenceImageUrls.push(previewUrl);
+    if (assetUrl) referenceImageAssets.push(assetUrl);
+  });
+
+  return { referenceImageUrls, referenceImageAssets };
+}
+
+export async function getSd2ManxueAssetList({
+  token,
+  page = 1,
+  pageSize = 24,
+  mediaType = 'image',
+  status = 'Active',
+}) {
+  const data = await requestJson('/api/video/sd2manxue/asset/list', {
+    token,
+    query: {
+      page,
+      page_size: pageSize,
+      media_type: mediaType,
+      status,
+    },
+  });
+  const list = Array.isArray(data?.list) ? data.list : [];
+  return {
+    list: list.map((item) => ({
+      id: item.assetId || item.id,
+      assetId: item.assetId || item.id,
+      url: item.assetId ? `asset://${item.assetId}` : '',
+      previewUrl: item.previewUrl || item.originalUrl || '',
+      name: item.name || '素材',
+      duration: item.duration,
+      type: mediaType,
+    })),
+    total: data?.total || list.length,
+  };
+}
+
+async function createSeedanceManxueTask({
+  token,
+  prompt,
+  settings,
+  referenceImages,
+  seedanceInputs = {},
+}) {
+  const { referenceImageUrls, referenceImageAssets } = buildSeedanceReferencePayload(referenceImages);
+  const firstFrame = seedanceInputs.firstFrame;
+  const lastFrame = seedanceInputs.lastFrame;
+  const firstAsset = pickSeedanceAssetUrl(firstFrame);
+  const lastAsset = pickSeedanceAssetUrl(lastFrame);
+  const firstPreview = pickSeedancePreviewUrl(firstFrame) || buildVeoFrameImageUrl(firstFrame);
+  const lastPreview = pickSeedancePreviewUrl(lastFrame) || buildVeoFrameImageUrl(lastFrame);
+  const referenceVideos = (seedanceInputs.referenceVideos || [])
+    .map(pickSeedanceAssetUrl)
+    .filter(Boolean);
+  const referenceAudios = (seedanceInputs.referenceAudios || [])
+    .map(pickSeedanceAssetUrl)
+    .filter(Boolean);
+
   const data = await requestJson('/api/video/sd2manxue/create', {
     token,
     method: 'POST',
@@ -185,11 +248,17 @@ async function createSeedanceManxueTask({ token, prompt, settings, referenceImag
       prompt,
       duration: Number(settings.duration) || 5,
       ratio: settings.ratio || '16:9',
-      first_image: images[0] || '',
-      image: images[0] || '',
-      first_image_url: images[0] || '',
-      reference_image_urls: images,
-      referenceImages: images,
+      first_image: firstAsset,
+      image: firstAsset,
+      last_image: lastAsset,
+      lastFrameImage: lastAsset,
+      first_image_url: firstPreview,
+      last_image_url: lastPreview,
+      reference_image_urls: referenceImageUrls,
+      referenceImages: referenceImageAssets,
+      referenceVideos,
+      referenceAudios,
+      video_ref_duration: Number(seedanceInputs.videoRefDuration) || 0,
     },
   });
 
@@ -230,6 +299,7 @@ export async function createVideoGenerationTask({
   settings,
   referenceImages = [],
   veoFrames = {},
+  seedanceInputs = {},
 }) {
   const family = settings.family || DEFAULT_VIDEO_FAMILY;
 
@@ -239,10 +309,7 @@ export async function createVideoGenerationTask({
     case 'omni':
       return createOmniTask({ token, prompt, settings, referenceImages });
     case 'seedance':
-      if (settings.provider === 'seedance-manxue') {
-        return createSeedanceManxueTask({ token, prompt, settings, referenceImages });
-      }
-      return createSeedanceStandardTask({ token, prompt, settings, referenceImages });
+      return createSeedanceManxueTask({ token, prompt, settings, referenceImages, seedanceInputs });
     case 'grok':
       return createGrokTask({ token, prompt, settings, referenceImages });
     case 'sora':

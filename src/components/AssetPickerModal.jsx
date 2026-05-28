@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Check, Film, FolderOpen, Image as ImageIcon, LoaderCircle, Search, Sparkles, Upload, X } from 'lucide-react';
+import { Check, Film, FolderOpen, Headphones, Image as ImageIcon, LoaderCircle, Search, Sparkles, Upload, X } from 'lucide-react';
 import { normalizeImageUrl } from '../lib/imageApi';
 import { normalizeVideoUrl } from '../lib/videoApi';
 
@@ -13,6 +13,7 @@ export function AssetPickerModal({
   title = '资产库',
   subtitle = '选择图片作为参考图',
   mediaType = 'image',
+  libraryOnly = false,
   onSourceChange,
   onSearchChange,
   onToggleAsset,
@@ -22,6 +23,7 @@ export function AssetPickerModal({
 }) {
   const fileInputRef = useRef(null);
   const isVideo = mediaType === 'video';
+  const isAudio = mediaType === 'audio';
   const filteredAssets = assets.filter((asset) => {
     const keyword = search.trim().toLowerCase();
     if (!keyword) return true;
@@ -49,25 +51,30 @@ export function AssetPickerModal({
           </button>
         </header>
 
-        <div className="asset-modal-toolbar">
-          <div className="asset-source-tabs">
-            <button
-              className={source === 'local' ? 'active' : ''}
-              onClick={() => onSourceChange('local')}
-            >
-              {isVideo ? <Film size={14} /> : <ImageIcon size={14} />}
-              我的资产
-            </button>
-            {!isVideo ? (
+        <div className={`asset-modal-toolbar ${libraryOnly ? 'library-only' : ''}`}>
+          {libraryOnly ? (
+            <p className="asset-library-tip">仅展示满血版素材库中已审核通过的素材</p>
+          ) : null}
+          {!libraryOnly ? (
+            <div className="asset-source-tabs">
               <button
-                className={source === 'ai' ? 'active' : ''}
-                onClick={() => onSourceChange('ai')}
+                className={source === 'local' ? 'active' : ''}
+                onClick={() => onSourceChange('local')}
               >
-                <Sparkles size={14} />
-                AI 图片
+                {isVideo ? <Film size={14} /> : isAudio ? <Headphones size={14} /> : <ImageIcon size={14} />}
+                我的资产
               </button>
-            ) : null}
-          </div>
+              {!isVideo && !isAudio ? (
+                <button
+                  className={source === 'ai' ? 'active' : ''}
+                  onClick={() => onSourceChange('ai')}
+                >
+                  <Sparkles size={14} />
+                  AI 图片
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <label className="asset-search">
             <Search size={14} />
             <input
@@ -76,19 +83,21 @@ export function AssetPickerModal({
               placeholder="搜索资产"
             />
           </label>
-          <button
-            className="icon-button asset-upload-button"
-            onClick={() => fileInputRef.current?.click()}
-            title={isVideo ? '上传视频' : '上传图片'}
-          >
-            <Upload size={14} />
-            {isVideo ? '上传视频' : '上传图片'}
-          </button>
+          {!libraryOnly ? (
+            <button
+              className="icon-button asset-upload-button"
+              onClick={() => fileInputRef.current?.click()}
+              title={isVideo ? '上传视频' : isAudio ? '上传音频' : '上传图片'}
+            >
+              <Upload size={14} />
+              {isVideo ? '上传视频' : isAudio ? '上传音频' : '上传图片'}
+            </button>
+          ) : null}
           <input
             ref={fileInputRef}
             type="file"
-            accept={isVideo ? 'video/*' : 'image/*'}
-            multiple={!isVideo && maxCount > 1}
+            accept={isVideo ? 'video/*' : isAudio ? 'audio/*' : 'image/*'}
+            multiple={!isVideo && !isAudio && maxCount > 1}
             hidden
             onChange={(event) => {
               const files = Array.from(event.target.files || []);
@@ -107,19 +116,26 @@ export function AssetPickerModal({
               正在加载
             </div>
           ) : filteredAssets.length === 0 ? (
-            <div className="asset-empty">{isVideo ? '暂无视频资产' : '暂无图片资产'}</div>
+            <div className="asset-empty">
+              {isVideo ? '暂无视频资产' : isAudio ? '暂无音频资产' : '暂无图片资产'}
+            </div>
           ) : (
             assetColumns.map((column, columnIndex) => (
               <div className="asset-column" key={`asset-column-${columnIndex}`}>
                 {column.map((asset) => {
                   const selected = selectedAssets.some((item) => item.id === asset.id);
-                  const previewUrl =
-                    source === 'local'
-                      ? asset.url
-                      : isVideo
+                  const previewUrl = asset.previewUrl
+                    ? asset.previewUrl
+                    : source === 'seedance'
+                      ? isVideo
                         ? normalizeVideoUrl(asset.url)
-                        : normalizeImageUrl(asset.url);
-                  const assetLabel = isVideo ? '视频资产' : '图片资产';
+                        : ''
+                      : source === 'local'
+                        ? asset.url
+                        : isVideo
+                          ? normalizeVideoUrl(asset.url)
+                          : normalizeImageUrl(asset.url);
+                  const assetLabel = isVideo ? '视频资产' : isAudio ? '音频资产' : '图片资产';
                   return (
                     <button
                       key={asset.id || asset.url}
@@ -129,6 +145,10 @@ export function AssetPickerModal({
                     >
                       {isVideo ? (
                         <video src={previewUrl} muted playsInline preload="metadata" />
+                      ) : isAudio ? (
+                        <div className="asset-audio-preview">
+                          <Headphones size={22} />
+                        </div>
                       ) : (
                         <img src={previewUrl} alt={asset.name || assetLabel} />
                       )}

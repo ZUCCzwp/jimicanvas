@@ -4,6 +4,7 @@ import {
   FileText,
   Film,
   FolderOpen,
+  Headphones,
   Image as ImageIcon,
   Upload,
   Copy,
@@ -28,7 +29,6 @@ import {
   getVideoResolutionOptions,
   defaultSoraSize,
   inferVideoFamily,
-  isSeedanceManxueModel,
   IMAGE_MODEL_OPTIONS,
   getImageRatioOptions,
   getImageResolutionOptions,
@@ -39,6 +39,9 @@ import {
   DEFAULT_VIDEO_URL,
   PLACEHOLDER_IMAGE,
   VEO_REFERENCE_IMAGE_MAX,
+  SEEDANCE_REF_IMAGE_MAX,
+  SEEDANCE_REF_VIDEO_MAX,
+  SEEDANCE_REF_AUDIO_MAX,
   VIDEO_FAMILY_OPTIONS,
 } from '../lib/constants';
 import { normalizeVideoUrl } from '../lib/videoApi';
@@ -605,9 +608,93 @@ function ratioIconValue(family, value) {
 
 function referencePreviewSrc(image) {
   if (!image) return '';
-  return image.source === 'local'
-    ? image.url || image.data
-    : normalizeImageUrl(image.url || image.data);
+  const preview = image.previewUrl || image.preview;
+  if (preview) return preview;
+  const value = image.url || image.data;
+  if (!value || String(value).startsWith('asset://')) return '';
+  return image.source === 'local' ? value : normalizeImageUrl(value);
+}
+
+function seedanceMediaPreviewUrl(item) {
+  const preview = item?.previewUrl || item?.preview;
+  if (preview) return preview;
+  const url = String(item?.url || '').trim();
+  if (url && !url.startsWith('asset://')) return url;
+  return '';
+}
+
+function SeedanceMediaPanel({
+  label,
+  icon: Icon,
+  mediaType,
+  items,
+  maxCount,
+  disabled,
+  disabledHint,
+  isRunning,
+  onPick,
+  onRemove,
+}) {
+  const isBlocked = Boolean(disabled && disabledHint);
+  return (
+    <div className={`seedance-media-panel ${isBlocked ? 'is-blocked' : ''}`}>
+      <div className="seedance-media-panel-header">
+        <Icon size={14} />
+        <span className="seedance-media-panel-title">{label}</span>
+        <span className="seedance-optional-tag">可选</span>
+        <span className="seedance-media-count">
+          {items.length}/{maxCount}
+        </span>
+      </div>
+      <button
+        type="button"
+        className="seedance-pick-btn"
+        onClick={onPick}
+        disabled={isRunning || disabled || items.length >= maxCount}
+        title={
+          disabledHint ||
+          (items.length >= maxCount ? `最多 ${maxCount} 个` : `从满血版素材库选择${label}`)
+        }
+      >
+        <FolderOpen size={14} />
+        从素材库选择
+      </button>
+      {items.length > 0 ? (
+        <div className={`seedance-media-preview-list ${mediaType === 'audio' ? 'is-audio' : ''}`}>
+          {items.map((item, index) => {
+            const previewUrl = seedanceMediaPreviewUrl(item);
+            return (
+              <div className="seedance-media-preview-item" key={item.id || item.url || index}>
+                {mediaType === 'video' && previewUrl ? (
+                  <video src={previewUrl} muted playsInline preload="metadata" />
+                ) : mediaType === 'audio' && previewUrl ? (
+                  <audio src={previewUrl} controls preload="metadata" />
+                ) : (
+                  <div className="seedance-media-preview-fallback">
+                    <Icon size={18} />
+                  </div>
+                )}
+                <span className="seedance-media-name" title={item.name || `${label} ${index + 1}`}>
+                  {item.name || `${label} ${index + 1}`}
+                </span>
+                <button
+                  type="button"
+                  className="seedance-media-remove"
+                  onClick={() => onRemove(index)}
+                  title={`移除${label}`}
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="seedance-media-empty">暂未选择{label}</div>
+      )}
+      {isBlocked ? <p className="seedance-media-hint">{disabledHint}</p> : null}
+    </div>
+  );
 }
 
 function VeoFrameSlot({ label, optional, image, disabled, blockedHint, onPick, onClear }) {
@@ -653,19 +740,27 @@ function VideoToolbar({
   onRemoveImageReference,
   onRemoveTextReference,
   onRemoveVeoFrame,
+  onRemoveSeedanceMedia,
   onUpdateNode,
 }) {
   const hasTextInput = textInputLinks.length > 0;
   const hasImageInput = imageInputLinks.length > 0;
   const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
   const references = Array.isArray(node.referenceImages) ? node.referenceImages : [];
+  const referenceVideos = Array.isArray(node.videoReferenceVideos) ? node.videoReferenceVideos : [];
+  const referenceAudios = Array.isArray(node.videoReferenceAudios) ? node.videoReferenceAudios : [];
   const family = inferVideoFamily(node);
   const isVeo = family === 'veo';
+  const isSeedance = family === 'seedance';
   const veoGenerationType = node.videoGenerationType || 'frame';
   const showVeoReferenceImages = isVeo && veoGenerationType === 'reference';
-  const showGenericReferenceImages = !isVeo;
+  const hasSeedanceFrames = Boolean(node.videoFirstFrame || node.videoLastFrame);
+  const hasSeedanceReferenceImages = references.length > 0;
+  const showSeedanceReferenceImages = isSeedance && !hasSeedanceFrames;
+  const showSeedanceFrames = isSeedance && !hasSeedanceReferenceImages;
+  const showSeedanceReferenceMedia = isSeedance && !hasSeedanceFrames;
+  const showGenericReferenceImages = !isVeo && !isSeedance;
   const model = node.videoModel || getVideoModelOptions(family)[0]?.value;
-  const isManxueSeedance = family === 'seedance' && isSeedanceManxueModel(model);
   const modelOptions = getVideoModelOptions(family);
   const resolutionOptions = getVideoResolutionOptions(family, model);
   const ratioOptions = getVideoRatioOptions(family);
@@ -718,8 +813,16 @@ function VideoToolbar({
       patch.videoGenerationType = nextSettings.generationType;
     } else {
       patch.videoGenerationType = undefined;
+    }
+
+    if (nextFamily !== 'veo' && nextFamily !== 'seedance') {
       patch.videoFirstFrame = null;
       patch.videoLastFrame = null;
+    }
+
+    if (nextFamily !== 'seedance') {
+      patch.videoReferenceVideos = [];
+      patch.videoReferenceAudios = [];
     }
 
     onUpdateNode(node.id, {
@@ -778,7 +881,10 @@ function VideoToolbar({
   const showResolutionControl = resolutionOptions.length > 0;
 
   return (
-    <div className="node-bottom-toolbar image-toolbar video-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+    <div
+      className={`node-bottom-toolbar image-toolbar video-toolbar ${isSeedance ? 'video-toolbar-seedance' : ''}`}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
       <div className="node-prompt-wrap">
         <textarea
           className="node-prompt-input"
@@ -786,20 +892,30 @@ function VideoToolbar({
           onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
           placeholder="输入视频提示词"
         />
-        {showVeoReferenceImages || showGenericReferenceImages ? (
+        {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages ? (
           <button
             className="prompt-asset-button"
             onClick={() =>
-              onOpenAssetLibrary(node.id, showVeoReferenceImages ? 'veo-reference' : 'reference')
+              onOpenAssetLibrary(
+                node.id,
+                showVeoReferenceImages
+                  ? 'veo-reference'
+                  : showSeedanceReferenceImages
+                    ? 'seedance-reference'
+                    : 'reference'
+              )
             }
             disabled={
               isRunning ||
-              (showVeoReferenceImages && references.length >= VEO_REFERENCE_IMAGE_MAX)
+              (showVeoReferenceImages && references.length >= VEO_REFERENCE_IMAGE_MAX) ||
+              (showSeedanceReferenceImages && references.length >= SEEDANCE_REF_IMAGE_MAX)
             }
             title={
               showVeoReferenceImages
                 ? `从资产库选择参考图（最多 ${VEO_REFERENCE_IMAGE_MAX} 张）`
-                : '从资产库选择参考图'
+                : showSeedanceReferenceImages
+                  ? `从满血版素材库选择参考图（最多 ${SEEDANCE_REF_IMAGE_MAX} 张）`
+                  : '从资产库选择参考图'
             }
           >
             <FolderOpen size={14} />
@@ -814,12 +930,22 @@ function VideoToolbar({
         onChange={applyFamilyChange}
       />
       <div className="image-options-row">
-        <OptionSegment
-          title="模型"
-          value={normalizedSettings.model}
-          options={modelOptions}
-          onChange={applyModelChange}
-        />
+        {modelOptions.length > 1 ? (
+          <OptionSegment
+            title="模型"
+            value={normalizedSettings.model}
+            options={modelOptions}
+            onChange={applyModelChange}
+          />
+        ) : isSeedance ? (
+          <div className="option-segment video-model-fixed" title="Seedance 2.0 满血版">
+            <span className="option-segment-title">模型</span>
+            <div className="video-model-fixed-panel">
+              <span className="video-model-fixed-badge">满血版</span>
+              <span className="video-model-fixed-value">Seedance 2.0</span>
+            </div>
+          </div>
+        ) : null}
         {showResolutionControl ? (
           <OptionSegment
             title={resolutionTitle}
@@ -895,6 +1021,68 @@ function VideoToolbar({
           />
         </div>
       ) : null}
+      {isSeedance ? (
+        <p className="video-manxue-hint">
+          参考图与首尾帧互斥；已选首尾帧时不可添加参考视频/音频。素材需从满血版素材库选择。
+        </p>
+      ) : null}
+      {showSeedanceFrames ? (
+        <div className="seedance-section">
+          <div className="seedance-section-title">首尾帧</div>
+          <div className="veo-frame-row seedance-frame-row">
+            <VeoFrameSlot
+              label="首帧"
+              image={node.videoFirstFrame}
+              disabled={isRunning}
+              onPick={() => onOpenAssetLibrary(node.id, 'seedance-first')}
+              onClear={() => onRemoveVeoFrame(node.id, 'first')}
+            />
+            <VeoFrameSlot
+              label="尾帧"
+              optional
+              image={node.videoLastFrame}
+              disabled={isRunning || !node.videoFirstFrame}
+              blockedHint={!node.videoFirstFrame ? '请先选择首帧' : ''}
+              onPick={() => {
+                if (!node.videoFirstFrame) return;
+                onOpenAssetLibrary(node.id, 'seedance-last');
+              }}
+              onClear={() => onRemoveVeoFrame(node.id, 'last')}
+            />
+          </div>
+        </div>
+      ) : null}
+      {showSeedanceReferenceMedia ? (
+        <div className="seedance-section seedance-media-section">
+          <div className="seedance-section-title">参考视频 / 音频</div>
+          <div className="seedance-media-row">
+            <SeedanceMediaPanel
+              label="参考视频"
+              icon={Film}
+              mediaType="video"
+              items={referenceVideos}
+              maxCount={SEEDANCE_REF_VIDEO_MAX}
+              disabled={hasSeedanceFrames}
+              disabledHint={hasSeedanceFrames ? '已选首尾帧，不可添加参考视频' : ''}
+              isRunning={isRunning}
+              onPick={() => onOpenAssetLibrary(node.id, 'seedance-ref-video')}
+              onRemove={(index) => onRemoveSeedanceMedia(node.id, 'video', index)}
+            />
+            <SeedanceMediaPanel
+              label="参考音频"
+              icon={Headphones}
+              mediaType="audio"
+              items={referenceAudios}
+              maxCount={SEEDANCE_REF_AUDIO_MAX}
+              disabled={hasSeedanceFrames}
+              disabledHint={hasSeedanceFrames ? '已选首尾帧，不可添加参考音频' : ''}
+              isRunning={isRunning}
+              onPick={() => onOpenAssetLibrary(node.id, 'seedance-ref-audio')}
+              onRemove={(index) => onRemoveSeedanceMedia(node.id, 'audio', index)}
+            />
+          </div>
+        </div>
+      ) : null}
       <OptionSegment
         title="生成次数"
         value={normalizedSettings.count}
@@ -954,9 +1142,13 @@ function VideoToolbar({
           </div>
         </div>
       ) : null}
-      {showVeoReferenceImages || showGenericReferenceImages ? (
-        <div className="image-reference-row">
-          <span className="image-reference-label">参考图</span>
+      {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages ? (
+        <div
+          className={`image-reference-row ${showSeedanceReferenceImages ? 'seedance-reference-row' : ''}`}
+        >
+          <span className="image-reference-label">
+            {showSeedanceReferenceImages ? '参考图（满血版素材库）' : '参考图'}
+          </span>
           <div className="image-reference-list">
             {references.map((image, index) => (
               <div className="image-reference-chip" key={image.id || image.url || index}>
@@ -1260,6 +1452,7 @@ export function CanvasNode({
   onSyncImageOutputLayout,
   onSyncVideoOutputLayout,
   onRemoveVeoFrame,
+  onRemoveSeedanceMedia,
   onPortPointerDown,
   onFinishLink,
 }) {
@@ -1449,6 +1642,7 @@ export function CanvasNode({
           onRemoveImageReference={onRemoveImageReference}
           onRemoveTextReference={onRemoveTextReference}
           onRemoveVeoFrame={onRemoveVeoFrame}
+          onRemoveSeedanceMedia={onRemoveSeedanceMedia}
           onUpdateNode={onUpdateNode}
         />
       ) : null}

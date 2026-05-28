@@ -94,6 +94,8 @@ export function createNode(type, x, y) {
       videoGenerationType: DEFAULT_VEO_GENERATION_TYPE,
       videoFirstFrame: null,
       videoLastFrame: null,
+      videoReferenceVideos: [],
+      videoReferenceAudios: [],
       videoTaskSource: null,
       outputAspectCss: videoLayout.outputAspectCss,
       status: 'idle',
