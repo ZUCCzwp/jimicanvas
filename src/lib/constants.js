@@ -2,6 +2,10 @@ export const STORAGE_KEY = 'jimicanvas.documents.v1';
 /** 画布有改动后，延迟多久再上传到云端（防抖，减少频繁保存） */
 export const CLOUD_SYNC_DEBOUNCE_MS = 30000;
 export const JIMIAIGO_TOKEN_STORAGE_KEY = 'jimicanvas.jimiaigo.token';
+/** 从 jimiaiapp 跳转时暂存待打开的画布 ID */
+export const PENDING_CANVAS_ID_KEY = 'jimicanvas.pending_canvas_id';
+/** 从 jimiaiapp 跳转时标记需要新建画布 */
+export const PENDING_NEW_CANVAS_KEY = 'jimicanvas.pending_new_canvas';
 export const DEFAULT_CHAT_API_URL = 'http://localhost:27355';
 export const DEFAULT_SITE_TITLE = 'JimiCanvas';
 export const DEFAULT_SITE_SLOGAN = '轻量画布工作台';

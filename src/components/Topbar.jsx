@@ -8,8 +8,8 @@ import {
   Loader2,
   MessageCircle,
   Wallet,
-  Wand2,
 } from 'lucide-react';
+import { BrandProjectMenu } from './BrandProjectMenu';
 import { formatBalanceAmount } from '../lib/userApi';
 
 const CLOUD_SYNC_META = {
@@ -70,13 +70,14 @@ function formatSyncedAt(timestamp) {
 export function Topbar({
   activeCanvas,
   siteTitle,
-  siteSlogan,
   siteLogoUrl,
   nodesCount,
   connectionsCount,
-  showCanvasPanel = false,
   onRenameCanvas,
-  onToggleCanvasPanel,
+  onGoHome,
+  onViewAllProjects,
+  onCreateProject,
+  onDeleteProject,
   onOpenKeyboardShortcuts,
   onOpenCustomerService,
   cloudSyncStatus = 'offline',
@@ -97,36 +98,15 @@ export function Topbar({
   return (
     <header className="topbar">
       <div className="topbar-brand">
-        <button
-          type="button"
-          className={`brand-mark-button ${showCanvasPanel ? 'active' : ''}`}
-          onClick={onToggleCanvasPanel}
-          title="画布管理：新增、切换、删除画布"
-          aria-label="画布管理"
-          aria-expanded={showCanvasPanel}
-        >
-          <span className={`brand-mark ${siteLogoUrl ? 'has-logo' : ''}`}>
-            {siteLogoUrl ? (
-              <img src={siteLogoUrl} alt={siteTitle || '网站 Logo'} className="brand-mark-logo" />
-            ) : (
-              <Wand2 size={18} />
-            )}
-          </span>
-        </button>
-
-        <div className="brand-copy">
-          <strong>{siteTitle}</strong>
-          {siteSlogan ? <span>{siteSlogan}</span> : null}
-        </div>
-
-        <span className="topbar-divider" aria-hidden="true" />
-
-        <input
-          className="canvas-name"
-          value={activeCanvas?.name || ''}
-          onChange={(event) => onRenameCanvas(event.target.value)}
-          placeholder="画布名称"
-          aria-label="画布名称"
+        <BrandProjectMenu
+          siteTitle={siteTitle}
+          siteLogoUrl={siteLogoUrl}
+          activeCanvasName={activeCanvas?.name || ''}
+          onRenameCanvas={onRenameCanvas}
+          onGoHome={onGoHome}
+          onViewAllProjects={onViewAllProjects}
+          onCreateProject={onCreateProject}
+          onDeleteProject={onDeleteProject}
         />
 
         <span className="meta-pill">{nodesCount} 节点</span>
@@ -199,24 +179,14 @@ export function Topbar({
           >
             <Keyboard size={15} aria-hidden="true" />
             <span>快捷键</span>
-            <kbd>?</kbd>
           </button>
 
           <span
             className={`sync-chip ${cloudMeta.className}`}
             title={syncedHint || cloudMeta.label}
           >
-            {cloudSyncStatus === 'synced' ? (
-              <Cloud size={14} aria-hidden="true" />
-            ) : (
-              <CloudIcon
-                size={14}
-                aria-hidden="true"
-                className={cloudMeta.spin ? 'sync-chip-spin' : undefined}
-              />
-            )}
-            <span className="sync-chip-label">{cloudMeta.label}</span>
-            {syncedHint ? <span className="sync-chip-hint">{syncedHint}</span> : null}
+            <CloudIcon size={14} aria-hidden="true" className={cloudMeta.spin ? 'sync-chip-spin' : ''} />
+            <span>{cloudMeta.label}</span>
           </span>
         </div>
       </div>

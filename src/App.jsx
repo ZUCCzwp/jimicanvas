@@ -5,7 +5,6 @@ import { VideoPreviewModal } from './components/VideoPreviewModal';
 import { NodeTypePickerPopover } from './components/NodeTypePickerPopover';
 import { TextEditModal } from './components/TextEditModal';
 import { CanvasNode } from './components/CanvasNode';
-import { CanvasPanel } from './components/CanvasPanel';
 import { CanvasZoomControls } from './components/CanvasZoomControls';
 import { FocusContentPrompt } from './components/FocusContentPrompt';
 import { ConnectionLayer } from './components/ConnectionLayer';
@@ -14,7 +13,12 @@ import { CustomerServiceModal } from './components/CustomerServiceModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { RechargeModal } from './components/RechargeModal';
 import { Topbar } from './components/Topbar';
+import { navigateToCanvasHome } from './lib/appNavigation';
 import { isEditableKeyboardTarget } from './lib/keyboardShortcuts';
+import {
+  PENDING_CANVAS_ID_KEY,
+  PENDING_NEW_CANVAS_KEY,
+} from './lib/constants';
 import {
   DEFAULT_NODE_HEIGHT,
   DEFAULT_NODE_WIDTH,
@@ -118,7 +122,6 @@ function App() {
   const [runningNodeId, setRunningNodeId] = useState(null);
   const [translatingNodeId, setTranslatingNodeId] = useState(null);
   const [uploadingNodeId, setUploadingNodeId] = useState(null);
-  const [showCanvasPanel, setShowCanvasPanel] = useState(false);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [showCustomerService, setShowCustomerService] = useState(false);
   const [siteSettings, setSiteSettings] = useState(getDefaultSiteSettings);
@@ -164,6 +167,7 @@ function App() {
   const [hydrationDone, setHydrationDone] = useState(false);
   const recoveredTaskKeysRef = useRef(new Set());
   const recoveryStartedRef = useRef(false);
+  const pendingUrlAppliedRef = useRef(false);
   const documentsRef = useRef(documents);
   const activeCanvasIdRef = useRef(activeCanvasId);
 
@@ -610,10 +614,6 @@ function App() {
           setShowKeyboardShortcuts(false);
           return;
         }
-        if (showCanvasPanel) {
-          setShowCanvasPanel(false);
-          return;
-        }
         setLinkFromNodeId(null);
         setHoverLinkNodeId(null);
         setLinkNodePicker(null);
@@ -696,7 +696,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedConnectionId, selectedNodeIds, showCanvasPanel, showCustomerService, showKeyboardShortcuts]);
+  }, [selectedConnectionId, selectedNodeIds, showCustomerService, showKeyboardShortcuts]);
 
   const activeCanvas = documents.find((doc) => doc.id === activeCanvasId) || documents[0];
   const nodes = activeCanvas?.nodes || [];
@@ -790,12 +790,6 @@ function App() {
     clearSelection();
   }
 
-  function selectCanvas(canvasId) {
-    setActiveCanvasId(canvasId);
-    clearSelection();
-    setShowCanvasPanel(false);
-  }
-
   function renameCanvas(name) {
     updateActiveCanvas((doc) => ({ ...doc, name }));
   }
@@ -816,6 +810,41 @@ function App() {
       clearSelection();
     }
   }
+
+  function handleDeleteCurrentProject() {
+    if (!activeCanvasId) return;
+    const name = activeCanvas?.name || '当前项目';
+    if (!window.confirm(`确定删除「${name}」吗？此操作不可恢复。`)) return;
+    deleteCanvas(activeCanvasId);
+  }
+
+  useEffect(() => {
+    if (!hydrationDone || pendingUrlAppliedRef.current) return undefined;
+    pendingUrlAppliedRef.current = true;
+
+    const pendingNew = sessionStorage.getItem(PENDING_NEW_CANVAS_KEY);
+    if (pendingNew) {
+      sessionStorage.removeItem(PENDING_NEW_CANVAS_KEY);
+      sessionStorage.removeItem(PENDING_CANVAS_ID_KEY);
+      const count = documentsRef.current.length + 1;
+      const canvas = createDocument(`画布 ${count}`, false);
+      setDocuments((prev) => [canvas, ...prev]);
+      setActiveCanvasId(canvas.id);
+      clearSelection();
+      return undefined;
+    }
+
+    const pendingId = sessionStorage.getItem(PENDING_CANVAS_ID_KEY);
+    if (pendingId) {
+      sessionStorage.removeItem(PENDING_CANVAS_ID_KEY);
+      if (documentsRef.current.some((doc) => doc.id === pendingId)) {
+        setActiveCanvasId(pendingId);
+        clearSelection();
+      }
+    }
+
+    return undefined;
+  }, [hydrationDone]);
 
   function addNode(type) {
     const rect = stageRef.current?.getBoundingClientRect();
@@ -1994,26 +2023,6 @@ function App() {
         onExport={exportJson}
       />
 
-      {showCanvasPanel ? (
-        <>
-          <div
-            className="canvas-panel-backdrop"
-            onPointerDown={() => setShowCanvasPanel(false)}
-            aria-hidden="true"
-          />
-          <CanvasPanel
-            documents={documents}
-            activeCanvasId={activeCanvasId}
-            onCreateCanvas={createCanvas}
-            onSelectCanvas={selectCanvas}
-            onDeleteCanvas={deleteCanvas}
-            onRestoreBackup={restoreStorageBackup}
-            hasStorageBackup={hasStorageBackup() && isBackupDifferentFrom(documents)}
-            onClose={() => setShowCanvasPanel(false)}
-          />
-        </>
-      ) : null}
-
       {importError ? <div className="toast-error">{importError}</div> : null}
       {copyNotice ? <div className="toast-info toast-copy">{copyNotice}</div> : null}
       {storageNotice ? (
@@ -2116,13 +2125,14 @@ function App() {
         <Topbar
           activeCanvas={activeCanvas}
           siteTitle={siteSettings.title}
-          siteSlogan={siteSettings.slogan}
           siteLogoUrl={siteSettings.logoUrl}
           nodesCount={nodes.length}
           connectionsCount={connections.length}
-          showCanvasPanel={showCanvasPanel}
           onRenameCanvas={renameCanvas}
-          onToggleCanvasPanel={() => setShowCanvasPanel((value) => !value)}
+          onGoHome={navigateToCanvasHome}
+          onViewAllProjects={navigateToCanvasHome}
+          onCreateProject={createCanvas}
+          onDeleteProject={handleDeleteCurrentProject}
           onOpenKeyboardShortcuts={() => setShowKeyboardShortcuts(true)}
           onOpenCustomerService={() => setShowCustomerService(true)}
           cloudSyncStatus={cloudSyncStatus}
