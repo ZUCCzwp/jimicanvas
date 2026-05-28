@@ -1983,7 +1983,8 @@ button {
   gap: 4px;
   padding: 4px;
   border-radius: 12px;
-  background: rgba(2, 6, 23, 0.52);
+  border: 1px solid var(--seedance-tabs-border);
+  background: var(--seedance-tabs-bg);
 }
 
 .seedance-status-tabs button {
@@ -1991,15 +1992,24 @@ button {
   padding: 0 12px;
   border: 0;
   border-radius: 9px;
-  color: var(--text-muted);
+  color: var(--seedance-tab-text);
   background: transparent;
   font-size: 12px;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
-.seedance-status-tabs button.active,
-.seedance-status-tabs button:hover {
-  color: var(--text-primary);
-  background: var(--accent-soft);
+.seedance-status-tabs button:hover:not(.active) {
+  color: var(--seedance-tab-hover-text);
+  background: var(--seedance-tab-hover-bg);
+}
+
+.seedance-status-tabs button.active {
+  color: var(--seedance-tab-active-text);
+  background: var(--seedance-tab-active-bg);
+  box-shadow: inset 0 0 0 1px var(--seedance-tab-active-ring);
 }
 
 .seedance-upload-button {
@@ -2043,6 +2053,13 @@ button {
 
 .seedance-asset-card {
   text-align: left;
+  background: var(--seedance-card-bg);
+  border-color: var(--seedance-card-border);
+}
+
+.seedance-asset-card span {
+  color: var(--seedance-card-caption-text);
+  background: var(--seedance-card-caption-bg);
 }
 
 .seedance-asset-card.is-disabled {
@@ -2059,7 +2076,7 @@ button {
   justify-content: center;
   overflow: hidden;
   border-radius: 8px;
-  background: rgba(2, 6, 23, 0.72);
+  background: var(--seedance-preview-bg);
 }
 
 .seedance-asset-preview video,
@@ -2093,18 +2110,22 @@ button {
   border-radius: 999px;
   font-size: 10px;
   line-height: 1.3;
-  color: #fff;
-  background: rgba(2, 6, 23, 0.72);
+  color: var(--seedance-status-text);
+  background: var(--seedance-status-bg);
+  border: 1px solid var(--border-subtle);
 }
 
 .seedance-asset-status.is-pending {
-  color: #fde68a;
-  background: rgba(180, 83, 9, 0.85);
+  color: var(--seedance-status-pending-text);
+  background: var(--seedance-status-pending-bg);
+  border-color: rgba(217, 119, 6, 0.28);
 }
 
 .seedance-asset-status.is-failed,
 .seedance-asset-status.is-rejected {
-  background: rgba(220, 38, 38, 0.88);
+  color: var(--seedance-status-failed-text);
+  background: var(--seedance-status-failed-bg);
+  border-color: rgba(220, 38, 38, 0.35);
 }
 
 .image-output-grid.inputs-highlighted {

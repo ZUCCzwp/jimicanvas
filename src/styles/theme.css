@@ -200,6 +200,26 @@
   --recharge-redeem-tip-bg: rgba(245, 158, 11, 0.12);
   --recharge-redeem-tip-text: #fbbf24;
   --recharge-redeem-focus-ring: rgba(245, 158, 11, 0.12);
+
+  --seedance-tabs-bg: rgba(2, 6, 23, 0.52);
+  --seedance-tabs-border: transparent;
+  --seedance-tab-text: var(--text-muted);
+  --seedance-tab-hover-bg: rgba(56, 189, 248, 0.1);
+  --seedance-tab-hover-text: var(--text-primary);
+  --seedance-tab-active-bg: var(--accent-soft);
+  --seedance-tab-active-text: var(--text-primary);
+  --seedance-tab-active-ring: rgba(56, 189, 248, 0.28);
+  --seedance-preview-bg: rgba(2, 6, 23, 0.72);
+  --seedance-card-bg: rgba(2, 6, 23, 0.58);
+  --seedance-card-border: transparent;
+  --seedance-card-caption-bg: rgba(2, 6, 23, 0.82);
+  --seedance-card-caption-text: #f8fafc;
+  --seedance-status-bg: rgba(2, 6, 23, 0.78);
+  --seedance-status-text: #f8fafc;
+  --seedance-status-pending-bg: rgba(180, 83, 9, 0.88);
+  --seedance-status-pending-text: #fde68a;
+  --seedance-status-failed-bg: rgba(220, 38, 38, 0.9);
+  --seedance-status-failed-text: #fff;
 }
 
 [data-theme='light'] {
@@ -403,6 +423,26 @@
   --recharge-redeem-tip-bg: rgba(254, 243, 199, 0.95);
   --recharge-redeem-tip-text: #b45309;
   --recharge-redeem-focus-ring: rgba(245, 158, 11, 0.18);
+
+  --seedance-tabs-bg: #f1f5f9;
+  --seedance-tabs-border: rgba(148, 163, 184, 0.28);
+  --seedance-tab-text: #64748b;
+  --seedance-tab-hover-bg: rgba(148, 163, 184, 0.16);
+  --seedance-tab-hover-text: #0f172a;
+  --seedance-tab-active-bg: #e0f2fe;
+  --seedance-tab-active-text: #0369a1;
+  --seedance-tab-active-ring: rgba(14, 165, 233, 0.32);
+  --seedance-preview-bg: #e2e8f0;
+  --seedance-card-bg: #ffffff;
+  --seedance-card-border: rgba(148, 163, 184, 0.28);
+  --seedance-card-caption-bg: #f8fafc;
+  --seedance-card-caption-text: #334155;
+  --seedance-status-bg: rgba(255, 255, 255, 0.94);
+  --seedance-status-text: #475569;
+  --seedance-status-pending-bg: #fef3c7;
+  --seedance-status-pending-text: #b45309;
+  --seedance-status-failed-bg: #fecaca;
+  --seedance-status-failed-text: #b91c1c;
 }
 
 
@@ -447,8 +487,10 @@
   color: var(--text-muted);
 }
 
-[data-theme='light'] .asset-source-tabs {
-  background: rgba(241, 245, 249, 0.95);
+[data-theme='light'] .asset-source-tabs,
+[data-theme='light'] .seedance-status-tabs {
+  background: var(--seedance-tabs-bg);
+  border-color: var(--seedance-tabs-border);
 }
 
 [data-theme='light'] .asset-search {
@@ -490,6 +532,26 @@
   color: #1e3a8a;
 }
 
-[data-theme='light'] .image-empty {
+[data-theme='light'] .image-empty,
+[data-theme='light'] .asset-empty {
   color: var(--text-muted);
+}
+
+[data-theme='light'] .seedance-asset-modal .asset-card {
+  background: var(--seedance-card-bg);
+  border: 1px solid var(--seedance-card-border);
+}
+
+[data-theme='light'] .seedance-asset-modal .asset-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-border);
+}
+
+[data-theme='light'] .seedance-asset-modal .asset-card span {
+  color: var(--seedance-card-caption-text);
+  background: var(--seedance-card-caption-bg);
+}
+
+[data-theme='light'] .seedance-upload-button {
+  color: var(--text-primary);
 }
