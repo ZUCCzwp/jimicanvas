@@ -69,9 +69,11 @@ import {
   getAssetList,
   normalizeImageUrl,
   readImageFile,
+  readVideoFile,
   uploadAsset,
 } from './lib/imageApi';
 import { buildImageNodeLayoutPatch } from './lib/imageNodeLayout';
+import { buildVideoNodeLayoutPatch } from './lib/videoNodeLayout';
 import {
   executeImageGeneration,
   executeVideoGeneration,
@@ -90,7 +92,7 @@ import {
   readStorageBackup,
   writeStorage,
 } from './lib/storage';
-import { createVideoGenerationTask, downloadVideoFile } from './lib/videoApi';
+import { createVideoGenerationTask, downloadVideoFile, normalizeVideoUrl } from './lib/videoApi';
 
 function App() {
   const { theme, toggleTheme } = useTheme();
@@ -465,8 +467,8 @@ function App() {
 
   useEffect(() => {
     if (!assetPicker.nodeId) return;
-    loadAssetPickerAssets(assetPicker.source);
-  }, [assetPicker.nodeId, assetPicker.source]);
+    loadAssetPickerAssets(assetPicker.source, assetPicker.pickMode);
+  }, [assetPicker.nodeId, assetPicker.source, assetPicker.pickMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1380,16 +1382,25 @@ function App() {
         subtitle: `选择图片（最多 ${maxOutput} 张）`,
       };
     }
+    if (pickMode === 'video-output') {
+      return { maxCount: 1, title: '资产库', subtitle: '选择视频' };
+    }
     return { maxCount: 5, title: '资产库', subtitle: '选择图片作为参考图' };
   }
 
   function applyPickedAssetsToNode(node, pickMode, pickedAssets, source) {
+    const isVideoOutput = pickMode === 'video-output';
     const normalized = pickedAssets.map((asset) => ({
       id: asset.id,
-      name: asset.name || '图片资产',
-      url: source === 'local' ? asset.url : normalizeImageUrl(asset.url),
+      name: asset.name || (isVideoOutput ? '视频资产' : '图片资产'),
+      url:
+        source === 'local'
+          ? asset.url
+          : isVideoOutput
+            ? normalizeVideoUrl(asset.url)
+            : normalizeImageUrl(asset.url),
       source,
-      type: 'image',
+      type: isVideoOutput ? 'video' : 'image',
     }));
 
     if (pickMode === 'veo-first') {
@@ -1427,6 +1438,26 @@ function App() {
         }),
       };
     }
+    if (pickMode === 'video-output') {
+      const urls = normalized.map((asset) => asset.url).filter(Boolean);
+      if (urls.length === 0) return node;
+      return {
+        ...node,
+        videos: urls,
+        content: urls[0],
+        status: 'idle',
+        videoTaskId: undefined,
+        pendingTasks: undefined,
+        generationJob: undefined,
+        generationBatch: undefined,
+        taskStatus: undefined,
+        taskProgress: undefined,
+        taskProvider: undefined,
+        taskQueryModel: undefined,
+        taskVeoSource: undefined,
+        ...buildVideoNodeLayoutPatch(node),
+      };
+    }
 
     const current = Array.isArray(node.referenceImages) ? node.referenceImages : [];
     return {
@@ -1449,15 +1480,19 @@ function App() {
     }
     const { maxCount } = getAssetPickerMeta(node, pickMode);
 
+    const isVideoOutput = pickMode === 'video-output';
+
     setUploadingNodeId(nodeId);
     try {
       const references = [];
       for (const file of files.slice(0, maxCount)) {
-        const localImage = await readImageFile(file);
+        const localAsset = isVideoOutput ? await readVideoFile(file) : await readImageFile(file);
         const uploadedUrl = await uploadAsset({ token, file });
         references.push({
-          ...localImage,
-          url: normalizeImageUrl(uploadedUrl || localImage.url),
+          ...localAsset,
+          url: isVideoOutput
+            ? normalizeVideoUrl(uploadedUrl || localAsset.url)
+            : normalizeImageUrl(uploadedUrl || localAsset.url),
           uploadedUrl,
         });
       }
@@ -1470,7 +1505,12 @@ function App() {
         }),
       }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : '上传图片失败';
+      const message =
+        error instanceof Error
+          ? error.message
+          : isVideoOutput
+            ? '上传视频失败'
+            : '上传图片失败';
       updateNode(nodeId, { content: message, status: 'error' });
     } finally {
       setUploadingNodeId(null);
@@ -1511,16 +1551,25 @@ function App() {
     });
   }
 
-  async function loadAssetPickerAssets(source) {
+  async function loadAssetPickerAssets(source, pickMode = assetPicker.pickMode) {
     const token = getOrRequestToken({ onSaved: refreshUserQuota });
     if (!token) {
       setAssetPicker((current) => ({ ...current, loading: false }));
       return;
     }
 
+    const mediaType = pickMode === 'video-output' ? 'video' : 'image';
+    const assetSource = pickMode === 'video-output' ? 'local' : source;
+
     setAssetPicker((current) => ({ ...current, loading: true, assets: [] }));
     try {
-      const result = await getAssetList({ token, source, page: 1, pageSize: 36 });
+      const result = await getAssetList({
+        token,
+        source: assetSource,
+        page: 1,
+        pageSize: 36,
+        mediaType,
+      });
       setAssetPicker((current) => ({
         ...current,
         assets: result.list || [],
@@ -2112,6 +2161,7 @@ function App() {
           maxCount={assetPicker.maxCount}
           title={assetPicker.title}
           subtitle={assetPicker.subtitle}
+          mediaType={assetPicker.pickMode === 'video-output' ? 'video' : 'image'}
           onSourceChange={(source) =>
             setAssetPicker((current) => ({ ...current, source, selectedAssets: [] }))
           }
@@ -2215,6 +2265,7 @@ function App() {
                 onRunVideoGeneration={runVideoGeneration}
                 onOpenAssetLibrary={openAssetLibrary}
                 onUploadImageOutput={(nodeId, files) => uploadImageReferences(nodeId, files, 'output')}
+                onUploadVideoOutput={(nodeId, files) => uploadImageReferences(nodeId, files, 'video-output')}
                 onRemoveImageReference={removeImageReference}
                 onRemoveTextReference={removeTextReference}
                 onHighlightInputs={highlightNodeInputs}

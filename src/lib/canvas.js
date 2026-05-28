@@ -21,7 +21,8 @@ import {
   DEFAULT_VIDEO_RESOLUTION,
   DEFAULT_VIDEO_ROUTE,
   DEFAULT_VIDEO_URL,
-  PLACEHOLDER_IMAGE,
+  DEFAULT_IMAGE_URL,
+  DEFAULT_DEMO_IMAGE_RATIO,
   MIN_CANVAS_SCALE,
   MAX_CANVAS_SCALE,
 } from './constants';
@@ -35,7 +36,7 @@ export function uid(prefix = 'id') {
 export function createNode(type, x, y) {
   const id = uid('node');
   if (type === 'image') {
-    const ratio = parseRatioValue(DEFAULT_IMAGE_RATIO);
+    const ratio = parseRatioValue(DEFAULT_DEMO_IMAGE_RATIO);
     const outputSize = computeImageOutputSize({
       aspectWidth: ratio.width,
       aspectHeight: ratio.height,
@@ -47,14 +48,15 @@ export function createNode(type, x, y) {
       type,
       title: '图片节点',
       prompt: '',
-      content: PLACEHOLDER_IMAGE,
-      images: [],
+      content: DEFAULT_IMAGE_URL,
+      images: [DEFAULT_IMAGE_URL],
       referenceImages: [],
       imageModel: DEFAULT_IMAGE_MODEL,
       imageResolution: DEFAULT_IMAGE_RESOLUTION,
-      imageRatio: DEFAULT_IMAGE_RATIO,
+      imageRatio: DEFAULT_DEMO_IMAGE_RATIO,
       imageCount: DEFAULT_IMAGE_COUNT,
       outputAspectCss: outputSize.cssAspectRatio,
+      status: 'idle',
       x,
       y,
       width: outputSize.width,
@@ -130,16 +132,11 @@ export function createDocument(name, withStarterNodes = true) {
           width: DEFAULT_NODE_WIDTH,
           height: DEFAULT_NODE_HEIGHT,
         },
-        {
-          id: uid('node'),
-          type: 'image',
-          title: '示例图片',
-          content: PLACEHOLDER_IMAGE,
-          x: 520,
-          y: 210,
-          width: 320,
-          height: 300,
-        },
+        (() => {
+          const imageNode = createNode('image', 520, 210);
+          imageNode.title = '示例图片';
+          return imageNode;
+        })(),
       ]
     : [];
 
@@ -189,8 +186,15 @@ export function getDraftConnectionPath(source, pointerPos) {
   return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
 }
 
+const IMAGE_CONTENT_PATTERN = /\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i;
+
 export function isImageContent(content) {
-  return typeof content === 'string' && (content.startsWith('data:image') || /^https?:\/\//.test(content));
+  if (typeof content !== 'string') return false;
+  const value = content.trim();
+  if (!value) return false;
+  if (value.startsWith('data:image') || /^https?:\/\//.test(value)) return true;
+  if (value.startsWith('/demo/')) return true;
+  return IMAGE_CONTENT_PATTERN.test(value);
 }
 
 const VIDEO_CONTENT_PATTERN = /\.(mp4|webm|mov|m4v|ogv)(\?.*)?$/i;

@@ -65,7 +65,9 @@ export function getImageNodeOutputUrl(node) {
   if (
     content &&
     content !== PLACEHOLDER_IMAGE &&
-    (content.startsWith('data:image') || /^https?:\/\//.test(content))
+    (content.startsWith('data:image') ||
+      /^https?:\/\//.test(content) ||
+      content.startsWith('/demo/'))
   ) {
     return content;
   }

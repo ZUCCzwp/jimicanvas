@@ -467,7 +467,8 @@
 }
 
 [data-theme='light'] .prompt-asset-button,
-[data-theme='light'] .image-output-asset-button {
+[data-theme='light'] .image-output-action-button,
+[data-theme='light'] .node-output-demo-badge {
   color: var(--text-secondary);
 }
 

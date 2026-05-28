@@ -1,6 +1,7 @@
 import { useRef } from 'react';
-import { Check, FolderOpen, Image as ImageIcon, LoaderCircle, Search, Sparkles, Upload, X } from 'lucide-react';
+import { Check, Film, FolderOpen, Image as ImageIcon, LoaderCircle, Search, Sparkles, Upload, X } from 'lucide-react';
 import { normalizeImageUrl } from '../lib/imageApi';
+import { normalizeVideoUrl } from '../lib/videoApi';
 
 export function AssetPickerModal({
   assets,
@@ -11,6 +12,7 @@ export function AssetPickerModal({
   maxCount = 5,
   title = '资产库',
   subtitle = '选择图片作为参考图',
+  mediaType = 'image',
   onSourceChange,
   onSearchChange,
   onToggleAsset,
@@ -19,6 +21,7 @@ export function AssetPickerModal({
   onClose,
 }) {
   const fileInputRef = useRef(null);
+  const isVideo = mediaType === 'video';
   const filteredAssets = assets.filter((asset) => {
     const keyword = search.trim().toLowerCase();
     if (!keyword) return true;
@@ -52,16 +55,18 @@ export function AssetPickerModal({
               className={source === 'local' ? 'active' : ''}
               onClick={() => onSourceChange('local')}
             >
-              <ImageIcon size={14} />
+              {isVideo ? <Film size={14} /> : <ImageIcon size={14} />}
               我的资产
             </button>
-            <button
-              className={source === 'ai' ? 'active' : ''}
-              onClick={() => onSourceChange('ai')}
-            >
-              <Sparkles size={14} />
-              AI 图片
-            </button>
+            {!isVideo ? (
+              <button
+                className={source === 'ai' ? 'active' : ''}
+                onClick={() => onSourceChange('ai')}
+              >
+                <Sparkles size={14} />
+                AI 图片
+              </button>
+            ) : null}
           </div>
           <label className="asset-search">
             <Search size={14} />
@@ -74,16 +79,16 @@ export function AssetPickerModal({
           <button
             className="icon-button asset-upload-button"
             onClick={() => fileInputRef.current?.click()}
-            title="上传图片"
+            title={isVideo ? '上传视频' : '上传图片'}
           >
             <Upload size={14} />
-            上传图片
+            {isVideo ? '上传视频' : '上传图片'}
           </button>
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
-            multiple
+            accept={isVideo ? 'video/*' : 'image/*'}
+            multiple={!isVideo && maxCount > 1}
             hidden
             onChange={(event) => {
               const files = Array.from(event.target.files || []);
@@ -102,12 +107,19 @@ export function AssetPickerModal({
               正在加载
             </div>
           ) : filteredAssets.length === 0 ? (
-            <div className="asset-empty">暂无图片资产</div>
+            <div className="asset-empty">{isVideo ? '暂无视频资产' : '暂无图片资产'}</div>
           ) : (
             assetColumns.map((column, columnIndex) => (
               <div className="asset-column" key={`asset-column-${columnIndex}`}>
                 {column.map((asset) => {
                   const selected = selectedAssets.some((item) => item.id === asset.id);
+                  const previewUrl =
+                    source === 'local'
+                      ? asset.url
+                      : isVideo
+                        ? normalizeVideoUrl(asset.url)
+                        : normalizeImageUrl(asset.url);
+                  const assetLabel = isVideo ? '视频资产' : '图片资产';
                   return (
                     <button
                       key={asset.id || asset.url}
@@ -115,11 +127,12 @@ export function AssetPickerModal({
                       onClick={() => onToggleAsset(asset)}
                       title={asset.name}
                     >
-                      <img
-                        src={source === 'local' ? asset.url : normalizeImageUrl(asset.url)}
-                        alt={asset.name || '图片资产'}
-                      />
-                      <span>{asset.name || '图片资产'}</span>
+                      {isVideo ? (
+                        <video src={previewUrl} muted playsInline preload="metadata" />
+                      ) : (
+                        <img src={previewUrl} alt={asset.name || assetLabel} />
+                      )}
+                      <span>{asset.name || assetLabel}</span>
                       {selected ? (
                         <div className="asset-selected-mark">
                           <Check size={14} />

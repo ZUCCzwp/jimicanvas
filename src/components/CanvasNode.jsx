@@ -35,6 +35,8 @@ import {
   normalizeImageModelSettings,
   normalizeVideoModelSettings,
   VEO_GENERATION_TYPE_OPTIONS,
+  DEFAULT_IMAGE_URL,
+  DEFAULT_VIDEO_URL,
   PLACEHOLDER_IMAGE,
   VEO_REFERENCE_IMAGE_MAX,
   VIDEO_FAMILY_OPTIONS,
@@ -65,6 +67,16 @@ function getImageDisplayImages(node) {
   const content = String(node.content || '').trim();
   if (content && content !== PLACEHOLDER_IMAGE && isImageContent(content)) return [content];
   return [];
+}
+
+function isDefaultDemoMediaUrl(url, defaultUrl) {
+  const value = String(url || '').trim();
+  if (!value || !defaultUrl) return false;
+  return value === defaultUrl || value.endsWith(defaultUrl);
+}
+
+function DemoSampleBadge() {
+  return <span className="node-output-demo-badge">示例</span>;
 }
 
 function OptionSegment({ title, options, value, onChange, renderIcon }) {
@@ -229,6 +241,9 @@ function ImageBody({
   onSyncOutputLayout,
 }) {
   const displayImages = getImageDisplayImages(node);
+  const showDemoBadge =
+    displayImages.length > 0 &&
+    displayImages.every((url) => isDefaultDemoMediaUrl(url, DEFAULT_IMAGE_URL));
   const imageCount = Math.min(Math.max(displayImages.length || 1, 1), 4);
   const maxUploadCount = Math.min(4, Math.max(1, Number(node.imageCount) || 1));
   const loadedAspectRef = useRef('');
@@ -281,37 +296,62 @@ function ImageBody({
         onBeginDrag(event, node);
       }}
     >
-      {showOutputActions && onOpenAssetLibrary ? (
-        <button
-          type="button"
-          className="image-output-asset-button"
-          title="从资产库选择图片"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            onOpenAssetLibrary(node.id, 'output');
-          }}
-        >
-          <FolderOpen size={12} />
-          <span>资产库</span>
-        </button>
+      {showDemoBadge ? (
+        <div className="node-output-demo-badge-wrap" onPointerDown={(event) => event.stopPropagation()}>
+          <DemoSampleBadge />
+        </div>
       ) : null}
 
-      {showOutputActions && onUploadImageOutput ? (
-        <input
-          ref={outputFileInputRef}
-          type="file"
-          accept="image/*"
-          multiple={maxUploadCount > 1}
-          hidden
-          onChange={(event) => {
-            const files = Array.from(event.target.files || []);
-            if (files.length > 0) {
-              onUploadImageOutput(node.id, files);
-            }
-            event.target.value = '';
-          }}
-        />
+      {showOutputActions && (onOpenAssetLibrary || onUploadImageOutput) ? (
+        <div
+          className="image-output-actions"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {onUploadImageOutput ? (
+            <>
+              <button
+                type="button"
+                className="image-output-action-button"
+                title="上传本地图片"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  outputFileInputRef.current?.click();
+                }}
+              >
+                <Upload size={12} />
+                <span>上传</span>
+              </button>
+              <input
+                ref={outputFileInputRef}
+                type="file"
+                accept="image/*"
+                multiple={maxUploadCount > 1}
+                hidden
+                onChange={(event) => {
+                  const files = Array.from(event.target.files || []);
+                  if (files.length > 0) {
+                    onUploadImageOutput(node.id, files);
+                  }
+                  event.target.value = '';
+                }}
+              />
+            </>
+          ) : null}
+          {onOpenAssetLibrary ? (
+            <button
+              type="button"
+              className="image-output-action-button"
+              title="从资产库选择图片"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenAssetLibrary(node.id, 'output');
+              }}
+            >
+              <FolderOpen size={12} />
+              <span>资产库</span>
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       {displayImages.length > 0 ? (
@@ -326,28 +366,9 @@ function ImageBody({
           </div>
         ))
       ) : (
-        <button
-          type="button"
-          className={`image-empty ${showOutputActions && onUploadImageOutput ? 'image-empty-upload' : ''}`}
-          disabled={!showOutputActions || !onUploadImageOutput}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (showOutputActions && onUploadImageOutput) {
-              outputFileInputRef.current?.click();
-            }
-          }}
-        >
-          {showOutputActions && onUploadImageOutput ? (
-            <>
-              <Upload size={20} />
-              <span>点击上传本地图片</span>
-              <span className="image-empty-hint">或输入提示词生成图片</span>
-            </>
-          ) : (
-            <span>输入提示词生成图片</span>
-          )}
-        </button>
+        <div className="image-empty">
+          <span>输入提示词生成图片</span>
+        </div>
       )}
     </div>
   );
@@ -398,15 +419,20 @@ function applyVideoNodeLayout(node, onSyncOutputLayout, aspectWidth, aspectHeigh
 function VideoBody({
   node,
   isRunning,
+  showOutputActions = false,
   isInputsHighlighted = false,
   onBeginDrag,
   onHighlightInputs,
+  onOpenAssetLibrary,
+  onUploadVideoOutput,
   onSyncOutputLayout,
 }) {
   const displayVideo = getVideoDisplayUrl(node);
+  const showDemoBadge = isDefaultDemoMediaUrl(displayVideo, DEFAULT_VIDEO_URL);
   const loadedAspectRef = useRef('');
   const videoRef = useRef(null);
   const hoverPreviewRef = useRef(false);
+  const outputFileInputRef = useRef(null);
 
   useVideoOutputLayout(node, displayVideo, onSyncOutputLayout);
 
@@ -480,6 +506,63 @@ function VideoBody({
         onBeginDrag(event, node);
       }}
     >
+      {showDemoBadge ? (
+        <div className="node-output-demo-badge-wrap" onPointerDown={(event) => event.stopPropagation()}>
+          <DemoSampleBadge />
+        </div>
+      ) : null}
+
+      {showOutputActions && (onOpenAssetLibrary || onUploadVideoOutput) ? (
+        <div
+          className="image-output-actions"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {onUploadVideoOutput ? (
+            <>
+              <button
+                type="button"
+                className="image-output-action-button"
+                title="上传本地视频"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  outputFileInputRef.current?.click();
+                }}
+              >
+                <Upload size={12} />
+                <span>上传</span>
+              </button>
+              <input
+                ref={outputFileInputRef}
+                type="file"
+                accept="video/*"
+                hidden
+                onChange={(event) => {
+                  const files = Array.from(event.target.files || []);
+                  if (files.length > 0) {
+                    onUploadVideoOutput(node.id, files);
+                  }
+                  event.target.value = '';
+                }}
+              />
+            </>
+          ) : null}
+          {onOpenAssetLibrary ? (
+            <button
+              type="button"
+              className="image-output-action-button"
+              title="从资产库选择视频"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenAssetLibrary(node.id, 'video-output');
+              }}
+            >
+              <FolderOpen size={12} />
+              <span>资产库</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       {displayVideo ? (
         <div
           className="video-output-thumb"
@@ -505,7 +588,9 @@ function VideoBody({
           />
         </div>
       ) : (
-        <div className="image-empty">单击节点，在下方配置提示词并生成视频</div>
+        <div className="image-empty">
+          <span>输入提示词生成视频</span>
+        </div>
       )}
     </div>
   );
@@ -1165,6 +1250,7 @@ export function CanvasNode({
   onRunVideoGeneration,
   onOpenAssetLibrary,
   onUploadImageOutput,
+  onUploadVideoOutput,
   onRemoveImageReference,
   onRemoveTextReference,
   onHighlightInputs,
@@ -1319,9 +1405,12 @@ export function CanvasNode({
           <VideoBody
             node={node}
             isRunning={isRunning}
+            showOutputActions={showToolbar}
             isInputsHighlighted={isInputsHighlighted}
             onBeginDrag={onBeginDrag}
             onHighlightInputs={onHighlightInputs}
+            onOpenAssetLibrary={onOpenAssetLibrary}
+            onUploadVideoOutput={onUploadVideoOutput}
             onSyncOutputLayout={onSyncVideoOutputLayout}
           />
         )}

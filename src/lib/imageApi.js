@@ -13,6 +13,10 @@ export function normalizeImageUrl(url) {
   if (value.startsWith('//')) {
     return `${window.location.protocol}${value}`;
   }
+  // public/demo 下的内置示例图，走前端静态资源
+  if (value.startsWith('/demo/')) {
+    return value;
+  }
 
   const baseUrl = getChatApiBaseUrl().replace(/\/$/, '');
   if (value.startsWith('/')) {
@@ -159,6 +163,17 @@ export async function readImageFile(file) {
   };
 }
 
+export async function readVideoFile(file) {
+  const dataUrl = await fileToDataUrl(file);
+  return {
+    id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: file.name || '本地视频',
+    url: dataUrl,
+    data: dataUrl,
+    type: 'video',
+  };
+}
+
 export async function uploadAsset({ token, file }) {
   const formData = new FormData();
   formData.append('file', file);
@@ -166,7 +181,13 @@ export async function uploadAsset({ token, file }) {
   return normalizeImageUrl(data?.url || '');
 }
 
-export async function getAssetList({ token, page = 1, pageSize = 24, source = 'local' }) {
+export async function getAssetList({
+  token,
+  page = 1,
+  pageSize = 24,
+  source = 'local',
+  mediaType = 'image',
+}) {
   if (source === 'ai') {
     const params = new URLSearchParams({
       page: String(page),
@@ -192,19 +213,20 @@ export async function getAssetList({ token, page = 1, pageSize = 24, source = 'l
   const params = new URLSearchParams({
     page: String(page),
     page_size: String(pageSize),
-    media_type: 'image',
+    media_type: mediaType,
     start_time: start,
     end_time: end,
   });
   const data = await requestJson(`/api/asset/list?${params.toString()}`, { token });
   const list = Array.isArray(data) ? data : data?.list || [];
+  const assetLabel = mediaType === 'video' ? '视频资产' : '图片资产';
   return {
     list: list.map((item) => ({
       ...item,
       id: item.id || item.uuid,
       url: getLocalAssetUrl(item),
-      name: item.name || item.filename || '本地资产',
-      type: 'image',
+      name: item.name || item.filename || assetLabel,
+      type: mediaType,
       createdAt: item.created_at || item.createdAt,
     })),
     total: data?.total || list.length,
