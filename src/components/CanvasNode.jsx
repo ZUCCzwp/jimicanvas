@@ -44,10 +44,17 @@ import {
   SEEDANCE_REF_VIDEO_MAX,
   SEEDANCE_REF_AUDIO_MAX,
   VIDEO_FAMILY_OPTIONS,
+  AUDIO_VOICE_OPTIONS,
+  AUDIO_SPEED_OPTIONS,
+  MIN_AUDIO_NODE_HEIGHT,
+  MIN_AUDIO_NODE_HEIGHT_WITH_CONTENT,
+  DEFAULT_AUDIO_NODE_WIDTH,
+  DEFAULT_AUDIO_MODEL,
 } from '../lib/constants';
 import { getStoredChatToken } from '../lib/jimiaigoApi';
 import { getSd2ManxueAssetList, normalizeVideoUrl, resolveSeedanceMediaPreviewUrl } from '../lib/videoApi';
-import { isImageContent, isVideoContent } from '../lib/canvas';
+import { isImageContent, isVideoContent, isAudioContent } from '../lib/canvas';
+import { normalizeAudioUrl, AUDIO_FILE_ACCEPT, filterAudioFiles } from '../lib/audioApi';
 import {
   formatImageInputLabel,
   formatTextInputLabel,
@@ -63,6 +70,7 @@ import { NodeGenerationState } from './NodeGenerationState';
 function NodeIcon({ type }) {
   if (type === 'image') return <ImageIcon size={14} />;
   if (type === 'video') return <Film size={14} />;
+  if (type === 'audio') return <Headphones size={14} />;
   return <FileText size={14} />;
 }
 
@@ -91,16 +99,22 @@ function OptionSegment({ title, options, value, onChange, renderIcon }) {
       <div className="option-segment-control">
         {options.map((option) => {
           const isActive = option.value === value;
+          const tooltip = option.hint ? `${option.label} · ${option.hint}` : option.label;
           return (
             <button
               key={option.value}
               type="button"
-              className={`option-segment-button ${isActive ? 'active' : ''}`}
+              className={`option-segment-button ${option.hint ? 'has-hint' : ''} ${isActive ? 'active' : ''}`}
               onClick={() => onChange(option.value)}
-              title={option.label}
+              title={tooltip}
             >
               {renderIcon ? renderIcon(option) : null}
-              <span>{option.label}</span>
+              <span className="option-segment-button-text">
+                <span className="option-segment-button-label">{option.label}</span>
+                {option.hint ? (
+                  <span className="option-segment-button-hint">{option.hint}</span>
+                ) : null}
+              </span>
             </button>
           );
         })}
@@ -595,6 +609,231 @@ function VideoBody({
       ) : (
         <div className="image-empty">
           <span>输入提示词生成视频</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function getAudioDisplayUrl(node) {
+  const audioUrl = String(node.audioUrl || '').trim();
+  if (audioUrl) return audioUrl;
+  const content = String(node.content || '').trim();
+  if (content && isAudioContent(content)) return content;
+  return '';
+}
+
+function getAudioDisplayName(url, fallbackTitle = '音频') {
+  const value = String(url || '').trim();
+  if (!value) return fallbackTitle;
+  if (value.startsWith('data:')) return '本地 MP3';
+
+  try {
+    const normalized = normalizeAudioUrl(value);
+    const pathname = normalized.startsWith('http')
+      ? new URL(normalized).pathname
+      : normalized.split('?')[0];
+    const filename = decodeURIComponent(pathname.split('/').pop() || '').trim();
+    if (filename) return filename;
+  } catch {
+    const tail = value.split('/').pop()?.split('?')[0];
+    if (tail) return decodeURIComponent(tail);
+  }
+
+  return fallbackTitle;
+}
+
+function AudioWaveform({ active = false }) {
+  return (
+    <div className={`audio-waveform ${active ? 'is-active' : ''}`} aria-hidden="true">
+      {Array.from({ length: 14 }, (_, index) => (
+        <span
+          key={index}
+          className="audio-waveform-bar"
+          style={{ '--bar-delay': `${index * 0.08}s` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AudioPlayerCard({ src, title }) {
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return undefined;
+
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+    const handleEnded = () => setIsPlaying(false);
+
+    audio.addEventListener('play', handlePlay);
+    audio.addEventListener('pause', handlePause);
+    audio.addEventListener('ended', handleEnded);
+
+    return () => {
+      audio.removeEventListener('play', handlePlay);
+      audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener('ended', handleEnded);
+    };
+  }, [src]);
+
+  return (
+    <div className={`audio-player-card ${isPlaying ? 'is-playing' : ''}`}>
+      <div className="audio-player-card-glow" aria-hidden="true" />
+      <div className="audio-player-card-header">
+        <div className="audio-player-icon">
+          <Headphones size={18} />
+        </div>
+        <div className="audio-player-meta">
+          <div className="audio-player-title-row">
+            <span className="audio-player-title" title={title}>
+              {title}
+            </span>
+            <span className="audio-player-badge">MP3</span>
+          </div>
+        </div>
+      </div>
+      <AudioWaveform active={isPlaying} />
+      <div
+        className="audio-player-controls"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <audio ref={audioRef} controls preload="metadata" src={src} />
+      </div>
+    </div>
+  );
+}
+
+function AudioBody({
+  node,
+  isRunning,
+  showOutputActions = false,
+  isInputsHighlighted = false,
+  onBeginDrag,
+  onHighlightInputs,
+  onOpenAssetLibrary,
+  onUploadAudioOutput,
+  onSyncAudioLayout,
+}) {
+  const displayAudio = getAudioDisplayUrl(node);
+  const outputFileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!onSyncAudioLayout) return undefined;
+
+    const minHeight = displayAudio
+      ? MIN_AUDIO_NODE_HEIGHT_WITH_CONTENT
+      : MIN_AUDIO_NODE_HEIGHT;
+    const minWidth = DEFAULT_AUDIO_NODE_WIDTH;
+    const nextHeight = Math.max(Number(node.height) || 0, minHeight);
+    const nextWidth = Math.max(Number(node.width) || 0, minWidth);
+
+    if (nextHeight !== node.height || nextWidth !== node.width) {
+      onSyncAudioLayout(node.id, { height: nextHeight, width: nextWidth });
+    }
+
+    return undefined;
+  }, [displayAudio, node.id, node.height, node.width, onSyncAudioLayout]);
+
+  if (isRunning) {
+    return (
+      <NodeGenerationState
+        node={node}
+        kind="audio"
+        label="正在合成语音"
+        onBeginDrag={onBeginDrag}
+      />
+    );
+  }
+
+  if (node.status === 'error') {
+    return (
+      <div
+        className="node-error-display image-error-display"
+        onPointerDown={(event) => onBeginDrag(event, node)}
+      >
+        <strong>操作失败</strong>
+        <span>{node.content || '音频处理失败'}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`audio-output-preview ${isInputsHighlighted ? 'inputs-highlighted' : ''}`}
+      onPointerDown={(event) => {
+        onHighlightInputs?.(node.id);
+        onBeginDrag(event, node);
+      }}
+    >
+      {showOutputActions && (onOpenAssetLibrary || onUploadAudioOutput) ? (
+        <div
+          className="image-output-actions"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {onUploadAudioOutput ? (
+            <>
+              <button
+                type="button"
+                className="image-output-action-button"
+                title="上传本地音频"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  outputFileInputRef.current?.click();
+                }}
+              >
+                <Upload size={12} />
+                <span>上传</span>
+              </button>
+              <input
+                ref={outputFileInputRef}
+                type="file"
+                accept={AUDIO_FILE_ACCEPT}
+                hidden
+                onChange={(event) => {
+                  const files = filterAudioFiles(event.target.files || []);
+                  if (files.length > 0) {
+                    onUploadAudioOutput(node.id, files);
+                  }
+                  event.target.value = '';
+                }}
+              />
+            </>
+          ) : null}
+          {onOpenAssetLibrary ? (
+            <button
+              type="button"
+              className="image-output-action-button"
+              title="从资产库选择音频"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenAssetLibrary(node.id, 'audio-output');
+              }}
+            >
+              <FolderOpen size={12} />
+              <span>资产库</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {displayAudio ? (
+        <div className="audio-player-shell">
+          <AudioPlayerCard
+            src={normalizeAudioUrl(displayAudio)}
+            title={getAudioDisplayName(displayAudio, node.title || '音频')}
+          />
+        </div>
+      ) : (
+        <div className="audio-empty-state">
+          <div className="audio-empty-icon">
+            <Headphones size={22} aria-hidden="true" />
+          </div>
+          <strong>添加音频</strong>
+          <span>上传 MP3 或从资产库选择，也可在下方合成</span>
         </div>
       )}
     </div>
@@ -1494,6 +1733,95 @@ function ImageToolbar({
   );
 }
 
+function AudioToolbar({
+  node,
+  isRunning,
+  isTranslating,
+  textInputLinks = [],
+  onRunAudioGeneration,
+  onRemoveTextReference,
+  onUpdateNode,
+}) {
+  const hasTextInput = textInputLinks.length > 0;
+  const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
+
+  return (
+    <div className="node-bottom-toolbar audio-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+      <div className="node-prompt-wrap">
+        <textarea
+          className="node-prompt-input"
+          value={node.prompt || ''}
+          onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
+          placeholder="输入要合成的文本"
+        />
+      </div>
+      <div className="image-options-row audio-voice-row">
+        <OptionSegment
+          title="音色"
+          value={node.audioVoice || 'alloy'}
+          options={AUDIO_VOICE_OPTIONS}
+          onChange={(value) => onUpdateNode(node.id, { audioVoice: value, status: 'idle' })}
+        />
+      </div>
+      <OptionSegment
+        title="语速"
+        value={Number(node.audioSpeed) || 1}
+        options={AUDIO_SPEED_OPTIONS}
+        onChange={(value) => onUpdateNode(node.id, { audioSpeed: Number(value), status: 'idle' })}
+      />
+      <CustomSelect
+        title="模型"
+        icon={<Headphones size={14} />}
+        value={node.audioModel || DEFAULT_AUDIO_MODEL}
+        options={[{ value: DEFAULT_AUDIO_MODEL, label: DEFAULT_AUDIO_MODEL }]}
+        onChange={() => {}}
+      />
+      {hasTextInput ? (
+        <div className="image-reference-row">
+          <span className="image-reference-label">文本引用</span>
+          <div className="image-reference-list">
+            {textInputLinks.map(({ linkId, node: textNode }) => (
+              <div className="text-reference-chip" key={linkId}>
+                <FileText size={14} />
+                <span className="text-reference-preview" title={getTextInputPreview(textNode) || '空文本'}>
+                  {formatTextInputLabel(textNode)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onRemoveTextReference(linkId)}
+                  title="移除文本引用并断开连线"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <div className="node-bottom-actions image-bottom-actions">
+        <button
+          className="icon-button"
+          onClick={() => onRunAudioGeneration(node, 'translate')}
+          title="翻译文本"
+          disabled={isTranslating || isRunning || isPromptEmpty}
+        >
+          {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
+          翻译
+        </button>
+        <button
+          className="icon-button primary"
+          onClick={() => onRunAudioGeneration(node)}
+          title="运行语音合成"
+          disabled={isRunning || isTranslating || isPromptEmpty}
+        >
+          {isRunning ? <LoaderCircle size={14} className="spin-icon" /> : <Play size={14} />}
+          合成
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function NoteToolbar({
   node,
   isRunning,
@@ -1572,9 +1900,11 @@ export function CanvasNode({
   onRunTextGeneration,
   onRunImageGeneration,
   onRunVideoGeneration,
+  onRunAudioGeneration,
   onOpenAssetLibrary,
   onUploadImageOutput,
   onUploadVideoOutput,
+  onUploadAudioOutput,
   onRemoveImageReference,
   onRemoveTextReference,
   onHighlightInputs,
@@ -1584,6 +1914,7 @@ export function CanvasNode({
   onSyncImageOutputLayout,
   onSplitImageNode,
   onSyncVideoOutputLayout,
+  onSyncAudioOutputLayout,
   onRemoveVeoFrame,
   onRemoveSeedanceMedia,
   onPortPointerDown,
@@ -1591,6 +1922,7 @@ export function CanvasNode({
 }) {
   const imageDisplayImages = node.type === 'image' ? getImageDisplayImages(node) : [];
   const videoDisplayUrl = node.type === 'video' ? getVideoDisplayUrl(node) : '';
+  const audioDisplayUrl = node.type === 'audio' ? getAudioDisplayUrl(node) : '';
 
   const [openSplitMenu, setOpenSplitMenu] = useState(false);
   const [isSplitting, setIsSplitting] = useState(false);
@@ -1703,6 +2035,18 @@ export function CanvasNode({
               </button>
             </>
           ) : null}
+          {node.type === 'audio' && audioDisplayUrl ? (
+            <a
+              className="icon-mini"
+              href={normalizeAudioUrl(audioDisplayUrl)}
+              download
+              title="下载音频"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <Download size={14} />
+            </a>
+          ) : null}
           {node.type === 'image' && imageDisplayImages.length > 0 ? (
             <div className="node-header-split-wrapper" style={{ position: 'relative', display: 'inline-block' }} onPointerDown={(e) => e.stopPropagation()}>
               <button
@@ -1801,6 +2145,18 @@ export function CanvasNode({
             onSyncOutputLayout={onSyncImageOutputLayout}
             onSplitImageNode={onSplitImageNode}
           />
+        ) : node.type === 'audio' ? (
+          <AudioBody
+            node={node}
+            isRunning={isRunning}
+            showOutputActions={showToolbar}
+            isInputsHighlighted={isInputsHighlighted}
+            onBeginDrag={onBeginDrag}
+            onHighlightInputs={onHighlightInputs}
+            onOpenAssetLibrary={onOpenAssetLibrary}
+            onUploadAudioOutput={onUploadAudioOutput}
+            onSyncAudioLayout={onSyncAudioOutputLayout}
+          />
         ) : (
           <VideoBody
             node={node}
@@ -1850,6 +2206,16 @@ export function CanvasNode({
           onRemoveTextReference={onRemoveTextReference}
           onRemoveVeoFrame={onRemoveVeoFrame}
           onRemoveSeedanceMedia={onRemoveSeedanceMedia}
+          onUpdateNode={onUpdateNode}
+        />
+      ) : node.type === 'audio' && showToolbar ? (
+        <AudioToolbar
+          node={node}
+          isRunning={isRunning}
+          isTranslating={isTranslating}
+          textInputLinks={textInputLinks}
+          onRunAudioGeneration={onRunAudioGeneration}
+          onRemoveTextReference={onRemoveTextReference}
           onUpdateNode={onUpdateNode}
         />
       ) : null}

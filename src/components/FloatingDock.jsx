@@ -3,6 +3,7 @@ import {
   FileText,
   FileUp,
   Film,
+  Headphones,
   Image as ImageIcon,
 } from 'lucide-react';
 
@@ -17,6 +18,9 @@ export function FloatingDock({ onAddNode, onImport, onExport }) {
       </button>
       <button className="dock-button" onClick={() => onAddNode('video')} title="视频节点">
         <Film size={18} />
+      </button>
+      <button className="dock-button" onClick={() => onAddNode('audio')} title="音频节点">
+        <Headphones size={18} />
       </button>
 
       <div className="dock-divider" />

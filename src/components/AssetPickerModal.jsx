@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { Check, Film, FolderOpen, Headphones, Image as ImageIcon, LoaderCircle, Search, Sparkles, Upload, X } from 'lucide-react';
 import { normalizeImageUrl } from '../lib/imageApi';
+import { AUDIO_FILE_ACCEPT, filterAudioFiles, isAudioAssetRecord, normalizeAudioUrl } from '../lib/audioApi';
 import { normalizeVideoUrl, resolveSeedanceMediaPreviewUrl } from '../lib/videoApi';
 
 export function AssetPickerModal({
@@ -25,6 +26,7 @@ export function AssetPickerModal({
   const isVideo = mediaType === 'video';
   const isAudio = mediaType === 'audio';
   const filteredAssets = assets.filter((asset) => {
+    if (isAudio && !isAudioAssetRecord(asset)) return false;
     const keyword = search.trim().toLowerCase();
     if (!keyword) return true;
     return `${asset.name || ''} ${asset.url || ''}`.toLowerCase().includes(keyword);
@@ -37,7 +39,10 @@ export function AssetPickerModal({
 
   return (
     <div className="asset-modal-backdrop" onPointerDown={onClose}>
-      <section className="asset-modal" onPointerDown={(event) => event.stopPropagation()}>
+      <section
+        className={`asset-modal ${isAudio ? 'asset-modal-audio' : ''}`}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
         <header className="asset-modal-header">
           <div className="asset-modal-title">
             <FolderOpen size={18} />
@@ -96,11 +101,12 @@ export function AssetPickerModal({
           <input
             ref={fileInputRef}
             type="file"
-            accept={isVideo ? 'video/*' : isAudio ? 'audio/*' : 'image/*'}
+            accept={isVideo ? 'video/*' : isAudio ? AUDIO_FILE_ACCEPT : 'image/*'}
             multiple={!isVideo && !isAudio && maxCount > 1}
             hidden
             onChange={(event) => {
-              const files = Array.from(event.target.files || []);
+              const picked = Array.from(event.target.files || []);
+              const files = isAudio ? filterAudioFiles(picked) : picked;
               if (files.length > 0) {
                 onUploadImages(files);
               }
@@ -131,14 +137,18 @@ export function AssetPickerModal({
                           isAudio ? 'audio' : isVideo ? 'video' : 'image'
                         )
                       : asset.previewUrl
-                        ? isVideo || isAudio
-                          ? normalizeVideoUrl(asset.previewUrl)
-                          : normalizeImageUrl(asset.previewUrl)
-                        : source === 'local'
-                          ? asset.url
+                        ? isAudio
+                          ? normalizeAudioUrl(asset.previewUrl)
                           : isVideo
-                            ? normalizeVideoUrl(asset.url)
-                            : normalizeImageUrl(asset.url);
+                            ? normalizeVideoUrl(asset.previewUrl)
+                            : normalizeImageUrl(asset.previewUrl)
+                        : isAudio
+                          ? normalizeAudioUrl(asset.url)
+                          : source === 'local'
+                            ? asset.url
+                            : isVideo
+                              ? normalizeVideoUrl(asset.url)
+                              : normalizeImageUrl(asset.url);
                   const assetLabel = isVideo ? '视频资产' : isAudio ? '音频资产' : '图片资产';
                   return (
                     <button

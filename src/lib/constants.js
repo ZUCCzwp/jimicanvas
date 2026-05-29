@@ -1,6 +1,6 @@
 export const STORAGE_KEY = 'jimicanvas.documents.v1';
 /** 画布有改动后，延迟多久再上传到云端（防抖，减少频繁保存） */
-export const CLOUD_SYNC_DEBOUNCE_MS = 30000;
+export const CLOUD_SYNC_DEBOUNCE_MS = 10000;
 export const JIMIAIGO_TOKEN_STORAGE_KEY = 'jimicanvas.jimiaigo.token';
 /** 从 jimiaiapp 跳转时暂存待打开的画布 ID */
 export const PENDING_CANVAS_ID_KEY = 'jimicanvas.pending_canvas_id';
@@ -45,6 +45,31 @@ export const VEO_REFERENCE_IMAGE_MAX = 3;
 export const SEEDANCE_REF_IMAGE_MAX = 9;
 export const SEEDANCE_REF_VIDEO_MAX = 3;
 export const SEEDANCE_REF_AUDIO_MAX = 3;
+
+export const DEFAULT_AUDIO_MODEL = 'gpt-4o-mini-tts';
+export const DEFAULT_AUDIO_VOICE = 'alloy';
+export const DEFAULT_AUDIO_SPEED = 1;
+export const DEFAULT_AUDIO_NODE_WIDTH = 360;
+export const DEFAULT_AUDIO_NODE_HEIGHT = 168;
+export const MIN_AUDIO_NODE_HEIGHT = 168;
+export const MIN_AUDIO_NODE_HEIGHT_WITH_CONTENT = 192;
+
+export const AUDIO_VOICE_OPTIONS = [
+  { value: 'alloy', label: 'Alloy', hint: '中性、平衡' },
+  { value: 'echo', label: 'Echo', hint: '男声、沉稳' },
+  { value: 'fable', label: 'Fable', hint: '英式、叙述' },
+  { value: 'onyx', label: 'Onyx', hint: '男声、深沉' },
+  { value: 'nova', label: 'Nova', hint: '女声、活力' },
+  { value: 'shimmer', label: 'Shimmer', hint: '女声、温柔' },
+];
+
+export const AUDIO_SPEED_OPTIONS = [
+  { value: 0.75, label: '0.75x' },
+  { value: 1, label: '1x' },
+  { value: 1.25, label: '1.25x' },
+  { value: 1.5, label: '1.5x' },
+  { value: 2, label: '2x' },
+];
 
 export const VEO_GENERATION_TYPE_OPTIONS = [
   { value: 'frame', label: '首尾帧' },

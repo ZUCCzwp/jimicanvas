@@ -47,9 +47,20 @@ function imagePathForModel(model) {
   return '/api/image/nanobanana2';
 }
 
-function getLocalAssetUrl(item) {
+function getLocalAssetUrl(item, mediaType = 'image') {
   if (!item) return '';
+  if (mediaType === 'audio') {
+    return item.path || item.url || item.image_url || '';
+  }
+  if (mediaType === 'video') {
+    return item.path || item.url || item.video_url || item.image_url || '';
+  }
   return item.path || item.image || item.url || item.image_url || '';
+}
+
+function isLocalAudioAsset(item) {
+  const url = getLocalAssetUrl(item, 'audio');
+  return /\.mp3(\?.*)?$/i.test(String(url || ''));
 }
 
 function getOneMonthDateRange() {
@@ -219,17 +230,22 @@ export async function getAssetList({
   });
   const data = await requestJson(`/api/asset/list?${params.toString()}`, { token });
   const list = Array.isArray(data) ? data : data?.list || [];
-  const assetLabel = mediaType === 'video' ? '视频资产' : '图片资产';
-  return {
-    list: list.map((item) => ({
+  const assetLabel =
+    mediaType === 'video' ? '视频资产' : mediaType === 'audio' ? '音频资产' : '图片资产';
+  const normalizedList = list
+    .filter((item) => (mediaType === 'audio' ? isLocalAudioAsset(item) : true))
+    .map((item) => ({
       ...item,
       id: item.id || item.uuid,
-      url: getLocalAssetUrl(item),
+      url: normalizeImageUrl(getLocalAssetUrl(item, mediaType)),
       name: item.name || item.filename || assetLabel,
-      type: mediaType,
+      type: item.media_type || mediaType,
+      media_type: item.media_type || mediaType,
       createdAt: item.created_at || item.createdAt,
-    })),
-    total: data?.total || list.length,
+    }));
+  return {
+    list: normalizedList,
+    total: mediaType === 'audio' ? normalizedList.length : data?.total || list.length,
   };
 }
 

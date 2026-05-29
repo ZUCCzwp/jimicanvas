@@ -555,3 +555,27 @@
 [data-theme='light'] .seedance-upload-button {
   color: var(--text-primary);
 }
+
+[data-theme='light'] .audio-player-card {
+  border-color: rgba(16, 185, 129, 0.24);
+  background:
+    linear-gradient(145deg, rgba(16, 185, 129, 0.1), rgba(255, 255, 255, 0.92)),
+    #fff;
+}
+
+[data-theme='light'] .audio-player-icon,
+[data-theme='light'] .audio-empty-icon {
+  color: #059669;
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.22);
+}
+
+[data-theme='light'] .audio-player-badge {
+  color: #047857;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+[data-theme='light'] .audio-empty-state {
+  background: rgba(16, 185, 129, 0.06);
+  border-color: rgba(16, 185, 129, 0.22);
+}

@@ -23,6 +23,13 @@ import {
   DEFAULT_VIDEO_URL,
   DEFAULT_IMAGE_URL,
   DEFAULT_DEMO_IMAGE_RATIO,
+  DEFAULT_AUDIO_NODE_WIDTH,
+  DEFAULT_AUDIO_NODE_HEIGHT,
+  MIN_AUDIO_NODE_HEIGHT,
+  MIN_AUDIO_NODE_HEIGHT_WITH_CONTENT,
+  DEFAULT_AUDIO_VOICE,
+  DEFAULT_AUDIO_SPEED,
+  DEFAULT_AUDIO_MODEL,
   MIN_CANVAS_SCALE,
   MAX_CANVAS_SCALE,
 } from './constants';
@@ -103,6 +110,25 @@ export function createNode(type, x, y) {
       y,
       width: videoLayout.width,
       height: videoLayout.height,
+    };
+  }
+
+  if (type === 'audio') {
+    return {
+      id,
+      type,
+      title: '音频节点',
+      prompt: '',
+      content: '',
+      audioUrl: '',
+      audioVoice: DEFAULT_AUDIO_VOICE,
+      audioSpeed: DEFAULT_AUDIO_SPEED,
+      audioModel: DEFAULT_AUDIO_MODEL,
+      status: 'idle',
+      x,
+      y,
+      width: DEFAULT_AUDIO_NODE_WIDTH,
+      height: DEFAULT_AUDIO_NODE_HEIGHT,
     };
   }
 
@@ -208,6 +234,17 @@ export function isVideoContent(content) {
   if (value.startsWith('data:video') || value.startsWith('blob:')) return true;
   if (/^https?:\/\//.test(value)) return true;
   return VIDEO_CONTENT_PATTERN.test(value);
+}
+
+const AUDIO_CONTENT_PATTERN = /\.(mp3|wav|ogg|opus|aac|flac|m4a)(\?.*)?$/i;
+
+export function isAudioContent(content) {
+  if (typeof content !== 'string') return false;
+  const value = content.trim();
+  if (!value) return false;
+  if (value.startsWith('data:audio') || value.startsWith('blob:')) return true;
+  if (/^https?:\/\//.test(value)) return true;
+  return AUDIO_CONTENT_PATTERN.test(value);
 }
 
 export function clampNoteSize(width, height) {

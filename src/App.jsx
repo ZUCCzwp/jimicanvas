@@ -57,8 +57,10 @@ import {
   getTextInputLinks,
   resolveImagePrompt,
   resolveVideoPrompt,
+  resolveAudioPrompt,
   resolveVideoReferenceImages,
 } from './lib/connections';
+import { createSpeech, normalizeAudioUrl, readAudioFile, filterAudioFiles, isAudioFile, isAudioAssetRecord } from './lib/audioApi';
 import {
   fetchCanvasDocuments,
   parseCloudDocuments,
@@ -1087,6 +1089,10 @@ function App() {
     syncMediaNodeOutputLayout(nodeId, 'video', layout);
   }
 
+  function syncAudioNodeOutputLayout(nodeId, layout) {
+    syncMediaNodeOutputLayout(nodeId, 'audio', layout);
+  }
+
   function updateNodeInCanvas(canvasId, nodeId, patch) {
     setDocuments((prev) =>
       prev.map((doc) => {
@@ -1448,6 +1454,65 @@ function App() {
     }
   }
 
+  async function runAudioGeneration(node, mode = 'generate') {
+    const promptText = resolveAudioPrompt(node, nodes, connections);
+    if (!promptText) {
+      updateNode(node.id, { content: '合成文本不能为空，请填写文本或连接文本节点', status: 'error' });
+      return;
+    }
+
+    const token = getOrRequestToken({ onSaved: refreshUserQuota });
+    if (!token) {
+      updateNode(node.id, { content: '缺少 token', status: 'error' });
+      return;
+    }
+
+    if (mode === 'translate') {
+      setTranslatingNodeId(node.id);
+      try {
+        const translated = await runChatCompletion({
+          token,
+          content: `Detect whether the following text is primarily Chinese or English. If it is Chinese, translate it into natural English. If it is English, translate it into natural Chinese. Return only the translation, with no explanations:\n\n${promptText}`,
+        });
+        updateNode(node.id, { prompt: translated, status: 'idle' });
+        setSelectedNodeIds([node.id]);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '翻译失败';
+        updateNode(node.id, { content: message, status: 'error' });
+        setSelectedNodeIds([node.id]);
+      } finally {
+        setTranslatingNodeId(null);
+      }
+      return;
+    }
+
+    setRunningNodeId(node.id);
+    updateNode(node.id, { status: 'running', content: '正在合成语音…' });
+
+    try {
+      const audioUrl = await createSpeech({
+        token,
+        input: promptText,
+        voice: node.audioVoice,
+        speed: node.audioSpeed,
+      });
+      updateNode(node.id, {
+        audioUrl,
+        content: audioUrl,
+        status: 'idle',
+      });
+      setSelectedNodeIds([node.id]);
+      flushPersist();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '语音合成失败';
+      updateNode(node.id, { content: message, status: 'error' });
+      setSelectedNodeIds([node.id]);
+    } finally {
+      setRunningNodeId(null);
+      refreshUserQuota();
+    }
+  }
+
   function getAssetPickerMeta(node, pickMode = 'reference') {
     if (pickMode === 'veo-first') {
       return { maxCount: 1, title: '资产库', subtitle: '选择首帧图片' };
@@ -1504,6 +1569,9 @@ function App() {
     if (pickMode === 'video-output') {
       return { maxCount: 1, title: '资产库', subtitle: '选择视频' };
     }
+    if (pickMode === 'audio-output') {
+      return { maxCount: 1, title: '资产库', subtitle: '选择音频' };
+    }
     return { maxCount: 5, title: '资产库', subtitle: '选择图片作为参考图' };
   }
 
@@ -1529,6 +1597,7 @@ function App() {
 
   function applyPickedAssetsToNode(node, pickMode, pickedAssets, source) {
     const isVideoOutput = pickMode === 'video-output';
+    const isAudioOutput = pickMode === 'audio-output';
     const isSeedancePick = String(pickMode).startsWith('seedance-');
     const normalized = isSeedancePick
       ? pickedAssets.map((asset) => {
@@ -1541,15 +1610,16 @@ function App() {
         })
       : pickedAssets.map((asset) => ({
           id: asset.id,
-          name: asset.name || (isVideoOutput ? '视频资产' : '图片资产'),
-          url:
-            source === 'local'
-              ? asset.url
-              : isVideoOutput
-                ? normalizeVideoUrl(asset.url)
+          name: asset.name || (isVideoOutput ? '视频资产' : isAudioOutput ? '音频资产' : '图片资产'),
+          url: isAudioOutput
+            ? normalizeAudioUrl(asset.url || asset.path || '')
+            : isVideoOutput
+              ? normalizeVideoUrl(asset.url || asset.path || '')
+              : source === 'local'
+                ? asset.url
                 : normalizeImageUrl(asset.url),
           source,
-          type: isVideoOutput ? 'video' : 'image',
+          type: isVideoOutput ? 'video' : isAudioOutput ? 'audio' : 'image',
         }));
 
     if (pickMode === 'veo-first' || pickMode === 'seedance-first') {
@@ -1641,6 +1711,16 @@ function App() {
         ...buildVideoNodeLayoutPatch(node),
       };
     }
+    if (pickMode === 'audio-output') {
+      const url = normalized[0]?.url || '';
+      if (!url) return node;
+      return {
+        ...node,
+        audioUrl: url,
+        content: url,
+        status: 'idle',
+      };
+    }
 
     const current = Array.isArray(node.referenceImages) ? node.referenceImages : [];
     return {
@@ -1664,18 +1744,32 @@ function App() {
     const { maxCount } = getAssetPickerMeta(node, pickMode);
 
     const isVideoOutput = pickMode === 'video-output';
+    const isAudioOutput = pickMode === 'audio-output';
 
     setUploadingNodeId(nodeId);
     try {
       const references = [];
-      for (const file of files.slice(0, maxCount)) {
-        const localAsset = isVideoOutput ? await readVideoFile(file) : await readImageFile(file);
+      const uploadFiles = isAudioOutput ? filterAudioFiles(files) : files.slice(0, maxCount);
+      if (isAudioOutput && uploadFiles.length === 0) {
+        throw new Error('请选择 MP3 音频文件');
+      }
+      for (const file of uploadFiles.slice(0, maxCount)) {
+        if (isAudioOutput && !isAudioFile(file)) {
+          continue;
+        }
+        const localAsset = isVideoOutput
+          ? await readVideoFile(file)
+          : isAudioOutput
+            ? await readAudioFile(file)
+            : await readImageFile(file);
         const uploadedUrl = await uploadAsset({ token, file });
         references.push({
           ...localAsset,
           url: isVideoOutput
             ? normalizeVideoUrl(uploadedUrl || localAsset.url)
-            : normalizeImageUrl(uploadedUrl || localAsset.url),
+            : isAudioOutput
+              ? normalizeAudioUrl(uploadedUrl || localAsset.url)
+              : normalizeImageUrl(uploadedUrl || localAsset.url),
           uploadedUrl,
         });
       }
@@ -1693,7 +1787,9 @@ function App() {
           ? error.message
           : isVideoOutput
             ? '上传视频失败'
-            : '上传图片失败';
+            : isAudioOutput
+              ? '上传音频失败'
+              : '上传图片失败';
       updateNode(nodeId, { content: message, status: 'error' });
     } finally {
       setUploadingNodeId(null);
@@ -1826,10 +1922,10 @@ function App() {
     const isSeedanceLibrary = String(pickMode).startsWith('seedance-');
     const mediaType = pickMode === 'video-output' || pickMode === 'seedance-ref-video'
       ? 'video'
-      : pickMode === 'seedance-ref-audio'
+      : pickMode === 'seedance-ref-audio' || pickMode === 'audio-output'
         ? 'audio'
         : 'image';
-    const assetSource = pickMode === 'video-output' ? 'local' : source;
+    const assetSource = pickMode === 'video-output' || pickMode === 'audio-output' ? 'local' : source;
 
     setAssetPicker((current) => ({ ...current, loading: true, assets: [] }));
     try {
@@ -1861,6 +1957,9 @@ function App() {
   function toggleAssetSelection(asset) {
     setAssetPicker((current) => {
       if (String(current.pickMode).startsWith('seedance-') && asset.status !== 'Active') {
+        return current;
+      }
+      if (current.pickMode === 'audio-output' && !isAudioAssetRecord(asset)) {
         return current;
       }
       const exists = current.selectedAssets.some(
@@ -2493,7 +2592,11 @@ function App() {
             title={assetPicker.title}
             subtitle={assetPicker.subtitle}
             mediaType={
-              assetPicker.pickMode === 'video-output' ? 'video' : 'image'
+              assetPicker.pickMode === 'video-output'
+                ? 'video'
+                : assetPicker.pickMode === 'audio-output'
+                  ? 'audio'
+                  : 'image'
             }
             onSourceChange={(source) =>
               setAssetPicker((current) => ({ ...current, source, selectedAssets: [] }))
@@ -2579,7 +2682,7 @@ function App() {
                 isRunning={isNodeActivelyRunning(node, runningNodeId)}
                 isTranslating={translatingNodeId === node.id}
                 textInputLinks={
-                  node.type === 'image' || node.type === 'video'
+                  node.type === 'image' || node.type === 'video' || node.type === 'audio'
                     ? getTextInputLinks(node.id, nodes, connections)
                     : []
                 }
@@ -2599,9 +2702,11 @@ function App() {
                 onRunTextGeneration={runTextGeneration}
                 onRunImageGeneration={runImageGeneration}
                 onRunVideoGeneration={runVideoGeneration}
+                onRunAudioGeneration={runAudioGeneration}
                 onOpenAssetLibrary={openAssetLibrary}
                 onUploadImageOutput={(nodeId, files) => uploadImageReferences(nodeId, files, 'output')}
                 onUploadVideoOutput={(nodeId, files) => uploadImageReferences(nodeId, files, 'video-output')}
+                onUploadAudioOutput={(nodeId, files) => uploadImageReferences(nodeId, files, 'audio-output')}
                 onRemoveImageReference={removeImageReference}
                 onRemoveTextReference={removeTextReference}
                 onHighlightInputs={highlightNodeInputs}
@@ -2613,6 +2718,7 @@ function App() {
                 onSyncImageOutputLayout={syncImageNodeOutputLayout}
                 onSplitImageNode={handleSplitImageNode}
                 onSyncVideoOutputLayout={syncVideoNodeOutputLayout}
+                onSyncAudioOutputLayout={syncAudioNodeOutputLayout}
                 onRemoveVeoFrame={removeVeoFrame}
                 onRemoveSeedanceMedia={removeSeedanceMedia}
                 onPortPointerDown={handlePortPointerDown}

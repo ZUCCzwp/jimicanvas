@@ -1,9 +1,10 @@
-import { FileText, Film, Image as ImageIcon, X } from 'lucide-react';
+import { FileText, Film, Headphones, Image as ImageIcon, X } from 'lucide-react';
 
 const NODE_OPTIONS = [
   { type: 'note', label: '文本节点', icon: FileText },
   { type: 'image', label: '图片节点', icon: ImageIcon },
   { type: 'video', label: '视频节点', icon: Film },
+  { type: 'audio', label: '音频节点', icon: Headphones },
 ];
 
 export function NodeTypePickerPopover({ screenX, screenY, onSelect, onClose }) {

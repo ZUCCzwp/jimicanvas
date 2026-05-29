@@ -42,6 +42,10 @@ export function resolveImagePrompt(node, nodes = [], connections = []) {
     .join('\n\n');
 }
 
+export function resolveAudioPrompt(node, nodes = [], connections = []) {
+  return resolveImagePrompt(node, nodes, connections);
+}
+
 export function hasImagePromptSource(node, nodes = [], connections = []) {
   return Boolean(resolveImagePrompt(node, nodes, connections));
 }
