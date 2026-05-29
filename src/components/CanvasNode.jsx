@@ -1695,7 +1695,7 @@ function ImageToolbar({
           {references.map((image, index) => (
             <div className="image-reference-chip" key={image.id || image.url || index}>
               <img
-                src={image.source === 'local' ? image.url || image.data : normalizeImageUrl(image.url || image.data)}
+                src={normalizeImageUrl(image.url || image.data)}
                 alt={image.name || `参考图 ${index + 1}`}
               />
               <button

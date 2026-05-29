@@ -114,3 +114,39 @@ export async function resolveImageOutputLayout({ imageUrls = [], imageRatio, ima
 
   return buildImageNodeLayoutPatch({ imageRatio, imageCount: count });
 }
+
+const SPLIT_NODE_GAP = 36;
+
+export function computeSplitImageNodePositions({
+  originX,
+  originY,
+  originWidth,
+  cols,
+  rows,
+  nodeWidth,
+  nodeHeight,
+  gap = SPLIT_NODE_GAP,
+}) {
+  const startX = originX + originWidth + gap;
+  const startY = originY;
+  const positions = [];
+
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      positions.push({
+        x: startX + c * (nodeWidth + gap),
+        y: startY + r * (nodeHeight + gap),
+      });
+    }
+  }
+
+  return positions;
+}
+
+export function formatCellAspectRatio(cellWidth, cellHeight) {
+  const width = Math.max(1, Math.round(Number(cellWidth) || 1));
+  const height = Math.max(1, Math.round(Number(cellHeight) || 1));
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  const divisor = gcd(width, height);
+  return `${width / divisor}:${height / divisor}`;
+}

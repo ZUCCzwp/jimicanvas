@@ -1,4 +1,4 @@
-import { Plus, RotateCcw, SquarePen, Trash2, X } from 'lucide-react';
+import { Plus, SquarePen, Trash2, X } from 'lucide-react';
 
 export function CanvasPanel({
   documents,
@@ -6,8 +6,6 @@ export function CanvasPanel({
   onCreateCanvas,
   onSelectCanvas,
   onDeleteCanvas,
-  onRestoreBackup,
-  hasStorageBackup,
   onClose,
 }) {
   return (
@@ -26,13 +24,6 @@ export function CanvasPanel({
           </button>
         </div>
       </header>
-
-      {hasStorageBackup ? (
-        <button type="button" className="canvas-restore-backup" onClick={onRestoreBackup}>
-          <RotateCcw size={14} />
-          恢复上一版本地备份
-        </button>
-      ) : null}
 
       <div className="canvas-panel-list">
         {[...documents]

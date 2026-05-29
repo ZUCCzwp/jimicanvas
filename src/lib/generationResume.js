@@ -89,37 +89,9 @@ export function hasPendingTasks(documents) {
   return documents.some((doc) => Array.isArray(doc.nodes) && doc.nodes.some(hasNodePendingWork));
 }
 
-export function documentMaxUpdatedAt(documents) {
-  if (!Array.isArray(documents)) return 0;
-  let max = 0;
-  for (const doc of documents) {
-    max = Math.max(max, Number(doc.updatedAt) || 0);
-    if (Array.isArray(doc.nodes)) {
-      for (const node of doc.nodes) {
-        max = Math.max(max, Number(node.updatedAt) || 0);
-      }
-    }
-  }
-  return max;
-}
+export function mergeDocumentsPreservePending(localDocs, cloudDocs, options = {}) {
+  const preserveCloudOnlyDocuments = options.preserveCloudOnlyDocuments !== false;
 
-export function countDocumentNodes(documents) {
-  if (!Array.isArray(documents)) return 0;
-  return documents.reduce(
-    (sum, doc) => sum + (Array.isArray(doc.nodes) ? doc.nodes.length : 0),
-    0
-  );
-}
-
-export function shouldPreferLocalDocuments(localDocs, cloudDocs, cloudUpdatedAtSec = 0) {
-  if (hasPendingTasks(localDocs)) return true;
-  if (countDocumentNodes(localDocs) > countDocumentNodes(cloudDocs)) return true;
-  const cloudMs =
-    Number(cloudUpdatedAtSec) > 0 ? Number(cloudUpdatedAtSec) * 1000 : documentMaxUpdatedAt(cloudDocs);
-  return documentMaxUpdatedAt(localDocs) > cloudMs;
-}
-
-export function mergeDocumentsPreservePending(localDocs, cloudDocs) {
   if (!Array.isArray(cloudDocs) || cloudDocs.length === 0) {
     return localDocs;
   }
@@ -159,9 +131,11 @@ export function mergeDocumentsPreservePending(localDocs, cloudDocs) {
     };
   });
 
-  for (const cloudDoc of cloudDocs) {
-    if (!mergedLocal.some((doc) => doc.id === cloudDoc.id)) {
-      mergedLocal.push(cloudDoc);
+  if (preserveCloudOnlyDocuments) {
+    for (const cloudDoc of cloudDocs) {
+      if (!mergedLocal.some((doc) => doc.id === cloudDoc.id)) {
+        mergedLocal.push(cloudDoc);
+      }
     }
   }
 

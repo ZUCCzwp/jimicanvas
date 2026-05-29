@@ -52,7 +52,7 @@ const CLOUD_SYNC_META = {
   },
   error: {
     label: '云端同步失败',
-    hint: '将继续使用本地缓存，稍后自动重试',
+    hint: '请检查网络后刷新重试',
     className: 'sync-chip-error',
     Icon: AlertCircle,
     spin: false,
@@ -71,6 +71,7 @@ function formatSyncedAt(timestamp) {
 
 export function Topbar({
   activeCanvas,
+  projectLoading = false,
   siteTitle,
   siteLogoUrl,
   nodesCount,
@@ -105,7 +106,8 @@ export function Topbar({
         <BrandProjectMenu
           siteTitle={siteTitle}
           siteLogoUrl={siteLogoUrl}
-          activeCanvasName={activeCanvas?.name || ''}
+          activeCanvasName={projectLoading ? '同步中…' : activeCanvas?.name || ''}
+          projectLoading={projectLoading}
           onRenameCanvas={onRenameCanvas}
           onGoHome={onGoHome}
           onViewAllProjects={onViewAllProjects}

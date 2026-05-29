@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { AssetPickerModal } from './components/AssetPickerModal';
 import { SeedanceAssetPickerModal } from './components/SeedanceAssetPickerModal';
 import { ImagePreviewModal } from './components/ImagePreviewModal';
@@ -60,7 +61,7 @@ import {
   resolveAudioPrompt,
   resolveVideoReferenceImages,
 } from './lib/connections';
-import { createSpeech, normalizeAudioUrl, readAudioFile, filterAudioFiles, isAudioFile, isAudioAssetRecord } from './lib/audioApi';
+import { createSpeech, normalizeAudioUrl, filterAudioFiles, isAudioFile, isAudioAssetRecord } from './lib/audioApi';
 import {
   fetchCanvasDocuments,
   parseCloudDocuments,
@@ -74,13 +75,10 @@ import {
   createImageGenerationTask,
   getAssetList,
   normalizeImageUrl,
-  readImageFile,
-  readVideoFile,
   uploadAsset,
-  splitImageIntoGrid,
-  dataURLtoFile,
+  splitImageIntoGridBlobs,
 } from './lib/imageApi';
-import { buildImageNodeLayoutPatch } from './lib/imageNodeLayout';
+import { buildImageNodeLayoutPatch, computeSplitImageNodePositions, formatCellAspectRatio } from './lib/imageNodeLayout';
 import { buildVideoNodeLayoutPatch } from './lib/videoNodeLayout';
 import {
   executeImageGeneration,
@@ -89,16 +87,10 @@ import {
   mergeDocumentsPreservePending,
   recoverPendingTasks,
   recoverTaskKey,
-  countDocumentNodes,
-  documentMaxUpdatedAt,
-  shouldPreferLocalDocuments,
 } from './lib/generationResume';
 import {
-  hasStorageBackup,
-  isBackupDifferentFrom,
   loadInitialState,
-  readStorageBackup,
-  writeStorage,
+  sanitizeDocumentsForPersist,
 } from './lib/storage';
 import {
   createVideoGenerationTask,
@@ -111,14 +103,10 @@ import {
 
 function App() {
   const { theme, toggleTheme } = useTheme();
+  const needsCloudHydrate = useMemo(() => Boolean(getStoredChatToken()), []);
   const initial = useMemo(() => loadInitialState(), []);
   const [documents, setDocuments] = useState(initial.documents);
-  const [storageNotice, setStorageNotice] = useState(() => {
-    if (initial.loadedFrom === 'backup') {
-      return '已从本地备份恢复画布，建议点击左侧导出按钮保存一份 JSON';
-    }
-    return '';
-  });
+  const [storageNotice, setStorageNotice] = useState('');
   const [activeCanvasId, setActiveCanvasId] = useState(initial.activeCanvasId);
   const [selectedNodeIds, setSelectedNodeIds] = useState([]);
   const [selectionMarquee, setSelectionMarquee] = useState(null);
@@ -266,12 +254,12 @@ function App() {
   };
 
   const flushPersist = async () => {
-    writeStorage(documentsRef.current);
-    if (skipCloudSaveRef.current) return;
+    const docsToSave = sanitizeDocumentsForPersist(documentsRef.current);
+    if (docsToSave.length === 0 || skipCloudSaveRef.current) return;
     try {
       await runWithToken(async (token) => {
         const saved = await saveCanvasDocuments(token, {
-          documents: documentsRef.current,
+          documents: docsToSave,
           activeCanvasId: activeCanvasIdRef.current,
           version: cloudVersionRef.current,
         });
@@ -298,6 +286,7 @@ function App() {
       const token = getStoredChatToken();
       if (!token) {
         setCloudSyncStatus('offline');
+        setStorageNotice('请登录后使用云端画布');
         cloudSyncReadyRef.current = true;
         skipCloudSaveRef.current = false;
         setHydrationDone(true);
@@ -312,40 +301,38 @@ function App() {
           if (cancelled) return;
 
           const cloudDocs = parseCloudDocuments(cloud?.documents);
-          const localDocs = documentsRef.current;
-          const localChangedSinceMount =
-            documentMaxUpdatedAt(localDocs) > documentMaxUpdatedAt(initial.documents) ||
-            countDocumentNodes(localDocs) > countDocumentNodes(initial.documents);
+          const sessionDocs = documentsRef.current;
+
           if (cloudDocs?.length) {
-            const preferLocal =
-              localChangedSinceMount ||
-              shouldPreferLocalDocuments(localDocs, cloudDocs, cloud?.updated_at);
-            const nextDocs = preferLocal
-              ? mergeDocumentsPreservePending(localDocs, cloudDocs)
-              : cloudDocs;
+            const nextDocs = sanitizeDocumentsForPersist(
+              sessionDocs.length > 0
+                ? mergeDocumentsPreservePending(cloudDocs, sessionDocs, {
+                    preserveCloudOnlyDocuments: false,
+                  })
+                : cloudDocs
+            );
+            const pendingId = sessionStorage.getItem(PENDING_CANVAS_ID_KEY);
+            const keptPendingActive = pendingId && nextDocs.some((doc) => doc.id === pendingId);
             setDocuments(nextDocs);
             setActiveCanvasId(
-              (preferLocal ? activeCanvasIdRef.current : cloud.active_canvas_id) ||
-                nextDocs[0]?.id
+              keptPendingActive
+                ? pendingId
+                : cloud.active_canvas_id && nextDocs.some((doc) => doc.id === cloud.active_canvas_id)
+                  ? cloud.active_canvas_id
+                  : nextDocs[0]?.id
             );
             cloudVersionRef.current = Number(cloud.version) || 0;
-            writeStorage(nextDocs);
             setStorageNotice((prev) =>
-              preferLocal
-                ? localChangedSinceMount
-                  ? '已保留你刚编辑的画布，并与云端合并'
-                  : '已保留本地进行中的任务，并与云端画布合并'
-                : prev && !prev.includes('云端')
-                  ? prev
-                  : '已从云端同步画布'
+              prev && !prev.includes('云端') ? prev : '已从云端加载画布'
             );
-          } else if (
-            initial.loadedFrom !== 'default' ||
-            countDocumentNodes(localDocs) > 0
-          ) {
+          } else {
+            const first = createDocument('画布 1', false);
+            const nextDocs = [first];
+            setDocuments(nextDocs);
+            setActiveCanvasId(first.id);
             const saved = await saveCanvasDocuments(authToken, {
-              documents: localDocs,
-              activeCanvasId: activeCanvasIdRef.current,
+              documents: sanitizeDocumentsForPersist(nextDocs),
+              activeCanvasId: first.id,
               version: Number(cloud?.version) || 0,
             });
             if (!cancelled && saved?.version != null) {
@@ -364,6 +351,7 @@ function App() {
             setStorageNotice('Token 已过期，请重新输入 AT 后可同步云端');
           } else {
             setCloudSyncStatus('error');
+            setStorageNotice('云端加载失败，请刷新重试');
           }
         }
       } finally {
@@ -383,6 +371,7 @@ function App() {
 
   useEffect(() => {
     if (!cloudSyncReadyRef.current || skipCloudSaveRef.current) return undefined;
+    if (documents.length === 0) return undefined;
 
     const token = getStoredChatToken();
     if (!token) {
@@ -396,8 +385,9 @@ function App() {
       setCloudSyncStatus('saving');
       try {
         await runWithToken(async (authToken) => {
+          const docsToSave = sanitizeDocumentsForPersist(documents);
           const saved = await saveCanvasDocuments(authToken, {
-            documents,
+            documents: docsToSave,
             activeCanvasId,
             version: cloudVersionRef.current,
           });
@@ -412,11 +402,13 @@ function App() {
           cloudVersionRef.current = Number(error.latest.version) || cloudVersionRef.current;
           const latestDocs = parseCloudDocuments(error.latest.documents);
           if (latestDocs?.length) {
-            setDocuments((prev) => {
-              const merged = mergeDocumentsPreservePending(prev, latestDocs);
-              writeStorage(merged);
-              return merged;
-            });
+            setDocuments((prev) =>
+              sanitizeDocumentsForPersist(
+                mergeDocumentsPreservePending(latestDocs, prev, {
+                  preserveCloudOnlyDocuments: false,
+                })
+              )
+            );
             setActiveCanvasId((current) => current || error.latest.active_canvas_id || latestDocs[0]?.id);
           }
           setCloudLastSyncedAt(Date.now());
@@ -437,25 +429,22 @@ function App() {
   }, [documents, activeCanvasId]);
 
   useEffect(() => {
-    const result = writeStorage(documents);
-    if (!result.ok) {
-      setStorageNotice(
-        '画布保存到浏览器失败，存储空间可能已满。请尽快导出 JSON，或删除节点里过大的本地图片后再试。'
-      );
-      return;
+    if (!hydrationDone) return undefined;
+    if (!documents.some((doc) => doc.id === activeCanvasId)) {
+      setActiveCanvasId(documents[0]?.id || null);
+      setSelectedNodeIds([]);
+      setSelectedConnectionId(null);
+      setEnlargedTextEdit(null);
+      setHoverLinkNodeId(null);
     }
-    if (storageNotice.startsWith('画布保存到浏览器失败')) {
-      setStorageNotice('');
-    }
-  }, [documents]);
+  }, [documents, activeCanvasId, hydrationDone]);
 
   useEffect(() => {
     function persistOnExit() {
-      writeStorage(documentsRef.current);
       const token = getStoredChatToken();
       if (token && cloudSyncReadyRef.current && !skipCloudSaveRef.current) {
         saveCanvasDocumentsKeepalive(token, {
-          documents: documentsRef.current,
+          documents: sanitizeDocumentsForPersist(documentsRef.current),
           activeCanvasId: activeCanvasIdRef.current,
           version: cloudVersionRef.current,
         });
@@ -472,16 +461,6 @@ function App() {
       window.removeEventListener('beforeunload', persistOnExit);
     };
   }, []);
-
-  useEffect(() => {
-    if (!documents.some((doc) => doc.id === activeCanvasId)) {
-      setActiveCanvasId(documents[0]?.id || null);
-      setSelectedNodeIds([]);
-      setSelectedConnectionId(null);
-      setEnlargedTextEdit(null);
-      setHoverLinkNodeId(null);
-    }
-  }, [documents, activeCanvasId]);
 
   useEffect(() => {
     if (!assetPicker.nodeId) return;
@@ -730,7 +709,8 @@ function App() {
   }, [selectedConnectionId, selectedNodeIds, showCustomerService, showKeyboardShortcuts]);
 
   const activeCanvas = documents.find((doc) => doc.id === activeCanvasId) || documents[0];
-  const nodes = activeCanvas?.nodes || [];
+  const canvasReady = !needsCloudHydrate || hydrationDone;
+  const nodes = canvasReady ? activeCanvas?.nodes || [] : [];
   const connections = activeCanvas?.connections || [];
   const primarySelectedNodeId =
     selectedNodeIds.length > 0 ? selectedNodeIds[selectedNodeIds.length - 1] : null;
@@ -826,20 +806,29 @@ function App() {
   }
 
   function deleteCanvas(canvasId) {
+    const touchedAt = Date.now();
+
     if (documents.length === 1) {
       const replacement = createDocument('画布 1', false);
+      replacement.updatedAt = touchedAt;
+      documentsRef.current = [replacement];
       setDocuments([replacement]);
       setActiveCanvasId(replacement.id);
       clearSelection();
+      void flushPersist();
       return;
     }
 
-    const next = documents.filter((doc) => doc.id !== canvasId);
+    const next = documents
+      .filter((doc) => doc.id !== canvasId)
+      .map((doc) => ({ ...doc, updatedAt: touchedAt }));
+    documentsRef.current = next;
     setDocuments(next);
     if (canvasId === activeCanvasId) {
       setActiveCanvasId(next[0]?.id || null);
       clearSelection();
     }
+    void flushPersist();
   }
 
   function handleDeleteCurrentProject() {
@@ -998,40 +987,57 @@ function App() {
     const targetNode = nodes.find((n) => n.id === nodeId);
     if (!targetNode) return;
 
-    const dataUrls = await splitImageIntoGrid(imageUrl, cols, rows);
+    const token = getOrRequestToken({ onSaved: refreshUserQuota });
+    if (!token) {
+      throw new Error('缺少 token，无法上传切分图片');
+    }
 
-    const token = getStoredChatToken();
-    const newNodes = [];
-    const spacingX = 340;
-    const spacingY = 300;
+    const { blobs, cellWidth, cellHeight } = await splitImageIntoGridBlobs(imageUrl, cols, rows);
+    const uploadedUrls = [];
 
-    for (let idx = 0; idx < dataUrls.length; idx++) {
-      const dataUrl = dataUrls[idx];
-      const c = idx % cols;
-      const r = Math.floor(idx / cols);
-
-      const x = targetNode.x + targetNode.width + 40 + c * spacingX;
-      const y = targetNode.y + r * spacingY;
-
-      let finalUrl = dataUrl;
-      if (token) {
-        try {
-          const file = dataURLtoFile(dataUrl, `split_${idx + 1}.jpg`);
-          const uploadedUrl = await uploadAsset({ token, file });
-          if (uploadedUrl) {
-            finalUrl = uploadedUrl;
-          }
-        } catch (uploadErr) {
-          console.warn('云端上传切分图片失败，降级为本地 Base64 保存', uploadErr);
-        }
+    for (let idx = 0; idx < blobs.length; idx++) {
+      const file = new File([blobs[idx]], `split_${idx + 1}.jpg`, { type: 'image/jpeg' });
+      const uploadedUrl = await uploadAsset({ token, file });
+      const normalizedUrl = normalizeImageUrl(uploadedUrl || '');
+      if (!normalizedUrl || normalizedUrl.startsWith('data:')) {
+        throw new Error(`第 ${idx + 1} 张切分图上传失败，请重试`);
       }
+      uploadedUrls.push(normalizedUrl);
+    }
+
+    const splitLayout = buildImageNodeLayoutPatch({
+      imageCount: 1,
+      aspectWidth: cellWidth,
+      aspectHeight: cellHeight,
+    });
+    const splitRatio = formatCellAspectRatio(cellWidth, cellHeight);
+    const positions = computeSplitImageNodePositions({
+      originX: targetNode.x,
+      originY: targetNode.y,
+      originWidth: targetNode.width,
+      cols,
+      rows,
+      nodeWidth: splitLayout.width,
+      nodeHeight: splitLayout.height,
+    });
+
+    const newNodes = [];
+
+    for (let idx = 0; idx < uploadedUrls.length; idx++) {
+      const finalUrl = uploadedUrls[idx];
+      const { x, y } = positions[idx];
 
       const newNode = createNode('image', x, y);
       newNode.title = `${targetNode.title || '图片'}_切分_${idx + 1}`;
       newNode.content = finalUrl;
       newNode.images = [finalUrl];
+      newNode.imageCount = 1;
+      newNode.imageRatio = splitRatio;
       newNode.prompt = targetNode.prompt;
       newNode.isEntrance = true;
+      newNode.width = splitLayout.width;
+      newNode.height = splitLayout.height;
+      newNode.outputAspectCss = splitLayout.outputAspectCss;
       newNodes.push(newNode);
     }
 
@@ -1055,6 +1061,8 @@ function App() {
         ),
       }));
     }, 1000);
+
+    flushPersist();
   }
 
 
@@ -1595,6 +1603,38 @@ function App() {
     };
   }
 
+  function resolvePersistedAssetUrl(asset, mediaType) {
+    const candidate = asset.uploadedUrl || asset.url || asset.path || '';
+    const url =
+      mediaType === 'audio'
+        ? normalizeAudioUrl(candidate)
+        : mediaType === 'video'
+          ? normalizeVideoUrl(candidate)
+          : normalizeImageUrl(candidate);
+    if (!url || url.startsWith('data:')) return '';
+    return url;
+  }
+
+  function buildUploadedAssetReference(file, pickMode, uploadedUrl) {
+    const isVideoOutput = pickMode === 'video-output';
+    const isAudioOutput = pickMode === 'audio-output';
+    const mediaType = isVideoOutput ? 'video' : isAudioOutput ? 'audio' : 'image';
+    const url = resolvePersistedAssetUrl({ uploadedUrl, url: uploadedUrl }, mediaType);
+    if (!url) {
+      throw new Error('上传失败，未获得有效链接');
+    }
+    return {
+      id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name:
+        file.name ||
+        (mediaType === 'video' ? '本地视频' : mediaType === 'audio' ? '本地音频' : '本地图片'),
+      url,
+      uploadedUrl: url,
+      source: 'local',
+      type: mediaType,
+    };
+  }
+
   function applyPickedAssetsToNode(node, pickMode, pickedAssets, source) {
     const isVideoOutput = pickMode === 'video-output';
     const isAudioOutput = pickMode === 'audio-output';
@@ -1608,19 +1648,22 @@ function App() {
               : 'image';
           return normalizeSeedancePickedAsset(asset, mediaType);
         })
-      : pickedAssets.map((asset) => ({
-          id: asset.id,
-          name: asset.name || (isVideoOutput ? '视频资产' : isAudioOutput ? '音频资产' : '图片资产'),
-          url: isAudioOutput
-            ? normalizeAudioUrl(asset.url || asset.path || '')
-            : isVideoOutput
-              ? normalizeVideoUrl(asset.url || asset.path || '')
-              : source === 'local'
-                ? asset.url
-                : normalizeImageUrl(asset.url),
-          source,
-          type: isVideoOutput ? 'video' : isAudioOutput ? 'audio' : 'image',
-        }));
+      : pickedAssets
+          .map((asset) => {
+            const mediaType = isVideoOutput ? 'video' : isAudioOutput ? 'audio' : 'image';
+            const url = resolvePersistedAssetUrl(asset, mediaType);
+            if (!url) return null;
+            return {
+              id: asset.id,
+              name:
+                asset.name ||
+                (isVideoOutput ? '视频资产' : isAudioOutput ? '音频资产' : '图片资产'),
+              url,
+              source,
+              type: mediaType,
+            };
+          })
+          .filter(Boolean);
 
     if (pickMode === 'veo-first' || pickMode === 'seedance-first') {
       const patch = { videoFirstFrame: normalized[0] || null, status: 'idle' };
@@ -1757,21 +1800,8 @@ function App() {
         if (isAudioOutput && !isAudioFile(file)) {
           continue;
         }
-        const localAsset = isVideoOutput
-          ? await readVideoFile(file)
-          : isAudioOutput
-            ? await readAudioFile(file)
-            : await readImageFile(file);
         const uploadedUrl = await uploadAsset({ token, file });
-        references.push({
-          ...localAsset,
-          url: isVideoOutput
-            ? normalizeVideoUrl(uploadedUrl || localAsset.url)
-            : isAudioOutput
-              ? normalizeAudioUrl(uploadedUrl || localAsset.url)
-              : normalizeImageUrl(uploadedUrl || localAsset.url),
-          uploadedUrl,
-        });
+        references.push(buildUploadedAssetReference(file, pickMode, uploadedUrl));
       }
 
       updateActiveCanvas((doc) => ({
@@ -2400,30 +2430,6 @@ function App() {
     setStorageNotice('');
   }
 
-  function restoreStorageBackup() {
-    const backup = readStorageBackup();
-    if (!backup || backup.length === 0) {
-      setStorageNotice('未找到可恢复的本地备份');
-      return;
-    }
-
-    if (!isBackupDifferentFrom(documentsRef.current)) {
-      dismissStorageNotice();
-      return;
-    }
-
-    documentsRef.current = backup;
-    setDocuments(backup);
-    setActiveCanvasId(backup[0].id);
-    setSelectedNodeIds([]);
-    setSelectedConnectionId(null);
-    setEnlargedTextEdit(null);
-    clearLinkDraft();
-    writeStorage(backup);
-    dismissStorageNotice();
-    void flushPersist();
-  }
-
   function exportJson() {
     const blob = new Blob([JSON.stringify(documents, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -2458,6 +2464,7 @@ function App() {
         setEnlargedTextEdit(null);
         clearLinkDraft();
         setImportError('');
+        void flushPersist();
       } catch (error) {
         setImportError(error instanceof Error ? error.message : '导入失败');
       }
@@ -2481,11 +2488,6 @@ function App() {
       {storageNotice ? (
         <div className="toast-info">
           <span>{storageNotice}</span>
-          {hasStorageBackup() && isBackupDifferentFrom(documents) ? (
-            <button type="button" className="toast-action" onClick={restoreStorageBackup}>
-              恢复备份
-            </button>
-          ) : null}
           <button
             type="button"
             className="toast-dismiss"
@@ -2614,7 +2616,8 @@ function App() {
 
       <main className="workspace">
         <Topbar
-          activeCanvas={activeCanvas}
+          activeCanvas={canvasReady ? activeCanvas : null}
+          projectLoading={!canvasReady}
           siteTitle={siteSettings.title}
           siteLogoUrl={siteSettings.logoUrl}
           nodesCount={nodes.length}
@@ -2638,7 +2641,7 @@ function App() {
         />
 
         <section
-          className={`stage ${linkFromNodeId ? 'link-mode' : ''} ${isPanning ? 'is-panning' : ''} ${isResizing ? 'is-resizing' : ''} ${selectionMarquee ? 'is-marquee-selecting' : ''}`}
+          className={`stage ${linkFromNodeId ? 'link-mode' : ''} ${isPanning ? 'is-panning' : ''} ${isResizing ? 'is-resizing' : ''} ${selectionMarquee ? 'is-marquee-selecting' : ''} ${!canvasReady ? 'is-hydrating' : ''}`}
           ref={stageRef}
           style={{
             '--canvas-scale': canvasScale,
@@ -2650,7 +2653,13 @@ function App() {
           onPointerUp={handleStagePointerUp}
           onPointerDown={handleStagePointerDown}
         >
-          <div className="stage-content">
+          {!canvasReady ? (
+            <div className="canvas-hydrate-overlay" aria-live="polite" aria-busy="true">
+              <Loader2 size={28} className="spin-icon" />
+              <span>正在同步画布…</span>
+            </div>
+          ) : null}
+          <div className={`stage-content ${!canvasReady ? 'is-hidden' : ''}`}>
             <ConnectionLayer
               nodes={nodes}
               connections={connections}

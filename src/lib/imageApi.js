@@ -294,16 +294,32 @@ export async function waitForImageTask({
   throw new Error('图片生成超时，请稍后重试');
 }
 
-export async function splitImageIntoGrid(imageUrl, cols, rows) {
+function canvasToBlob(canvas, type = 'image/jpeg', quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob);
+          return;
+        }
+        reject(new Error('切分图片生成失败'));
+      },
+      type,
+      quality
+    );
+  });
+}
+
+export async function splitImageIntoGridBlobs(imageUrl, cols, rows) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload = () => {
+    img.onload = async () => {
       try {
-        const cellWidth = img.naturalWidth / cols;
-        const cellHeight = img.naturalHeight / rows;
-        const result = [];
-        
+        const cellWidth = Math.max(1, img.naturalWidth / cols);
+        const cellHeight = Math.max(1, img.naturalHeight / rows);
+        const blobs = [];
+
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
             const canvas = document.createElement('canvas');
@@ -321,10 +337,10 @@ export async function splitImageIntoGrid(imageUrl, cols, rows) {
               cellWidth,
               cellHeight
             );
-            result.push(canvas.toDataURL('image/jpeg', 0.85));
+            blobs.push(await canvasToBlob(canvas));
           }
         }
-        resolve(result);
+        resolve({ blobs, cellWidth, cellHeight });
       } catch (err) {
         reject(err);
       }
@@ -332,6 +348,22 @@ export async function splitImageIntoGrid(imageUrl, cols, rows) {
     img.onerror = () => reject(new Error('图片加载失败，请检查是否跨域或链接已失效'));
     img.src = normalizeImageUrl(imageUrl);
   });
+}
+
+/** @deprecated 请使用 splitImageIntoGridBlobs + uploadAsset，避免在画布中保存 Base64 */
+export async function splitImageIntoGrid(imageUrl, cols, rows) {
+  const { blobs } = await splitImageIntoGridBlobs(imageUrl, cols, rows);
+  return Promise.all(
+    blobs.map(
+      (blob) =>
+        new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ''));
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        })
+    )
+  );
 }
 
 export function dataURLtoFile(dataurl, filename) {

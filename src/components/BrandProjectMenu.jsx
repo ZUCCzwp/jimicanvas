@@ -6,6 +6,7 @@ export function BrandProjectMenu({
   siteTitle = 'JimiCanvas',
   siteLogoUrl = '',
   activeCanvasName = '',
+  projectLoading = false,
   onRenameCanvas,
   onGoHome,
   onViewAllProjects,
@@ -158,8 +159,10 @@ export function BrandProjectMenu({
       <span className="topbar-divider" aria-hidden="true" />
 
       <input
-        className="canvas-name"
+        className={`canvas-name ${projectLoading ? 'is-loading' : ''}`}
         value={activeCanvasName}
+        readOnly={projectLoading}
+        disabled={projectLoading}
         onChange={(event) => onRenameCanvas?.(event.target.value)}
         onClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}

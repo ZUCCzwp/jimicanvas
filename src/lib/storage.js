@@ -1,7 +1,21 @@
-import { STORAGE_KEY } from './constants';
-import { createDocument } from './canvas';
+import { normalizeAudioUrl } from './audioApi';
+import { PENDING_CANVAS_ID_KEY } from './constants';
+import { normalizeImageUrl } from './imageApi';
+import { normalizeVideoUrl } from './videoApi';
 
-export const STORAGE_BACKUP_KEY = `${STORAGE_KEY}.backup`;
+/** 清除旧版本地画布缓存（仅迁移用，画布数据现只存云端） */
+export function clearLegacyCanvasCache() {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem('jimicanvas.documents.v1');
+  window.localStorage.removeItem('jimicanvas.documents.v1.backup');
+  window.localStorage.removeItem('jimicanvas.cloud.version');
+}
+
+function readPendingCanvasId() {
+  if (typeof window === 'undefined') return null;
+  const id = window.sessionStorage.getItem(PENDING_CANVAS_ID_KEY);
+  return id ? String(id).trim() : null;
+}
 
 export function normalizeDocuments(raw) {
   if (!Array.isArray(raw)) return null;
@@ -20,104 +34,107 @@ export function normalizeDocuments(raw) {
   return documents.length > 0 ? documents : null;
 }
 
-function readDocumentsFromKey(key) {
-  if (typeof window === 'undefined') return null;
-
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return null;
-    return normalizeDocuments(JSON.parse(raw));
-  } catch {
-    return null;
-  }
+function isPersistableUrl(value) {
+  const str = String(value || '').trim();
+  if (!str) return false;
+  if (str.startsWith('data:') || str.startsWith('blob:')) return false;
+  return true;
 }
 
-export function readStorage() {
-  return readDocumentsFromKey(STORAGE_KEY);
+function sanitizeMediaUrl(value, normalizer) {
+  if (!isPersistableUrl(value)) return '';
+  return normalizer(value);
 }
 
-export function hasStorageBackup() {
-  if (typeof window === 'undefined') return false;
-  return Boolean(window.localStorage.getItem(STORAGE_BACKUP_KEY));
-}
-
-export function readStorageBackup() {
-  return readDocumentsFromKey(STORAGE_BACKUP_KEY);
-}
-
-export function documentsEqual(left, right) {
-  if (!Array.isArray(left) || !Array.isArray(right)) return false;
-  try {
-    return JSON.stringify(left) === JSON.stringify(right);
-  } catch {
-    return false;
-  }
-}
-
-export function isBackupDifferentFrom(documents) {
-  const backup = readStorageBackup();
-  if (!backup || backup.length === 0) return false;
-  return !documentsEqual(backup, documents);
-}
-
-/** 启动时从备份恢复主存储，避免 writeStorage 用损坏的主数据覆盖备份 */
-export function promoteBackupToPrimary(backup) {
-  if (typeof window === 'undefined' || !Array.isArray(backup) || backup.length === 0) {
-    return { ok: false };
-  }
-
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(backup));
-    return { ok: true };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '保存失败';
-    return { ok: false, error: message };
-  }
-}
-
-export function writeStorage(documents) {
-  if (typeof window === 'undefined') {
-    return { ok: true };
-  }
-
-  try {
-    const next = JSON.stringify(documents);
-    const existing = window.localStorage.getItem(STORAGE_KEY);
-    if (existing) {
-      window.localStorage.setItem(STORAGE_BACKUP_KEY, existing);
-    }
-    window.localStorage.setItem(STORAGE_KEY, next);
-    return { ok: true };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '保存失败';
-    return { ok: false, error: message };
-  }
-}
-
-export function loadInitialState() {
-  const primary = readDocumentsFromKey(STORAGE_KEY);
-  if (primary && primary.length > 0) {
-    return {
-      documents: primary,
-      activeCanvasId: primary[0].id,
-      loadedFrom: 'primary',
-    };
-  }
-
-  const backup = readDocumentsFromKey(STORAGE_BACKUP_KEY);
-  if (backup && backup.length > 0) {
-    promoteBackupToPrimary(backup);
-    return {
-      documents: backup,
-      activeCanvasId: backup[0].id,
-      loadedFrom: 'backup',
-    };
-  }
-
-  const first = createDocument('画布 1');
+function sanitizeReferenceAsset(asset) {
+  if (!asset || typeof asset !== 'object') return null;
+  const mediaType = asset.type || 'image';
+  const candidate = asset.uploadedUrl || asset.url || asset.path || '';
+  const url =
+    mediaType === 'audio'
+      ? sanitizeMediaUrl(candidate, normalizeAudioUrl)
+      : mediaType === 'video'
+        ? sanitizeMediaUrl(candidate, normalizeVideoUrl)
+        : sanitizeMediaUrl(candidate, normalizeImageUrl);
+  if (!url) return null;
   return {
-    documents: [first],
-    activeCanvasId: first.id,
-    loadedFrom: 'default',
+    id: asset.id,
+    name: asset.name,
+    url,
+    source: asset.source || 'remote',
+    type: mediaType,
+  };
+}
+
+function sanitizeNode(node) {
+  if (!node || typeof node !== 'object') return node;
+  const next = { ...node };
+
+  if (Array.isArray(next.referenceImages)) {
+    next.referenceImages = next.referenceImages.map(sanitizeReferenceAsset).filter(Boolean);
+  }
+  if (Array.isArray(next.videoReferenceVideos)) {
+    next.videoReferenceVideos = next.videoReferenceVideos.map(sanitizeReferenceAsset).filter(Boolean);
+  }
+  if (Array.isArray(next.videoReferenceAudios)) {
+    next.videoReferenceAudios = next.videoReferenceAudios.map(sanitizeReferenceAsset).filter(Boolean);
+  }
+  if (next.videoFirstFrame) {
+    next.videoFirstFrame = sanitizeReferenceAsset(next.videoFirstFrame);
+  }
+  if (next.videoLastFrame) {
+    next.videoLastFrame = sanitizeReferenceAsset(next.videoLastFrame);
+  }
+
+  if (next.type === 'image') {
+    if (Array.isArray(next.images)) {
+      next.images = next.images
+        .map((url) => sanitizeMediaUrl(url, normalizeImageUrl))
+        .filter(Boolean);
+    }
+    if (next.content) {
+      const contentUrl = sanitizeMediaUrl(next.content, normalizeImageUrl);
+      next.content = contentUrl || next.content;
+      if (String(next.content).startsWith('data:')) {
+        next.content = next.images?.[0] || '';
+      }
+    }
+  }
+
+  if (next.type === 'video') {
+    if (Array.isArray(next.videos)) {
+      next.videos = next.videos
+        .map((url) => sanitizeMediaUrl(url, normalizeVideoUrl))
+        .filter(Boolean);
+    }
+    if (next.content) {
+      const contentUrl = sanitizeMediaUrl(next.content, normalizeVideoUrl);
+      next.content = contentUrl || next.content;
+    }
+  }
+
+  if (next.type === 'audio' && next.audioUrl) {
+    next.audioUrl = sanitizeMediaUrl(next.audioUrl, normalizeAudioUrl);
+    if (next.content) {
+      next.content = sanitizeMediaUrl(next.content, normalizeAudioUrl) || next.content;
+    }
+  }
+
+  return next;
+}
+
+export function sanitizeDocumentsForPersist(documents) {
+  if (!Array.isArray(documents)) return documents;
+  return documents.map((doc) => ({
+    ...doc,
+    nodes: Array.isArray(doc.nodes) ? doc.nodes.map(sanitizeNode) : [],
+  }));
+}
+
+/** 启动时不读 localStorage，等待云端 hydrate */
+export function loadInitialState() {
+  return {
+    documents: [],
+    activeCanvasId: readPendingCanvasId(),
   };
 }
