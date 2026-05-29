@@ -277,3 +277,57 @@ export async function waitForImageTask({
 
   throw new Error('图片生成超时，请稍后重试');
 }
+
+export async function splitImageIntoGrid(imageUrl, cols, rows) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const cellWidth = img.naturalWidth / cols;
+        const cellHeight = img.naturalHeight / rows;
+        const result = [];
+        
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const canvas = document.createElement('canvas');
+            canvas.width = cellWidth;
+            canvas.height = cellHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(
+              img,
+              c * cellWidth,
+              r * cellHeight,
+              cellWidth,
+              cellHeight,
+              0,
+              0,
+              cellWidth,
+              cellHeight
+            );
+            result.push(canvas.toDataURL('image/jpeg', 0.85));
+          }
+        }
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => reject(new Error('图片加载失败，请检查是否跨域或链接已失效'));
+    img.src = normalizeImageUrl(imageUrl);
+  });
+}
+
+export function dataURLtoFile(dataurl, filename) {
+  const arr = dataurl.split(',');
+  const mime = arr[0].match(/:(.*?);/)[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new File([u8arr], filename, { type: mime });
+}
+
+

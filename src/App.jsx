@@ -75,6 +75,8 @@ import {
   readImageFile,
   readVideoFile,
   uploadAsset,
+  splitImageIntoGrid,
+  dataURLtoFile,
 } from './lib/imageApi';
 import { buildImageNodeLayoutPatch } from './lib/imageNodeLayout';
 import { buildVideoNodeLayoutPatch } from './lib/videoNodeLayout';
@@ -989,6 +991,70 @@ function App() {
       nodes: doc.nodes.map((node) => (node.id === nodeId ? { ...node, ...patch } : node)),
     }));
   }
+
+  async function handleSplitImageNode(nodeId, imageUrl, cols, rows) {
+    const targetNode = nodes.find((n) => n.id === nodeId);
+    if (!targetNode) return;
+
+    const dataUrls = await splitImageIntoGrid(imageUrl, cols, rows);
+
+    const token = getStoredChatToken();
+    const newNodes = [];
+    const spacingX = 340;
+    const spacingY = 300;
+
+    for (let idx = 0; idx < dataUrls.length; idx++) {
+      const dataUrl = dataUrls[idx];
+      const c = idx % cols;
+      const r = Math.floor(idx / cols);
+
+      const x = targetNode.x + targetNode.width + 40 + c * spacingX;
+      const y = targetNode.y + r * spacingY;
+
+      let finalUrl = dataUrl;
+      if (token) {
+        try {
+          const file = dataURLtoFile(dataUrl, `split_${idx + 1}.jpg`);
+          const uploadedUrl = await uploadAsset({ token, file });
+          if (uploadedUrl) {
+            finalUrl = uploadedUrl;
+          }
+        } catch (uploadErr) {
+          console.warn('云端上传切分图片失败，降级为本地 Base64 保存', uploadErr);
+        }
+      }
+
+      const newNode = createNode('image', x, y);
+      newNode.title = `${targetNode.title || '图片'}_切分_${idx + 1}`;
+      newNode.content = finalUrl;
+      newNode.images = [finalUrl];
+      newNode.prompt = targetNode.prompt;
+      newNode.isEntrance = true;
+      newNodes.push(newNode);
+    }
+
+    for (let idx = 0; idx < newNodes.length; idx++) {
+      if (idx > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 180));
+      }
+      updateActiveCanvas((doc) => ({
+        ...doc,
+        nodes: [...doc.nodes, newNodes[idx]],
+      }));
+    }
+
+    setSelectedNodeIds(newNodes.map((n) => n.id));
+
+    setTimeout(() => {
+      updateActiveCanvas((doc) => ({
+        ...doc,
+        nodes: doc.nodes.map((n) =>
+          newNodes.some((item) => item.id === n.id) ? { ...n, isEntrance: false } : n
+        ),
+      }));
+    }, 1000);
+  }
+
 
   function syncMediaNodeOutputLayout(nodeId, nodeType, layout) {
     const width = layout.width;
@@ -2545,6 +2611,7 @@ function App() {
                 onPreviewVideo={(videoUrl, title) => openVideoPreview(videoUrl, title)}
                 onDownloadVideo={handleDownloadVideo}
                 onSyncImageOutputLayout={syncImageNodeOutputLayout}
+                onSplitImageNode={handleSplitImageNode}
                 onSyncVideoOutputLayout={syncVideoNodeOutputLayout}
                 onRemoveVeoFrame={removeVeoFrame}
                 onRemoveSeedanceMedia={removeSeedanceMedia}

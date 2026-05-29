@@ -15,6 +15,7 @@ import {
   Play,
   Trash2,
   X,
+  Scissors,
 } from 'lucide-react';
 import { getNoteContentStyleCss } from '../lib/noteContentStyle';
 import {
@@ -334,7 +335,7 @@ function ImageBody({
                 onChange={(event) => {
                   const files = Array.from(event.target.files || []);
                   if (files.length > 0) {
-                    onUploadImageOutput(node.id, files);
+                     onUploadImageOutput(node.id, files);
                   }
                   event.target.value = '';
                 }}
@@ -1581,6 +1582,7 @@ export function CanvasNode({
   onPreviewVideo,
   onDownloadVideo,
   onSyncImageOutputLayout,
+  onSplitImageNode,
   onSyncVideoOutputLayout,
   onRemoveVeoFrame,
   onRemoveSeedanceMedia,
@@ -1590,9 +1592,33 @@ export function CanvasNode({
   const imageDisplayImages = node.type === 'image' ? getImageDisplayImages(node) : [];
   const videoDisplayUrl = node.type === 'video' ? getVideoDisplayUrl(node) : '';
 
+  const [openSplitMenu, setOpenSplitMenu] = useState(false);
+  const [isSplitting, setIsSplitting] = useState(false);
+
+  useEffect(() => {
+    if (!openSplitMenu) return;
+    const handleClose = () => setOpenSplitMenu(false);
+    document.addEventListener('click', handleClose);
+    return () => document.removeEventListener('click', handleClose);
+  }, [openSplitMenu]);
+
+  async function handleSplitHeaderTrigger(cols, rows) {
+    const imageUrl = imageDisplayImages[0];
+    if (!imageUrl) return;
+    setOpenSplitMenu(false);
+    setIsSplitting(true);
+    try {
+      await onSplitImageNode(node.id, imageUrl, cols, rows);
+    } catch (err) {
+      alert(err.message || '图片切分失败');
+    } finally {
+      setIsSplitting(false);
+    }
+  }
+
   return (
     <article
-      className={`node ${isSelected ? 'selected' : ''} ${isRunning ? 'is-running' : ''} ${node.type}`}
+      className={`node ${isSelected ? 'selected' : ''} ${isRunning ? 'is-running' : ''} ${node.type} ${node.isEntrance ? 'node-split-entrance' : ''}`}
       style={{
         transform: `translate(${node.x}px, ${node.y}px)`,
         width: node.width ?? DEFAULT_NODE_WIDTH,
@@ -1677,6 +1703,55 @@ export function CanvasNode({
               </button>
             </>
           ) : null}
+          {node.type === 'image' && imageDisplayImages.length > 0 ? (
+            <div className="node-header-split-wrapper" style={{ position: 'relative', display: 'inline-block' }} onPointerDown={(e) => e.stopPropagation()}>
+              <button
+                className={`icon-mini ${openSplitMenu ? 'active' : ''}`}
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setOpenSplitMenu(!openSplitMenu);
+                }}
+                title="宫格切分"
+              >
+                <Scissors size={14} />
+              </button>
+              {openSplitMenu && (
+                <div className="image-split-dropdown header-split-dropdown" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className="image-split-dropdown-item"
+                    onClick={() => handleSplitHeaderTrigger(2, 2)}
+                  >
+                    2x2 (四宫格)
+                  </button>
+                  <button
+                    type="button"
+                    className="image-split-dropdown-item"
+                    onClick={() => handleSplitHeaderTrigger(3, 3)}
+                  >
+                    3x3 (九宫格)
+                  </button>
+                  <button
+                    type="button"
+                    className="image-split-dropdown-item"
+                    onClick={() => handleSplitHeaderTrigger(2, 1)}
+                  >
+                    2x1 (左右双格)
+                  </button>
+                  <button
+                    type="button"
+                    className="image-split-dropdown-item"
+                    onClick={() => handleSplitHeaderTrigger(1, 2)}
+                  >
+                    1x2 (上下双格)
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : null}
           <button
             className="icon-mini"
             type="button"
@@ -1724,6 +1799,7 @@ export function CanvasNode({
             onOpenAssetLibrary={onOpenAssetLibrary}
             onUploadImageOutput={onUploadImageOutput}
             onSyncOutputLayout={onSyncImageOutputLayout}
+            onSplitImageNode={onSplitImageNode}
           />
         ) : (
           <VideoBody
@@ -1814,6 +1890,18 @@ export function CanvasNode({
         }}
         title="连线端口"
       />
+      {isSplitting && (
+        <div className="image-split-loading-overlay">
+          <div className="split-scan-grid">
+            <div className="split-scan-line horizontal"></div>
+            <div className="split-scan-line vertical"></div>
+            <div className="split-grid-helper-line-h"></div>
+            <div className="split-grid-helper-line-v"></div>
+          </div>
+          <LoaderCircle size={20} className="spin-icon" style={{ zIndex: 5 }} />
+          <span style={{ zIndex: 5 }}>正在智能切分...</span>
+        </div>
+      )}
     </article>
   );
 }
