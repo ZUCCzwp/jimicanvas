@@ -9,8 +9,8 @@ RUN npm ci
 COPY . .
 
 # 生产环境 API / 主站地址（构建时注入，可按部署域名覆盖）
-ARG VITE_API_URL=http://canvas.jimmyai.cn
-ARG VITE_WEB_APP_URL=http://www.jimmyai.cn
+ARG VITE_API_URL=https://canvas.jimmyai.cn
+ARG VITE_WEB_APP_URL=https://www.jimmyai.cn
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_WEB_APP_URL=$VITE_WEB_APP_URL
 

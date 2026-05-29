@@ -41,8 +41,8 @@ jobs:
           context: .
           push: true
           build-args: |
-            VITE_API_URL=http://canvas.jimmyai.cn
-            VITE_WEB_APP_URL=http://www.jimmyai.cn
+            VITE_API_URL=https://canvas.jimmyai.cn
+            VITE_WEB_APP_URL=https://www.jimmyai.cn
           tags: |
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.tag }}
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
