@@ -7,10 +7,12 @@ import {
   Keyboard,
   Loader2,
   MessageCircle,
+  Circle,
   Moon,
   Sun,
   Wallet,
 } from 'lucide-react';
+import { getNextThemeLabel } from '../lib/theme';
 import { BrandProjectMenu } from './BrandProjectMenu';
 import { formatBalanceAmount } from '../lib/userApi';
 
@@ -190,17 +192,19 @@ export function Topbar({
           {onToggleTheme ? (
             <button
               type="button"
-              className={`topbar-shortcuts-button topbar-theme-button ${theme === 'light' ? 'is-active' : ''}`}
+              className={`topbar-shortcuts-button topbar-theme-button ${theme === 'light' ? 'is-active' : ''} ${theme === 'black' ? 'is-black-theme' : ''}`}
               onClick={onToggleTheme}
-              title={theme === 'dark' ? '切换浅色主题' : '切换深色主题'}
-              aria-label={theme === 'dark' ? '切换浅色主题' : '切换深色主题'}
+              title={`切换${getNextThemeLabel(theme)}主题`}
+              aria-label={`切换${getNextThemeLabel(theme)}主题`}
             >
               {theme === 'dark' ? (
+                <Circle size={14} aria-hidden="true" />
+              ) : theme === 'black' ? (
                 <Sun size={14} aria-hidden="true" />
               ) : (
                 <Moon size={14} aria-hidden="true" />
               )}
-              <span>{theme === 'dark' ? '浅色' : '深色'}</span>
+              <span>{getNextThemeLabel(theme)}</span>
             </button>
           ) : null}
 

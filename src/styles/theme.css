@@ -222,6 +222,229 @@
   --seedance-status-failed-text: #fff;
 }
 
+[data-theme='black'] {
+  color-scheme: dark;
+
+  --text-primary: #f5f5f5;
+  --text-secondary: #d4d4d4;
+  --text-muted: #737373;
+  --text-strong: #fafafa;
+  --text-input: #f5f5f5;
+  --text-node: #e5e5e5;
+
+  --app-bg-base: #000000;
+  --app-bg-gradient-top: rgba(10, 10, 10, 0.98);
+  --app-bg-gradient-bottom: rgba(0, 0, 0, 1);
+  --app-root-bg: #000000;
+
+  --surface-1: rgba(255, 255, 255, 0.04);
+  --surface-2: rgba(255, 255, 255, 0.06);
+  --surface-3: rgba(255, 255, 255, 0.08);
+  --surface-4: rgba(255, 255, 255, 0.1);
+  --surface-elevated: rgba(18, 18, 18, 0.96);
+  --surface-overlay: rgba(12, 12, 12, 0.94);
+  --surface-glass: rgba(0, 0, 0, 0.72);
+
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --border-white-10: rgba(255, 255, 255, 0.08);
+
+  --accent: #fbbf24;
+  --accent-soft: rgba(251, 191, 36, 0.1);
+  --accent-border: rgba(251, 191, 36, 0.38);
+  --accent-hover-border: rgba(251, 191, 36, 0.32);
+  --accent-hover-bg: rgba(251, 191, 36, 0.08);
+  --accent-primary-bg: rgba(251, 191, 36, 0.12);
+  --accent-primary-border: rgba(251, 191, 36, 0.48);
+
+  --topbar-bg: rgba(0, 0, 0, 0.78);
+  --stage-bg: #000000;
+  --stage-grid: rgba(255, 255, 255, 0.05);
+  --stage-glow-1: rgba(255, 255, 255, 0.025);
+  --stage-glow-2: rgba(251, 191, 36, 0.035);
+
+  --node-bg: rgba(14, 14, 14, 0.98);
+  --node-shadow: rgba(0, 0, 0, 0.72);
+  --node-header-bg: rgba(18, 18, 18, 0.96);
+  --node-header-shadow: rgba(0, 0, 0, 0.56);
+
+  --dropdown-bg: rgba(14, 14, 14, 0.98);
+  --dropdown-shadow: 0 20px 56px rgba(0, 0, 0, 0.72);
+  --dropdown-ring: rgba(251, 191, 36, 0.05);
+
+  --modal-bg: rgba(12, 12, 12, 0.98);
+  --modal-backdrop: rgba(0, 0, 0, 0.82);
+  --modal-shadow: 0 32px 88px rgba(0, 0, 0, 0.78);
+
+  --dock-bg: rgba(12, 12, 12, 0.92);
+  --dock-shadow: 0 24px 56px rgba(0, 0, 0, 0.62);
+  --dock-button-bg: rgba(255, 255, 255, 0.04);
+  --dock-divider: rgba(255, 255, 255, 0.08);
+
+  --button-ghost-bg: rgba(255, 255, 255, 0.04);
+  --kbd-bg: rgba(255, 255, 255, 0.06);
+  --meta-pill-bg: rgba(255, 255, 255, 0.05);
+
+  --select-menu-bg: rgba(14, 14, 14, 0.98);
+  --select-menu-shadow: 0 16px 40px rgba(0, 0, 0, 0.68);
+  --select-option-hover: rgba(251, 191, 36, 0.14);
+
+  --zoom-bg: rgba(14, 14, 14, 0.92);
+  --shortcut-row-bg: rgba(255, 255, 255, 0.03);
+
+  --node-inner-bg: rgba(255, 255, 255, 0.03);
+  --node-input-bg: rgba(0, 0, 0, 0.72);
+  --node-toolbar-bg: rgba(14, 14, 14, 0.96);
+  --node-toolbar-shadow: 0 16px 36px rgba(0, 0, 0, 0.62);
+  --node-option-panel-bg: rgba(255, 255, 255, 0.04);
+  --node-option-panel-border: rgba(251, 191, 36, 0.12);
+  --node-option-label: #737373;
+  --node-option-text: #a3a3a3;
+  --node-option-hover-bg: rgba(251, 191, 36, 0.1);
+  --node-option-hover-text: #fafafa;
+  --node-option-active-bg: linear-gradient(120deg, #f59e0b, #d97706);
+  --node-option-active-text: #0a0a0a;
+  --node-preview-bg: rgba(255, 255, 255, 0.04);
+  --node-media-bg: rgba(255, 255, 255, 0.04);
+  --node-thumb-bg: rgba(0, 0, 0, 0.56);
+  --node-running-bg: rgba(251, 191, 36, 0.08);
+  --node-running-text: #fde68a;
+  --node-gen-bg:
+    radial-gradient(circle at 50% 120%, rgba(251, 191, 36, 0.1), transparent 58%),
+    linear-gradient(180deg, rgba(18, 18, 18, 0.96), rgba(0, 0, 0, 0.98));
+  --node-gen-meta: #d4d4d4;
+  --node-gen-percent: #fde68a;
+  --node-chip-bg: rgba(251, 191, 36, 0.1);
+  --node-chip-border: rgba(251, 191, 36, 0.24);
+  --node-chip-text: #fde68a;
+  --node-picker-bg: rgba(12, 12, 12, 0.98);
+  --node-picker-shadow: 0 20px 56px rgba(0, 0, 0, 0.72);
+  --node-enlarge-bg: rgba(0, 0, 0, 0.88);
+  --port-bg: #0a0a0a;
+  --port-ring: rgba(0, 0, 0, 0.88);
+  --port-shadow: 0 10px 24px rgba(0, 0, 0, 0.62);
+  --port-border: rgba(251, 191, 36, 0.72);
+  --port-icon: #fde68a;
+  --port-hover-bg: rgba(251, 191, 36, 0.16);
+  --port-hover-border: #fcd34d;
+  --port-hover-icon: #fffbeb;
+  --port-active-bg: #f59e0b;
+  --port-active-border: #fbbf24;
+  --port-active-icon: #0a0a0a;
+  --port-glow-soft: rgba(251, 191, 36, 0.12);
+  --port-glow-strong: rgba(251, 191, 36, 0.42);
+
+  --brand-mark-bg: linear-gradient(135deg, rgba(251, 191, 36, 0.18), rgba(245, 158, 11, 0.12));
+  --brand-mark-icon: #fde68a;
+  --brand-mark-logo-bg: rgba(14, 14, 14, 0.92);
+
+  --quota-bg: rgba(16, 185, 129, 0.1);
+  --quota-border: rgba(16, 185, 129, 0.22);
+  --quota-text: #a7f3d0;
+  --quota-low-bg: rgba(120, 53, 15, 0.22);
+  --quota-low-border: rgba(251, 191, 36, 0.28);
+  --quota-low-text: #fde68a;
+  --quota-critical-bg: rgba(127, 29, 29, 0.22);
+  --quota-critical-border: rgba(248, 113, 113, 0.28);
+  --quota-critical-text: #fecaca;
+
+  --sync-offline-bg: rgba(255, 255, 255, 0.04);
+  --sync-offline-border: rgba(255, 255, 255, 0.1);
+  --sync-offline-text: #d4d4d4;
+  --sync-loading-bg: rgba(251, 191, 36, 0.08);
+  --sync-loading-border: rgba(251, 191, 36, 0.22);
+  --sync-loading-text: #fde68a;
+  --sync-pending-bg: rgba(120, 53, 15, 0.22);
+  --sync-pending-border: rgba(251, 191, 36, 0.28);
+  --sync-pending-text: #fde68a;
+  --sync-synced-bg: rgba(16, 185, 129, 0.1);
+  --sync-synced-border: rgba(16, 185, 129, 0.22);
+  --sync-synced-text: #a7f3d0;
+  --sync-error-bg: rgba(127, 29, 29, 0.22);
+  --sync-error-border: rgba(248, 113, 113, 0.28);
+  --sync-error-text: #fecaca;
+
+  --recharge-bg: rgba(16, 185, 129, 0.12);
+  --recharge-border: rgba(16, 185, 129, 0.28);
+  --recharge-text: #a7f3d0;
+  --recharge-hover-bg: rgba(16, 185, 129, 0.22);
+  --recharge-hover-border: rgba(52, 211, 153, 0.45);
+  --recharge-hover-text: #ecfdf5;
+
+  --toast-shadow: 0 12px 28px rgba(0, 0, 0, 0.56);
+  --toast-info-bg: rgba(18, 18, 18, 0.96);
+  --toast-info-border: rgba(251, 191, 36, 0.24);
+  --toast-info-text: #fde68a;
+  --toast-info-action-bg: rgba(251, 191, 36, 0.12);
+  --toast-info-action-border: rgba(251, 191, 36, 0.28);
+  --toast-info-action-text: #fde68a;
+  --toast-info-dismiss: #d4d4d4;
+  --toast-info-dismiss-hover-bg: rgba(255, 255, 255, 0.06);
+  --toast-info-dismiss-hover-text: #fafafa;
+  --toast-error-bg: rgba(127, 29, 29, 0.92);
+  --toast-error-border: rgba(248, 113, 113, 0.3);
+  --toast-error-text: #fecaca;
+  --toast-error-action-bg: rgba(153, 27, 27, 0.55);
+  --toast-error-action-border: rgba(252, 165, 165, 0.35);
+  --toast-error-action-text: #fecaca;
+  --toast-error-dismiss: #fca5a5;
+  --toast-error-dismiss-hover-bg: rgba(153, 27, 27, 0.45);
+  --toast-error-dismiss-hover-text: #fee2e2;
+
+  --recharge-header-bg: rgba(255, 255, 255, 0.02);
+  --recharge-icon-bg: rgba(245, 158, 11, 0.16);
+  --recharge-icon-color: #fbbf24;
+  --recharge-tabs-bg: rgba(255, 255, 255, 0.03);
+  --recharge-tab-text: #737373;
+  --recharge-tab-active-text: #fafafa;
+  --recharge-tab-active-bg: rgba(255, 255, 255, 0.06);
+  --recharge-tab-shadow: 0 1px 8px rgba(0, 0, 0, 0.42);
+  --recharge-panel-bg: rgba(255, 255, 255, 0.02);
+  --recharge-label: #d4d4d4;
+  --recharge-pay-icon-bg: rgba(255, 255, 255, 0.04);
+  --recharge-alipay-active-border: rgba(251, 191, 36, 0.45);
+  --recharge-alipay-active-bg: rgba(120, 53, 15, 0.22);
+  --recharge-alipay-active-text: #fde68a;
+  --recharge-wechat-active-border: rgba(52, 211, 153, 0.4);
+  --recharge-wechat-active-bg: rgba(6, 78, 59, 0.22);
+  --recharge-wechat-active-text: #a7f3d0;
+  --recharge-amount-border: rgba(251, 191, 36, 0.28);
+  --recharge-amount-bg: rgba(255, 255, 255, 0.03);
+  --recharge-amount-btn: #fbbf24;
+  --recharge-highlight-border: rgba(251, 191, 36, 0.24);
+  --recharge-highlight-bg: rgba(120, 53, 15, 0.18);
+  --recharge-highlight-text: #fde68a;
+  --recharge-highlight-strong: #ffffff;
+  --recharge-balance-label: #d4d4d4;
+  --recharge-balance-value: #34d399;
+  --recharge-qr-border: rgba(251, 191, 36, 0.35);
+  --recharge-qr-bg: rgba(120, 53, 15, 0.14);
+  --recharge-redeem-tip-bg: rgba(245, 158, 11, 0.12);
+  --recharge-redeem-tip-text: #fbbf24;
+  --recharge-redeem-focus-ring: rgba(245, 158, 11, 0.12);
+
+  --seedance-tabs-bg: rgba(255, 255, 255, 0.03);
+  --seedance-tabs-border: transparent;
+  --seedance-tab-text: var(--text-muted);
+  --seedance-tab-hover-bg: rgba(251, 191, 36, 0.08);
+  --seedance-tab-hover-text: var(--text-primary);
+  --seedance-tab-active-bg: var(--accent-soft);
+  --seedance-tab-active-text: var(--text-primary);
+  --seedance-tab-active-ring: rgba(251, 191, 36, 0.24);
+  --seedance-preview-bg: rgba(0, 0, 0, 0.82);
+  --seedance-card-bg: rgba(255, 255, 255, 0.03);
+  --seedance-card-border: rgba(255, 255, 255, 0.06);
+  --seedance-card-caption-bg: rgba(0, 0, 0, 0.88);
+  --seedance-card-caption-text: #fafafa;
+  --seedance-status-bg: rgba(0, 0, 0, 0.86);
+  --seedance-status-text: #fafafa;
+  --seedance-status-pending-bg: rgba(180, 83, 9, 0.88);
+  --seedance-status-pending-text: #fde68a;
+  --seedance-status-failed-bg: rgba(220, 38, 38, 0.9);
+  --seedance-status-failed-text: #fff;
+}
+
 [data-theme='light'] {
   color-scheme: light;
 
@@ -578,4 +801,116 @@
 [data-theme='light'] .audio-empty-state {
   background: rgba(16, 185, 129, 0.06);
   border-color: rgba(16, 185, 129, 0.22);
+}
+
+/* ── Pure black theme: texture & component overrides ── */
+
+[data-theme='black'] body {
+  background:
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(255, 255, 255, 0.03), transparent 50%),
+    linear-gradient(180deg, var(--app-bg-gradient-top), var(--app-bg-gradient-bottom)),
+    var(--app-bg-base);
+}
+
+[data-theme='black'] .app-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 180px 180px;
+}
+
+[data-theme='black'] .stage {
+  background-image:
+    radial-gradient(circle, var(--stage-grid) 0.6px, transparent 0.6px),
+    radial-gradient(ellipse 90% 60% at 50% 0%, var(--stage-glow-1), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 85% 100%, var(--stage-glow-2), transparent 50%);
+  background-size:
+    calc(var(--grid-cell) * var(--canvas-scale)) calc(var(--grid-cell) * var(--canvas-scale)),
+    100% 100%,
+    100% 100%;
+  background-position:
+    var(--viewport-x) var(--viewport-y),
+    0 0,
+    0 0;
+}
+
+[data-theme='black'] .stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.45) 100%);
+}
+
+[data-theme='black'] .node {
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 16px 40px var(--node-shadow);
+}
+
+[data-theme='black'] .node.selected::before {
+  box-shadow:
+    0 0 0 1px rgba(251, 191, 36, 0.28),
+    0 0 24px rgba(251, 191, 36, 0.08),
+    0 18px 40px var(--node-shadow);
+}
+
+[data-theme='black'] .connection-path {
+  stroke: #f59e0b;
+}
+
+[data-theme='black'] .connection-path-flow {
+  stroke: rgba(251, 191, 36, 0.72);
+}
+
+[data-theme='black'] .topbar {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+[data-theme='black'] .floating-dock {
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.03),
+    var(--dock-shadow);
+}
+
+[data-theme='black'] .dock-button:hover,
+[data-theme='black'] .dock-button.active {
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.32);
+  background: rgba(251, 191, 36, 0.12);
+}
+
+[data-theme='black'] .canvas-panel {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(12, 12, 12, 0.94);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 24px 60px rgba(0, 0, 0, 0.72);
+}
+
+[data-theme='black'] .node-gen-percent {
+  text-shadow: 0 0 12px rgba(251, 191, 36, 0.35);
+}
+
+[data-theme='black'] .brand-project-dropdown-item:hover,
+[data-theme='black'] .brand-project-dropdown-item:focus-visible {
+  color: var(--text-strong);
+}
+
+[data-theme='black'] .brand-project-dropdown-item:hover svg,
+[data-theme='black'] .brand-project-dropdown-item:focus-visible svg {
+  color: var(--accent);
+}
+
+[data-theme='black'] .node-type-picker-option:hover {
+  color: var(--text-strong);
+  background: var(--accent-soft);
 }

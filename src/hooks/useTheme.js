@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { getTheme, subscribeTheme, toggleTheme as toggleThemeValue } from '../lib/theme';
+import {
+  getNextThemeLabel,
+  getTheme,
+  subscribeTheme,
+  toggleTheme as toggleThemeValue,
+} from '../lib/theme';
 
 export function useTheme() {
   const [theme, setTheme] = useState(getTheme);
@@ -8,7 +13,8 @@ export function useTheme() {
 
   return {
     theme,
-    isDark: theme === 'dark',
+    isDark: theme !== 'light',
+    nextThemeLabel: getNextThemeLabel(theme),
     toggleTheme: () => toggleThemeValue(),
   };
 }

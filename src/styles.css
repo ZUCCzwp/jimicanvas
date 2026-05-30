@@ -2841,6 +2841,12 @@ button {
   background: var(--accent-soft);
 }
 
+.topbar-theme-button.is-black-theme {
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.38);
+  background: rgba(251, 191, 36, 0.1);
+}
+
 .topbar-shortcuts-button kbd {
   min-width: 18px;
   padding: 1px 5px;
