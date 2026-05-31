@@ -14,7 +14,10 @@ import {
   User,
   Video,
 } from 'lucide-react';
+import { AnimatedCharacters } from '../components/AnimatedCharacters';
 import { AuthModal } from '../components/AuthModal';
+import { CanvasHomeBackground } from '../components/CanvasHomeBackground';
+import { useHomeEntranceAnimation } from '../hooks/useHomeEntranceAnimation';
 import { useTheme } from '../hooks/useTheme';
 import { openCanvasEditor } from '../lib/appNavigation';
 import { fetchCanvasDocuments, saveCanvasDocuments } from '../lib/canvasApi';
@@ -161,6 +164,7 @@ function ProjectMenu({ project, onAction }) {
 
 export function CanvasHome() {
   const { theme, toggleTheme } = useTheme();
+  const homeRef = useHomeEntranceAnimation();
   const [siteSettings, setSiteSettings] = useState(getDefaultSiteSettings);
   const [token, setToken] = useState(() => getStoredChatToken());
   const [user, setUser] = useState(null);
@@ -393,7 +397,8 @@ export function CanvasHome() {
   };
 
   return (
-    <div className="canvas-home">
+    <div className="canvas-home" ref={homeRef}>
+      <CanvasHomeBackground />
       {notice ? <div className="canvas-home-notice">{notice}</div> : null}
 
       <header className="canvas-home-topbar">
@@ -440,12 +445,25 @@ export function CanvasHome() {
 
       <main className="canvas-home-main">
         <section className="canvas-home-hero">
-          <div className="canvas-home-hero-badge">
-            <Sparkles size={14} />
-            <span>{COPY.heroBadge}</span>
+          <div className="canvas-home-hero-glow" aria-hidden="true" />
+          <div className="canvas-home-hero-shimmer" aria-hidden="true" />
+          <div className="canvas-home-hero-inner">
+            <div className="canvas-home-hero-content">
+              <div className="canvas-home-hero-badge">
+                <Sparkles size={14} />
+                <span>{COPY.heroBadge}</span>
+              </div>
+              <h1>{COPY.heroTitle}</h1>
+              <p className="canvas-home-hero-subtitle">{COPY.heroSubtitle}</p>
+              <button type="button" className="canvas-home-hero-cta" onClick={handleStartCreate}>
+                <Sparkles size={16} />
+                {COPY.startCreateButton}
+              </button>
+            </div>
+            <div className="canvas-home-hero-visual">
+              <AnimatedCharacters />
+            </div>
           </div>
-          <h1>{COPY.heroTitle}</h1>
-          <p>{COPY.heroSubtitle}</p>
         </section>
 
         <section className="canvas-home-projects">
@@ -467,7 +485,7 @@ export function CanvasHome() {
             <div className="canvas-home-projects-grid">
               <button type="button" className="canvas-home-project-card create-card" onClick={handleStartCreate}>
                 <div className="canvas-home-project-cover create-cover">
-                  <Plus size={36} />
+                  <Plus size={32} />
                 </div>
                 <div className="canvas-home-project-body">
                   <h3>{COPY.startCreateButton}</h3>
