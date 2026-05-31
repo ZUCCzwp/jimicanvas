@@ -25,6 +25,13 @@ export const MAX_CANVAS_SCALE = 1.4;
 export const CANVAS_SCALE_STEP = 0.1;
 export const CANVAS_WHEEL_PAN_FACTOR = 1;
 export const CANVAS_GRID_CELL_SIZE = 28;
+export const DEFAULT_CANVAS_BACKGROUND = 'grid';
+export const CANVAS_BACKGROUND_OPTIONS = [
+  { value: 'grid', label: '网格', hint: '网状参考线' },
+  { value: 'dots', label: '点状', hint: '圆点参考' },
+  { value: 'line', label: '横线', hint: '水平参考线' },
+  { value: 'none', label: '纯色', hint: '无背景纹理' },
+];
 export const DEFAULT_VIDEO_URL = '/demo/default-tiktok-ecommerce-9x16.mp4';
 export const DEFAULT_IMAGE_URL = '/demo/default-handsome-american-man.jpg';
 export const DEFAULT_DEMO_IMAGE_RATIO = '3:4';

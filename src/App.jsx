@@ -8,6 +8,8 @@ import { NodeTypePickerPopover } from './components/NodeTypePickerPopover';
 import { TextEditModal } from './components/TextEditModal';
 import { CanvasNode } from './components/CanvasNode';
 import { CanvasZoomControls } from './components/CanvasZoomControls';
+import { CanvasBackgroundPicker } from './components/CanvasBackgroundPicker';
+import { CanvasMinimap } from './components/CanvasMinimap';
 import { FocusContentPrompt } from './components/FocusContentPrompt';
 import { ConnectionLayer } from './components/ConnectionLayer';
 import { FloatingDock } from './components/FloatingDock';
@@ -17,6 +19,7 @@ import { RechargeModal } from './components/RechargeModal';
 import { Topbar } from './components/Topbar';
 import { useTheme } from './hooks/useTheme';
 import { navigateToCanvasHome } from './lib/appNavigation';
+import { normalizeCanvasBackground } from './lib/canvasBackground';
 import { isEditableKeyboardTarget } from './lib/keyboardShortcuts';
 import {
   PENDING_CANVAS_ID_KEY,
@@ -709,6 +712,7 @@ function App() {
   }, [selectedConnectionId, selectedNodeIds, showCustomerService, showKeyboardShortcuts]);
 
   const activeCanvas = documents.find((doc) => doc.id === activeCanvasId) || documents[0];
+  const canvasBackground = normalizeCanvasBackground(activeCanvas?.background);
   const canvasReady = !needsCloudHydrate || hydrationDone;
   const nodes = canvasReady ? activeCanvas?.nodes || [] : [];
   const connections = activeCanvas?.connections || [];
@@ -803,6 +807,13 @@ function App() {
 
   function renameCanvas(name) {
     updateActiveCanvas((doc) => ({ ...doc, name }));
+  }
+
+  function updateCanvasBackground(background) {
+    updateActiveCanvas((doc) => ({
+      ...doc,
+      background: normalizeCanvasBackground(background),
+    }));
   }
 
   function deleteCanvas(canvasId) {
@@ -2642,6 +2653,7 @@ function App() {
 
         <section
           className={`stage ${linkFromNodeId ? 'link-mode' : ''} ${isPanning ? 'is-panning' : ''} ${isResizing ? 'is-resizing' : ''} ${selectionMarquee ? 'is-marquee-selecting' : ''} ${!canvasReady ? 'is-hydrating' : ''}`}
+          data-background={canvasBackground}
           ref={stageRef}
           style={{
             '--canvas-scale': canvasScale,
@@ -2740,11 +2752,29 @@ function App() {
             <FocusContentPrompt nodeCount={nodes.length} onFocus={focusViewportOnContent} />
           ) : null}
 
-          <CanvasZoomControls
-            canvasScalePercent={canvasScalePercent}
-            onZoom={zoomCanvas}
-            onScaleChange={setCanvasScaleClamped}
-            onResetScale={resetCanvasScale}
+          <div className="stage-bottom-controls">
+            <CanvasZoomControls
+              canvasScalePercent={canvasScalePercent}
+              onZoom={zoomCanvas}
+              onScaleChange={setCanvasScaleClamped}
+              onResetScale={resetCanvasScale}
+            />
+            <CanvasBackgroundPicker
+              value={canvasBackground}
+              onChange={updateCanvasBackground}
+              disabled={!canvasReady}
+            />
+          </div>
+
+          <CanvasMinimap
+            nodes={nodes}
+            selectedNodeIds={selectedNodeIds}
+            stageWidth={stageSize.width}
+            stageHeight={stageSize.height}
+            canvasScale={canvasScale}
+            viewportOffset={viewportOffset}
+            onViewportChange={setViewportOffset}
+            disabled={!canvasReady}
           />
         </section>
       </main>

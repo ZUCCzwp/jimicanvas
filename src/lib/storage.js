@@ -1,4 +1,4 @@
-import { normalizeAudioUrl } from './audioApi';
+import { normalizeCanvasBackground } from './canvasBackground';
 import { PENDING_CANVAS_ID_KEY } from './constants';
 import { normalizeImageUrl } from './imageApi';
 import { normalizeVideoUrl } from './videoApi';
@@ -27,6 +27,7 @@ export function normalizeDocuments(raw) {
       name: typeof doc.name === 'string' && doc.name.trim() ? doc.name : '未命名画布',
       nodes: Array.isArray(doc.nodes) ? doc.nodes : [],
       connections: Array.isArray(doc.connections) ? doc.connections : [],
+      background: normalizeCanvasBackground(doc.background),
       createdAt: Number(doc.createdAt) || Date.now(),
       updatedAt: Number(doc.updatedAt) || Date.now(),
     }));

@@ -31,7 +31,7 @@ import {
   DEFAULT_AUDIO_SPEED,
   DEFAULT_AUDIO_MODEL,
   MIN_CANVAS_SCALE,
-  MAX_CANVAS_SCALE,
+  DEFAULT_CANVAS_BACKGROUND,
 } from './constants';
 import { computeImageOutputSize, parseRatioValue } from './imageNodeLayout';
 import { buildVideoNodeLayoutPatch } from './videoNodeLayout';
@@ -183,6 +183,7 @@ export function createDocument(name, withStarterNodes = true) {
     name,
     nodes,
     connections,
+    background: DEFAULT_CANVAS_BACKGROUND,
     createdAt: now,
     updatedAt: now,
   };

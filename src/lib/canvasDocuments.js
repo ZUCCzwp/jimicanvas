@@ -1,3 +1,6 @@
+import { normalizeCanvasBackground } from './canvasBackground';
+import { DEFAULT_CANVAS_BACKGROUND } from './constants';
+
 function createCanvasUid(prefix = 'id') {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -25,6 +28,7 @@ export function normalizeDocument(doc) {
     name: typeof doc.name === 'string' && doc.name.trim() ? doc.name.trim() : '未命名画布',
     nodes: Array.isArray(doc.nodes) ? doc.nodes : [],
     connections: Array.isArray(doc.connections) ? doc.connections : [],
+    background: normalizeCanvasBackground(doc.background),
     createdAt: Number(doc.createdAt) || now,
     updatedAt: Number(doc.updatedAt) || now,
   };
@@ -48,6 +52,7 @@ function createEmptyDocument(name = '画布 1') {
     name,
     nodes: [],
     connections: [],
+    background: DEFAULT_CANVAS_BACKGROUND,
     createdAt: now,
     updatedAt: now,
   };

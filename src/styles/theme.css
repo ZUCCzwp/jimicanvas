@@ -824,7 +824,7 @@
   background-size: 180px 180px;
 }
 
-[data-theme='black'] .stage {
+[data-theme='black'] .stage[data-background='dots'] {
   background-image:
     radial-gradient(circle, var(--stage-grid) 0.6px, transparent 0.6px),
     radial-gradient(ellipse 90% 60% at 50% 0%, var(--stage-glow-1), transparent 55%),
@@ -837,6 +837,47 @@
     var(--viewport-x) var(--viewport-y),
     0 0,
     0 0;
+}
+
+[data-theme='black'] .stage[data-background='grid'] {
+  background-image:
+    linear-gradient(var(--stage-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--stage-grid) 1px, transparent 1px),
+    radial-gradient(ellipse 90% 60% at 50% 0%, var(--stage-glow-1), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 85% 100%, var(--stage-glow-2), transparent 50%);
+  background-size:
+    calc(var(--grid-cell) * var(--canvas-scale)) calc(var(--grid-cell) * var(--canvas-scale)),
+    calc(var(--grid-cell) * var(--canvas-scale)) calc(var(--grid-cell) * var(--canvas-scale)),
+    100% 100%,
+    100% 100%;
+  background-position:
+    var(--viewport-x) var(--viewport-y),
+    var(--viewport-x) var(--viewport-y),
+    0 0,
+    0 0;
+}
+
+[data-theme='black'] .stage[data-background='line'] {
+  background-image:
+    linear-gradient(var(--stage-grid) 1px, transparent 1px),
+    radial-gradient(ellipse 90% 60% at 50% 0%, var(--stage-glow-1), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 85% 100%, var(--stage-glow-2), transparent 50%);
+  background-size:
+    calc(var(--grid-cell) * var(--canvas-scale)) calc(var(--grid-cell) * var(--canvas-scale)),
+    100% 100%,
+    100% 100%;
+  background-position:
+    var(--viewport-x) var(--viewport-y),
+    0 0,
+    0 0;
+}
+
+[data-theme='black'] .stage[data-background='none'] {
+  background-image:
+    radial-gradient(ellipse 90% 60% at 50% 0%, var(--stage-glow-1), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 85% 100%, var(--stage-glow-2), transparent 50%);
+  background-size: 100% 100%, 100% 100%;
+  background-position: 0 0, 0 0;
 }
 
 [data-theme='black'] .stage::after {
