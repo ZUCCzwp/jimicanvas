@@ -37,7 +37,7 @@ export const CANVAS_BACKGROUND_OPTIONS = [
 ];
 export const DEFAULT_VIDEO_URL = '/demo/default-tiktok-ecommerce-9x16.mp4';
 export const DEFAULT_IMAGE_URL = '/demo/default-handsome-american-man.jpg';
-export const DEFAULT_DEMO_IMAGE_RATIO = '3:4';
+export const DEFAULT_DEMO_IMAGE_RATIO = '3:2';
 export const DEFAULT_VIDEO_FAMILY = 'sora';
 export const DEFAULT_VIDEO_MODEL = 'sora2-gz-sp';
 export const DEFAULT_VIDEO_ROUTE = 'route3';

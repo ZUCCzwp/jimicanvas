@@ -61,7 +61,11 @@ import {
   getImageNodeOutputUrl,
   getTextInputPreview,
 } from '../lib/connections';
-import { buildImageNodeLayoutPatch, resolveImageOutputLayout } from '../lib/imageNodeLayout';
+import {
+  buildImageNodeLayoutPatch,
+  isDefaultDemoImageOutput,
+  resolveImageOutputLayout,
+} from '../lib/imageNodeLayout';
 import { buildVideoNodeLayoutPatch } from '../lib/videoNodeLayout';
 import { normalizeImageUrl } from '../lib/imageApi';
 import { CustomSelect } from './CustomSelect';
@@ -235,17 +239,7 @@ function useImageOutputLayout(node, displayImages, onSyncOutputLayout) {
     return () => {
       cancelled = true;
     };
-  }, [displayImagesKey, node.id, node.imageCount, node.imageRatio]);
-}
-
-function applyImageNodeLayout(node, displayImages, onSyncOutputLayout, aspectWidth, aspectHeight) {
-  const layout = buildImageNodeLayoutPatch({
-    imageRatio: node.imageRatio,
-    imageCount: displayImages.length > 0 ? displayImages.length : node.imageCount,
-    aspectWidth,
-    aspectHeight,
-  });
-  onSyncOutputLayout?.(node.id, layout);
+  }, [displayImagesKey, node.id]);
 }
 
 function ImageBody({
@@ -260,29 +254,12 @@ function ImageBody({
   onSyncOutputLayout,
 }) {
   const displayImages = getImageDisplayImages(node);
-  const showDemoBadge =
-    displayImages.length > 0 &&
-    displayImages.every((url) => isDefaultDemoMediaUrl(url, DEFAULT_IMAGE_URL));
+  const showDemoBadge = isDefaultDemoImageOutput(displayImages);
   const imageCount = Math.min(Math.max(displayImages.length || 1, 1), 4);
   const maxUploadCount = Math.min(4, Math.max(1, Number(node.imageCount) || 1));
-  const loadedAspectRef = useRef('');
   const outputFileInputRef = useRef(null);
 
   useImageOutputLayout(node, displayImages, onSyncOutputLayout);
-
-  function handleOutputImageLoad(event, index) {
-    if (index !== 0) return;
-    const img = event.currentTarget;
-    const aspectWidth = img.naturalWidth;
-    const aspectHeight = img.naturalHeight;
-    if (!aspectWidth || !aspectHeight) return;
-
-    const signature = `${aspectWidth}x${aspectHeight}x${displayImages.length}`;
-    if (loadedAspectRef.current === signature) return;
-    loadedAspectRef.current = signature;
-
-    applyImageNodeLayout(node, displayImages, onSyncOutputLayout, aspectWidth, aspectHeight);
-  }
 
   if (isRunning) {
     return (
@@ -380,7 +357,6 @@ function ImageBody({
               src={normalizeImageUrl(imageUrl)}
               alt={`${node.title}-${index + 1}`}
               draggable={false}
-              onLoad={(event) => handleOutputImageLoad(event, index)}
             />
           </div>
         ))
@@ -1585,11 +1561,13 @@ function ImageToolbar({
     count: node.imageCount,
   });
   const displayImages = getImageDisplayImages(node);
+  const hasOutputImages = displayImages.length > 0;
 
-  function patchLayout(overrides = {}) {
+  function patchLayoutForEmptyNode(overrides = {}) {
+    if (hasOutputImages) return {};
     return buildImageNodeLayoutPatch({
       imageRatio: overrides.imageRatio ?? node.imageRatio,
-      imageCount: overrides.imageCount ?? (displayImages.length || node.imageCount),
+      imageCount: overrides.imageCount ?? node.imageCount,
     });
   }
 
@@ -1629,9 +1607,9 @@ function ImageToolbar({
               imageResolution: nextSettings.resolution,
               imageRatio: nextSettings.ratio,
               imageCount: nextSettings.count,
-              ...buildImageNodeLayoutPatch({
+              ...patchLayoutForEmptyNode({
                 imageRatio: nextSettings.ratio,
-                imageCount: displayImages.length || nextSettings.count,
+                imageCount: nextSettings.count,
               }),
             });
           }}
@@ -1651,7 +1629,6 @@ function ImageToolbar({
           onUpdateNode(node.id, {
             imageRatio: value,
             status: 'idle',
-            ...patchLayout({ imageRatio: value }),
           })
         }
         renderIcon={(option) => <RatioIcon value={option.value} />}
@@ -1663,7 +1640,6 @@ function ImageToolbar({
         onChange={(value) =>
           onUpdateNode(node.id, {
             imageCount: Number(value),
-            ...patchLayout({ imageCount: Number(value) }),
           })
         }
       />

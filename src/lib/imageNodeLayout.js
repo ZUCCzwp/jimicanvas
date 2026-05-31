@@ -1,5 +1,24 @@
-import { DEFAULT_IMAGE_RATIO } from './constants';
+import { DEFAULT_DEMO_IMAGE_RATIO, DEFAULT_IMAGE_RATIO, DEFAULT_IMAGE_URL } from './constants';
 import { normalizeImageUrl } from './imageApi';
+
+function normalizeMediaPath(url) {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+  try {
+    return new URL(raw, 'http://localhost').pathname;
+  } catch {
+    return raw.split('?')[0];
+  }
+}
+
+export function isDefaultDemoImageUrl(url) {
+  if (!url) return false;
+  return normalizeMediaPath(url) === normalizeMediaPath(DEFAULT_IMAGE_URL);
+}
+
+export function isDefaultDemoImageOutput(imageUrls = []) {
+  return imageUrls.length > 0 && imageUrls.every((url) => isDefaultDemoImageUrl(url));
+}
 
 export const IMAGE_OUTPUT_BASE_WIDTH = 320;
 export const IMAGE_OUTPUT_MIN_WIDTH = 180;
@@ -96,10 +115,14 @@ export function buildImageNodeLayoutPatch({
   };
 }
 
-export async function resolveImageOutputLayout({ imageUrls = [], imageRatio, imageCount }) {
+/**
+ * 用户生成结果：按所选比例布局。
+ * 内置示例图：按图片实际比例布局，避免留白。
+ */
+export async function resolveImageOutputLayout({ imageRatio, imageCount, imageUrls = [] }) {
   const count = imageUrls.length > 0 ? imageUrls.length : Math.max(1, Number(imageCount) || 1);
 
-  if (imageUrls.length > 0) {
+  if (isDefaultDemoImageOutput(imageUrls)) {
     try {
       const natural = await measureImageNaturalSize(imageUrls[0]);
       return buildImageNodeLayoutPatch({
@@ -108,7 +131,10 @@ export async function resolveImageOutputLayout({ imageUrls = [], imageRatio, ima
         aspectHeight: natural.height,
       });
     } catch {
-      // Fall back to configured ratio when the image cannot be measured.
+      return buildImageNodeLayoutPatch({
+        imageRatio: DEFAULT_DEMO_IMAGE_RATIO,
+        imageCount: count,
+      });
     }
   }
 
