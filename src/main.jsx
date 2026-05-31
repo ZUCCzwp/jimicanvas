@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App.jsx';
+import RootApp from './RootApp.jsx';
 import { bootstrapFromUrl } from './lib/urlBootstrap';
 import { clearLegacyCanvasCache } from './lib/storage';
 import { initTheme } from './lib/theme';
@@ -12,6 +12,6 @@ bootstrapFromUrl();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <RootApp />
   </React.StrictMode>
 );

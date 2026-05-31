@@ -1,4 +1,76 @@
+import { JIMIAIGO_TOKEN_STORAGE_KEY } from './constants';
 import { requestJimiaigo } from './jimiaigoApi';
+
+export function saveAuthToken(token) {
+  if (typeof window === 'undefined' || !token) return;
+  const value = String(token).trim();
+  if (!value) return;
+  window.localStorage.setItem(JIMIAIGO_TOKEN_STORAGE_KEY, value);
+  window.localStorage.setItem('token', value);
+  window.dispatchEvent(new CustomEvent('auth:token-saved'));
+}
+
+export function clearAuthToken() {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(JIMIAIGO_TOKEN_STORAGE_KEY);
+  window.localStorage.removeItem('token');
+  window.localStorage.removeItem('access_token');
+  window.dispatchEvent(new CustomEvent('auth:token-cleared'));
+}
+
+export async function login({ username, password }) {
+  const data = await requestJimiaigo('/api/login', {
+    method: 'POST',
+    body: { username, password },
+    fallback: '登录失败',
+  });
+  const token = data?.JimiAiToken || data?.token;
+  if (!token) throw new Error('未获取到登录凭证');
+  saveAuthToken(token);
+  return token;
+}
+
+export async function register({
+  email,
+  nickname,
+  password,
+  verify_code,
+  role_id,
+  invite_code = '',
+}) {
+  const data = await requestJimiaigo('/api/register', {
+    method: 'POST',
+    body: {
+      email,
+      nickname,
+      password,
+      verify_code,
+      role_id,
+      invite_code,
+    },
+    fallback: '注册失败',
+  });
+  const token = data?.JimiAiToken || data?.token;
+  if (!token) throw new Error('未获取到登录凭证');
+  saveAuthToken(token);
+  return token;
+}
+
+export async function sendEmailCode(email) {
+  return requestJimiaigo('/api/sendEmailCode', {
+    method: 'POST',
+    body: { email },
+    fallback: '发送验证码失败',
+  });
+}
+
+export async function fetchPublicRoles() {
+  const data = await requestJimiaigo('/api/roles', {
+    method: 'GET',
+    fallback: '获取角色列表失败',
+  });
+  return Array.isArray(data) ? data : [];
+}
 
 export function parseUserPayment(payment) {
   const jimicoin = parseFloat(payment?.jimicoin ?? 0) || 0;
