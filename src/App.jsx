@@ -22,10 +22,6 @@ import { navigateToCanvasHome } from './lib/appNavigation';
 import { normalizeCanvasBackground } from './lib/canvasBackground';
 import { isEditableKeyboardTarget } from './lib/keyboardShortcuts';
 import {
-  PENDING_CANVAS_ID_KEY,
-  PENDING_NEW_CANVAS_KEY,
-} from './lib/constants';
-import {
   DEFAULT_NODE_HEIGHT,
   DEFAULT_NODE_WIDTH,
   CANVAS_GRID_CELL_SIZE,
@@ -92,8 +88,13 @@ import {
   recoverTaskKey,
 } from './lib/generationResume';
 import {
+  clearPendingCanvasIntent,
   loadInitialState,
+  readPendingCanvasId,
+  readPendingNewCanvas,
   sanitizeDocumentsForPersist,
+  writeActiveCanvasId,
+  writeStorage,
 } from './lib/storage';
 import {
   createVideoGenerationTask,
@@ -109,7 +110,15 @@ function App() {
   const needsCloudHydrate = useMemo(() => Boolean(getStoredChatToken()), []);
   const initial = useMemo(() => loadInitialState(), []);
   const [documents, setDocuments] = useState(initial.documents);
-  const [storageNotice, setStorageNotice] = useState('');
+  const [storageNotice, setStorageNotice] = useState(() => {
+    if (initial.loadedFrom === 'backup') {
+      return '已从本地备份恢复画布';
+    }
+    if (initial.loadedFrom === 'primary' && initial.documents.length > 0) {
+      return '已加载本地缓存画布，正在同步云端…';
+    }
+    return '';
+  });
   const [activeCanvasId, setActiveCanvasId] = useState(initial.activeCanvasId);
   const [selectedNodeIds, setSelectedNodeIds] = useState([]);
   const [selectionMarquee, setSelectionMarquee] = useState(null);
@@ -258,6 +267,7 @@ function App() {
 
   const flushPersist = async () => {
     const docsToSave = sanitizeDocumentsForPersist(documentsRef.current);
+    writeStorage(docsToSave);
     if (docsToSave.length === 0 || skipCloudSaveRef.current) return;
     try {
       await runWithToken(async (token) => {
@@ -289,7 +299,11 @@ function App() {
       const token = getStoredChatToken();
       if (!token) {
         setCloudSyncStatus('offline');
-        setStorageNotice('请登录后使用云端画布');
+        setStorageNotice(
+          documentsRef.current.length > 0
+            ? '未登录，当前使用本地缓存画布'
+            : '请登录后使用云端画布'
+        );
         cloudSyncReadyRef.current = true;
         skipCloudSaveRef.current = false;
         setHydrationDone(true);
@@ -314,25 +328,42 @@ function App() {
                   })
                 : cloudDocs
             );
-            const pendingId = sessionStorage.getItem(PENDING_CANVAS_ID_KEY);
+            const pendingId = readPendingCanvasId();
             const keptPendingActive = pendingId && nextDocs.some((doc) => doc.id === pendingId);
+            const nextActiveId = keptPendingActive
+              ? pendingId
+              : cloud.active_canvas_id && nextDocs.some((doc) => doc.id === cloud.active_canvas_id)
+                ? cloud.active_canvas_id
+                : nextDocs[0]?.id;
             setDocuments(nextDocs);
-            setActiveCanvasId(
-              keptPendingActive
-                ? pendingId
-                : cloud.active_canvas_id && nextDocs.some((doc) => doc.id === cloud.active_canvas_id)
-                  ? cloud.active_canvas_id
-                  : nextDocs[0]?.id
-            );
+            setActiveCanvasId(nextActiveId);
+            writeStorage(nextDocs);
+            writeActiveCanvasId(nextActiveId);
             cloudVersionRef.current = Number(cloud.version) || 0;
             setStorageNotice((prev) =>
-              prev && !prev.includes('云端') ? prev : '已从云端加载画布'
+              prev && !prev.includes('云端') && !prev.includes('本地')
+                ? prev
+                : '已从云端同步画布'
             );
+          } else if (sessionDocs.length > 0) {
+            const nextActiveId = activeCanvasIdRef.current || sessionDocs[0]?.id;
+            const saved = await saveCanvasDocuments(authToken, {
+              documents: sanitizeDocumentsForPersist(sessionDocs),
+              activeCanvasId: nextActiveId,
+              version: Number(cloud?.version) || 0,
+            });
+            if (!cancelled && saved?.version != null) {
+              cloudVersionRef.current = saved.version;
+            }
+            writeStorage(sessionDocs);
+            writeActiveCanvasId(nextActiveId);
           } else {
             const first = createDocument('画布 1', false);
             const nextDocs = [first];
             setDocuments(nextDocs);
             setActiveCanvasId(first.id);
+            writeStorage(nextDocs);
+            writeActiveCanvasId(first.id);
             const saved = await saveCanvasDocuments(authToken, {
               documents: sanitizeDocumentsForPersist(nextDocs),
               activeCanvasId: first.id,
@@ -354,7 +385,11 @@ function App() {
             setStorageNotice('Token 已过期，请重新输入 AT 后可同步云端');
           } else {
             setCloudSyncStatus('error');
-            setStorageNotice('云端加载失败，请刷新重试');
+            setStorageNotice(
+              documentsRef.current.length > 0
+                ? '云端加载失败，已使用本地缓存画布'
+                : '云端加载失败，请刷新重试'
+            );
           }
         }
       } finally {
@@ -405,13 +440,15 @@ function App() {
           cloudVersionRef.current = Number(error.latest.version) || cloudVersionRef.current;
           const latestDocs = parseCloudDocuments(error.latest.documents);
           if (latestDocs?.length) {
-            setDocuments((prev) =>
-              sanitizeDocumentsForPersist(
+            setDocuments((prev) => {
+              const merged = sanitizeDocumentsForPersist(
                 mergeDocumentsPreservePending(latestDocs, prev, {
                   preserveCloudOnlyDocuments: false,
                 })
-              )
-            );
+              );
+              writeStorage(merged);
+              return merged;
+            });
             setActiveCanvasId((current) => current || error.latest.active_canvas_id || latestDocs[0]?.id);
           }
           setCloudLastSyncedAt(Date.now());
@@ -432,6 +469,27 @@ function App() {
   }, [documents, activeCanvasId]);
 
   useEffect(() => {
+    if (documents.length === 0) return undefined;
+    const result = writeStorage(sanitizeDocumentsForPersist(documents));
+    if (!result.ok) {
+      setStorageNotice(
+        '画布保存到浏览器失败，存储空间可能已满。请尽快导出 JSON，或删除节点里过大的本地图片后再试。'
+      );
+      return undefined;
+    }
+    if (storageNotice.startsWith('画布保存到浏览器失败')) {
+      setStorageNotice('');
+    }
+    return undefined;
+  }, [documents]);
+
+  useEffect(() => {
+    if (activeCanvasId) {
+      writeActiveCanvasId(activeCanvasId);
+    }
+  }, [activeCanvasId]);
+
+  useEffect(() => {
     if (!hydrationDone) return undefined;
     if (!documents.some((doc) => doc.id === activeCanvasId)) {
       setActiveCanvasId(documents[0]?.id || null);
@@ -444,6 +502,10 @@ function App() {
 
   useEffect(() => {
     function persistOnExit() {
+      writeStorage(sanitizeDocumentsForPersist(documentsRef.current));
+      if (activeCanvasIdRef.current) {
+        writeActiveCanvasId(activeCanvasIdRef.current);
+      }
       const token = getStoredChatToken();
       if (token && cloudSyncReadyRef.current && !skipCloudSaveRef.current) {
         saveCanvasDocumentsKeepalive(token, {
@@ -853,21 +915,23 @@ function App() {
     if (!hydrationDone || pendingUrlAppliedRef.current) return undefined;
     pendingUrlAppliedRef.current = true;
 
-    const pendingNew = sessionStorage.getItem(PENDING_NEW_CANVAS_KEY);
-    if (pendingNew) {
-      sessionStorage.removeItem(PENDING_NEW_CANVAS_KEY);
-      sessionStorage.removeItem(PENDING_CANVAS_ID_KEY);
+    if (readPendingNewCanvas()) {
+      clearPendingCanvasIntent();
       const count = documentsRef.current.length + 1;
       const canvas = createDocument(`画布 ${count}`, false);
-      setDocuments((prev) => [canvas, ...prev]);
+      setDocuments((prev) => {
+        const next = [canvas, ...prev];
+        writeStorage(next);
+        return next;
+      });
       setActiveCanvasId(canvas.id);
       clearSelection();
       return undefined;
     }
 
-    const pendingId = sessionStorage.getItem(PENDING_CANVAS_ID_KEY);
+    const pendingId = readPendingCanvasId();
     if (pendingId) {
-      sessionStorage.removeItem(PENDING_CANVAS_ID_KEY);
+      clearPendingCanvasIntent();
       if (documentsRef.current.some((doc) => doc.id === pendingId)) {
         setActiveCanvasId(pendingId);
         clearSelection();

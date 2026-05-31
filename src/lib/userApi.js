@@ -1,5 +1,5 @@
 import { JIMIAIGO_TOKEN_STORAGE_KEY } from './constants';
-import { requestJimiaigo } from './jimiaigoApi';
+import { getChatApiBaseUrl, requestJimiaigo } from './jimiaigoApi';
 
 export function saveAuthToken(token) {
   if (typeof window === 'undefined' || !token) return;
@@ -91,6 +91,32 @@ export function formatBalanceAmount(amount) {
   return `$${Math.max(parseFloat(amount) || 0, 0).toFixed(4)}`;
 }
 
+/** 将接口返回的头像路径转为可访问 URL */
+export function resolveUserAvatarUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw) || raw.startsWith('data:') || raw.startsWith('blob:')) {
+    return raw;
+  }
+  const base = getChatApiBaseUrl().replace(/\/$/, '');
+  return raw.startsWith('/') ? `${base}${raw}` : `${base}/${raw}`;
+}
+
+export function getUserDisplayInitial(nickname) {
+  const text = String(nickname || '').trim();
+  if (!text) return 'U';
+  const first = [...text][0];
+  return first ? first.toUpperCase() : 'U';
+}
+
+export function parseVipInfo(vipInfo) {
+  const isVip = Boolean(vipInfo?.is_vip);
+  return {
+    isVip,
+    vipLevel: Number(vipInfo?.vip_level) || 0,
+  };
+}
+
 export function getRechargeUrl() {
   const explicit = import.meta.env.VITE_RECHARGE_URL;
   if (explicit) return String(explicit).trim();
@@ -117,8 +143,11 @@ export async function fetchUserInfo(token) {
   }
 
   const payment = parseUserPayment(data.payment);
+  const nickname = data.nickname || data.email || '';
   return {
-    nickname: data.nickname || data.email || '',
+    nickname,
+    avatarUrl: resolveUserAvatarUrl(data.avatar_url || data.avatar || ''),
+    ...parseVipInfo(data.vip_info),
     ...payment,
     profile: data,
   };

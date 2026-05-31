@@ -1,4 +1,5 @@
 import {
+  ADMIN_TOKEN_COOKIE_KEY,
   DEFAULT_CHAT_API_URL,
   JIMIAIGO_TOKEN_STORAGE_KEY,
 } from './constants';
@@ -13,18 +14,42 @@ export function getChatApiBaseUrl() {
   return DEFAULT_CHAT_API_URL;
 }
 
+function readCookieToken() {
+  if (typeof document === 'undefined') return '';
+  const pattern = new RegExp(`(?:^|;\\s*)${ADMIN_TOKEN_COOKIE_KEY}=([^;]*)`);
+  const match = document.cookie.match(pattern);
+  return match ? decodeURIComponent(match[1]).trim() : '';
+}
+
+export function syncStoredChatToken(token) {
+  if (typeof window === 'undefined' || !token) return;
+  const value = String(token).trim();
+  if (!value) return;
+  window.localStorage.setItem(JIMIAIGO_TOKEN_STORAGE_KEY, value);
+  window.localStorage.setItem('token', value);
+}
+
 export function getStoredChatToken() {
   if (typeof window === 'undefined') return '';
 
   const envToken = import.meta.env.VITE_API_TOKEN || import.meta.env.VITE_JIMIAIGO_TOKEN;
   if (envToken) return String(envToken).trim();
 
-  return (
+  const fromStorage = (
     window.localStorage.getItem(JIMIAIGO_TOKEN_STORAGE_KEY) ||
     window.localStorage.getItem('token') ||
     window.localStorage.getItem('access_token') ||
     ''
   ).trim();
+  if (fromStorage) return fromStorage;
+
+  const fromCookie = readCookieToken();
+  if (fromCookie) {
+    syncStoredChatToken(fromCookie);
+    return fromCookie;
+  }
+
+  return '';
 }
 
 export function clearStoredChatToken() {

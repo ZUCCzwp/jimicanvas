@@ -18,8 +18,8 @@ export function isCanvasHomePath(pathname) {
 export function hasPendingCanvasIntent() {
   if (typeof window === 'undefined') return false;
   return Boolean(
-    window.sessionStorage.getItem(PENDING_CANVAS_ID_KEY) ||
-      window.sessionStorage.getItem(PENDING_NEW_CANVAS_KEY)
+    window.localStorage.getItem(PENDING_CANVAS_ID_KEY) ||
+      window.localStorage.getItem(PENDING_NEW_CANVAS_KEY)
   );
 }
 

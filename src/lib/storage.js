@@ -1,20 +1,55 @@
+import { normalizeAudioUrl } from './audioApi';
 import { normalizeCanvasBackground } from './canvasBackground';
-import { PENDING_CANVAS_ID_KEY } from './constants';
+import {
+  ACTIVE_CANVAS_ID_KEY,
+  PENDING_CANVAS_ID_KEY,
+  PENDING_NEW_CANVAS_KEY,
+  STORAGE_KEY,
+} from './constants';
 import { normalizeImageUrl } from './imageApi';
 import { normalizeVideoUrl } from './videoApi';
 
-/** 清除旧版本地画布缓存（仅迁移用，画布数据现只存云端） */
-export function clearLegacyCanvasCache() {
-  if (typeof window === 'undefined') return;
-  window.localStorage.removeItem('jimicanvas.documents.v1');
-  window.localStorage.removeItem('jimicanvas.documents.v1.backup');
-  window.localStorage.removeItem('jimicanvas.cloud.version');
+export const STORAGE_BACKUP_KEY = `${STORAGE_KEY}.backup`;
+
+function readPendingStorage(key) {
+  if (typeof window === 'undefined') return null;
+  const value = window.localStorage.getItem(key);
+  return value ? String(value).trim() : null;
 }
 
-function readPendingCanvasId() {
-  if (typeof window === 'undefined') return null;
-  const id = window.sessionStorage.getItem(PENDING_CANVAS_ID_KEY);
-  return id ? String(id).trim() : null;
+export function readPendingCanvasId() {
+  return readPendingStorage(PENDING_CANVAS_ID_KEY);
+}
+
+export function readPendingNewCanvas() {
+  return readPendingStorage(PENDING_NEW_CANVAS_KEY) === '1';
+}
+
+export function setPendingCanvasId(canvasId) {
+  if (typeof window === 'undefined' || !canvasId) return;
+  window.localStorage.setItem(PENDING_CANVAS_ID_KEY, String(canvasId).trim());
+  window.localStorage.removeItem(PENDING_NEW_CANVAS_KEY);
+}
+
+export function setPendingNewCanvas() {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(PENDING_NEW_CANVAS_KEY, '1');
+  window.localStorage.removeItem(PENDING_CANVAS_ID_KEY);
+}
+
+export function clearPendingCanvasIntent() {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(PENDING_CANVAS_ID_KEY);
+  window.localStorage.removeItem(PENDING_NEW_CANVAS_KEY);
+}
+
+export function readActiveCanvasId() {
+  return readPendingStorage(ACTIVE_CANVAS_ID_KEY);
+}
+
+export function writeActiveCanvasId(canvasId) {
+  if (typeof window === 'undefined' || !canvasId) return;
+  window.localStorage.setItem(ACTIVE_CANVAS_ID_KEY, String(canvasId).trim());
 }
 
 export function normalizeDocuments(raw) {
@@ -33,6 +68,60 @@ export function normalizeDocuments(raw) {
     }));
 
   return documents.length > 0 ? documents : null;
+}
+
+function readDocumentsFromKey(key) {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    return normalizeDocuments(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+export function readStorage() {
+  return readDocumentsFromKey(STORAGE_KEY);
+}
+
+export function hasStorageBackup() {
+  if (typeof window === 'undefined') return false;
+  return Boolean(window.localStorage.getItem(STORAGE_BACKUP_KEY));
+}
+
+export function readStorageBackup() {
+  return readDocumentsFromKey(STORAGE_BACKUP_KEY);
+}
+
+export function documentsEqual(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return false;
+  }
+}
+
+export function isBackupDifferentFrom(documents) {
+  const backup = readStorageBackup();
+  if (!backup || backup.length === 0) return false;
+  return !documentsEqual(backup, documents);
+}
+
+export function promoteBackupToPrimary(backup) {
+  if (typeof window === 'undefined' || !Array.isArray(backup) || backup.length === 0) {
+    return { ok: false };
+  }
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(backup));
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '保存失败';
+    return { ok: false, error: message };
+  }
 }
 
 function isPersistableUrl(value) {
@@ -132,10 +221,61 @@ export function sanitizeDocumentsForPersist(documents) {
   }));
 }
 
-/** 启动时不读 localStorage，等待云端 hydrate */
+export function writeStorage(documents) {
+  if (typeof window === 'undefined') {
+    return { ok: true };
+  }
+
+  try {
+    const next = JSON.stringify(sanitizeDocumentsForPersist(documents));
+    const existing = window.localStorage.getItem(STORAGE_KEY);
+    if (existing) {
+      window.localStorage.setItem(STORAGE_BACKUP_KEY, existing);
+    }
+    window.localStorage.setItem(STORAGE_KEY, next);
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '保存失败';
+    return { ok: false, error: message };
+  }
+}
+
+function resolveActiveCanvasId(documents, { pendingId, storedActiveId } = {}) {
+  if (!documents?.length) return pendingId || storedActiveId || null;
+  if (pendingId && documents.some((doc) => doc.id === pendingId)) return pendingId;
+  if (storedActiveId && documents.some((doc) => doc.id === storedActiveId)) return storedActiveId;
+  return documents[0].id;
+}
+
+/** 启动时优先读本地缓存，云端 hydrate 后再合并 */
 export function loadInitialState() {
+  const pendingId = readPendingCanvasId();
+  const storedActiveId = readActiveCanvasId();
+
+  const primary = readDocumentsFromKey(STORAGE_KEY);
+  if (primary?.length) {
+    const activeCanvasId = resolveActiveCanvasId(primary, { pendingId, storedActiveId });
+    return {
+      documents: sanitizeDocumentsForPersist(primary),
+      activeCanvasId,
+      loadedFrom: 'primary',
+    };
+  }
+
+  const backup = readDocumentsFromKey(STORAGE_BACKUP_KEY);
+  if (backup?.length) {
+    promoteBackupToPrimary(backup);
+    const activeCanvasId = resolveActiveCanvasId(backup, { pendingId, storedActiveId });
+    return {
+      documents: sanitizeDocumentsForPersist(backup),
+      activeCanvasId,
+      loadedFrom: 'backup',
+    };
+  }
+
   return {
     documents: [],
-    activeCanvasId: readPendingCanvasId(),
+    activeCanvasId: pendingId,
+    loadedFrom: 'empty',
   };
 }

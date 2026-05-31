@@ -1,6 +1,9 @@
 /** 画布有改动后，延迟多久再上传到云端（防抖，减少频繁保存） */
 export const CLOUD_SYNC_DEBOUNCE_MS = 5000;
+export const STORAGE_KEY = 'jimicanvas.documents.v1';
+export const ACTIVE_CANVAS_ID_KEY = 'jimicanvas.active_canvas_id';
 export const JIMIAIGO_TOKEN_STORAGE_KEY = 'jimicanvas.jimiaigo.token';
+export const ADMIN_TOKEN_COOKIE_KEY = 'Admin-Token';
 /** 从 jimiaiapp 跳转时暂存待打开的画布 ID */
 export const PENDING_CANVAS_ID_KEY = 'jimicanvas.pending_canvas_id';
 /** 从 jimiaiapp 跳转时标记需要新建画布 */

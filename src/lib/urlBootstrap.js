@@ -1,8 +1,5 @@
-import {
-  JIMIAIGO_TOKEN_STORAGE_KEY,
-  PENDING_CANVAS_ID_KEY,
-  PENDING_NEW_CANVAS_KEY,
-} from './constants';
+import { PENDING_CANVAS_ID_KEY, PENDING_NEW_CANVAS_KEY } from './constants';
+import { syncStoredChatToken } from './jimiaigoApi';
 
 /**
  * 解析 URL 中的 at / canvas / new，写入 storage 后从地址栏移除。
@@ -17,7 +14,7 @@ export function bootstrapFromUrl() {
   if (rawToken) {
     const token = String(rawToken).trim();
     if (token) {
-      window.localStorage.setItem(JIMIAIGO_TOKEN_STORAGE_KEY, token);
+      syncStoredChatToken(token);
     }
     params.delete('at');
     params.delete('token');
@@ -28,7 +25,8 @@ export function bootstrapFromUrl() {
   if (canvasId) {
     const id = String(canvasId).trim();
     if (id) {
-      window.sessionStorage.setItem(PENDING_CANVAS_ID_KEY, id);
+      window.localStorage.setItem(PENDING_CANVAS_ID_KEY, id);
+      window.localStorage.removeItem(PENDING_NEW_CANVAS_KEY);
     }
     params.delete('canvas');
     params.delete('canvas_id');
@@ -37,7 +35,8 @@ export function bootstrapFromUrl() {
 
   const newFlag = params.get('new');
   if (newFlag === '1' || newFlag === 'true') {
-    window.sessionStorage.setItem(PENDING_NEW_CANVAS_KEY, '1');
+    window.localStorage.setItem(PENDING_NEW_CANVAS_KEY, '1');
+    window.localStorage.removeItem(PENDING_CANVAS_ID_KEY);
     params.delete('new');
     changed = true;
   }
