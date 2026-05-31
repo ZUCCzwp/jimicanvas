@@ -1192,7 +1192,28 @@ button {
 
 .node.selected::before {
   border-color: var(--accent-border);
-  box-shadow: 0 0 0 1px var(--accent-soft), 0 18px 40px var(--node-shadow);
+  border-width: 2px;
+  box-shadow:
+    0 0 0 2px var(--accent-soft),
+    0 0 18px rgba(59, 130, 246, 0.28),
+    0 18px 40px var(--node-shadow);
+  animation: node-selection-glow 2.2s ease-in-out infinite;
+}
+
+@keyframes node-selection-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px var(--accent-soft),
+      0 0 12px rgba(59, 130, 246, 0.2),
+      0 18px 40px var(--node-shadow);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px rgba(96, 165, 250, 0.45),
+      0 0 22px rgba(59, 130, 246, 0.38),
+      0 18px 40px var(--node-shadow);
+  }
 }
 
 .node.selected .node-floating-header,

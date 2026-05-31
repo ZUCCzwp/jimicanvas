@@ -786,14 +786,34 @@ function App() {
       .filter((link) => link.toNodeId === inputHighlightNodeId)
       .map((link) => link.id);
   }, [connections, inputHighlightNodeId]);
+  const displaySelectedNodeIds = useMemo(() => {
+    if (!selectionMarquee) return selectedNodeIds;
+
+    const rect = normalizeSelectionRect(
+      selectionMarquee.startX,
+      selectionMarquee.startY,
+      selectionMarquee.currentX,
+      selectionMarquee.currentY
+    );
+    if (rect.width < 4 && rect.height < 4) return selectedNodeIds;
+
+    const hits = getNodesInSelectionRect(nodes, rect, DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT);
+    const hitIds = hits.map((node) => node.id);
+
+    if (selectionMarquee.additive) {
+      return [...new Set([...selectedNodeIds, ...hitIds])];
+    }
+    return hitIds;
+  }, [nodes, selectedNodeIds, selectionMarquee]);
+
   const orderedNodes = useMemo(() => {
-    if (selectedNodeIds.length === 0) return nodes;
-    const selectedSet = new Set(selectedNodeIds);
+    if (displaySelectedNodeIds.length === 0) return nodes;
+    const selectedSet = new Set(displaySelectedNodeIds);
     return [
       ...nodes.filter((node) => !selectedSet.has(node.id)),
       ...nodes.filter((node) => selectedSet.has(node.id)),
     ];
-  }, [nodes, selectedNodeIds]);
+  }, [nodes, displaySelectedNodeIds]);
   const canvasScalePercent = Math.round(canvasScale * 100);
   const showFocusContentPrompt = useMemo(() => {
     if (nodes.length === 0 || stageSize.width <= 0 || stageSize.height <= 0) return false;
@@ -2325,6 +2345,7 @@ function App() {
         startY: marquee.startY,
         currentX: marquee.currentX,
         currentY: marquee.currentY,
+        additive: marquee.additive,
       });
     }
   }
@@ -2762,8 +2783,12 @@ function App() {
               <CanvasNode
                 key={node.id}
                 node={node}
-                isSelected={selectedNodeIds.includes(node.id)}
-                showToolbar={selectedNodeIds.length === 1 && selectedNodeIds[0] === node.id}
+                isSelected={displaySelectedNodeIds.includes(node.id)}
+                showToolbar={
+                  !selectionMarquee &&
+                  selectedNodeIds.length === 1 &&
+                  selectedNodeIds[0] === node.id
+                }
                 isRunning={isNodeActivelyRunning(node, runningNodeId)}
                 isTranslating={translatingNodeId === node.id}
                 textInputLinks={
