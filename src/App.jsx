@@ -61,6 +61,7 @@ import {
   resolveVideoPrompt,
   resolveAudioPrompt,
   resolveVideoReferenceImages,
+  resolveImageReferenceImages,
 } from './lib/connections';
 import { createSpeech, normalizeAudioUrl, filterAudioFiles, isAudioFile, isAudioAssetRecord } from './lib/audioApi';
 import {
@@ -1230,7 +1231,19 @@ function App() {
 
       (async () => {
         setRunningNodeId(node.id);
-        const getNode = () => getNodeFromDocuments(canvasId, node.id) || node;
+        const getNode = () => {
+          const doc = documentsRef.current.find((item) => item.id === canvasId);
+          const current = getNodeFromDocuments(canvasId, node.id) || node;
+          if (kind !== 'image') return current;
+          return {
+            ...current,
+            referenceImages: resolveImageReferenceImages(
+              current,
+              doc?.nodes || [],
+              doc?.connections || []
+            ),
+          };
+        };
         const updateNodeForCanvas = (nodeId, patch) => updateNodeInCanvas(canvasId, nodeId, patch);
 
         try {
@@ -1459,7 +1472,11 @@ function App() {
     try {
       const currentNode = getNodeFromDocuments(activeCanvasId, node.id) || node;
       await executeImageGeneration(
-        { ...currentNode, prompt: resolveImagePrompt(currentNode, nodes, connections) },
+        {
+          ...currentNode,
+          prompt: resolveImagePrompt(currentNode, nodes, connections),
+          referenceImages: resolveImageReferenceImages(currentNode, nodes, connections),
+        },
         {
           token,
           updateNode,
@@ -2869,7 +2886,9 @@ function App() {
                     : []
                 }
                 imageInputLinks={
-                  node.type === 'video' ? getImageInputLinks(node.id, nodes, connections) : []
+                  node.type === 'image' || node.type === 'video'
+                    ? getImageInputLinks(node.id, nodes, connections)
+                    : []
                 }
                 isInputsHighlighted={inputHighlightNodeId === node.id}
                 linkFromNodeId={linkFromNodeId}

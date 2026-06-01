@@ -61,6 +61,7 @@ import {
   formatTextInputLabel,
   getImageNodeOutputUrl,
   getTextInputPreview,
+  mergeImageReferenceImages,
 } from '../lib/connections';
 import {
   buildImageNodeLayoutPatch,
@@ -1550,6 +1551,7 @@ function ImageToolbar({
   isRunning,
   isTranslating,
   textInputLinks = [],
+  imageInputLinks = [],
   onRunImageGeneration,
   onOpenAssetLibrary,
   onRemoveImageReference,
@@ -1558,7 +1560,8 @@ function ImageToolbar({
 }) {
   const hasTextInput = textInputLinks.length > 0;
   const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
-  const references = Array.isArray(node.referenceImages) ? node.referenceImages : [];
+  const assetReferences = Array.isArray(node.referenceImages) ? node.referenceImages : [];
+  const resolvedReferences = mergeImageReferenceImages(node, imageInputLinks);
   const model = node.imageModel || IMAGE_MODEL_OPTIONS[0].value;
   const maxReferenceCount = getImageReferenceMax(model);
   const resolutionOptions = getImageResolutionOptions(model);
@@ -1586,21 +1589,41 @@ function ImageToolbar({
       <div className="image-reference-row image-reference-row-top">
         <span className="image-reference-label">参考图</span>
         <div className="image-reference-list">
-          {references.map((image, index) => (
-            <ReferenceImageChip
-              key={image.id || image.url || index}
-              image={image}
-              index={index}
-              previewSrc={normalizeImageUrl(image.url || image.data)}
-              onRemove={() => onRemoveImageReference(node.id, index)}
-            />
-          ))}
+          {resolvedReferences.map((image, index) => {
+            const isConnection = image.source === 'connection';
+            const assetIndex = isConnection
+              ? -1
+              : assetReferences.findIndex(
+                  (item) =>
+                    (image.id && item.id === image.id) ||
+                    (image.url && (item.url === image.url || item.data === image.url))
+                );
+
+            return (
+              <ReferenceImageChip
+                key={image.id || image.url || index}
+                image={image}
+                index={index}
+                previewSrc={normalizeImageUrl(image.url || image.data)}
+                onRemove={() => {
+                  if (isConnection) {
+                    onRemoveTextReference(image.linkId);
+                    return;
+                  }
+                  if (assetIndex >= 0) {
+                    onRemoveImageReference(node.id, assetIndex);
+                  }
+                }}
+                removeTitle={isConnection ? '移除图片引用并断开连线' : '移除参考图'}
+              />
+            );
+          })}
         </div>
         <button
           type="button"
           className="prompt-asset-button prompt-asset-button--inline"
           onClick={() => onOpenAssetLibrary(node.id, 'reference')}
-          disabled={isRunning || references.length >= maxReferenceCount}
+          disabled={isRunning || resolvedReferences.length >= maxReferenceCount}
           title={`从资产库选择参考图（最多 ${maxReferenceCount} 张，支持多选）`}
         >
           <FolderOpen size={14} />
@@ -1610,7 +1633,7 @@ function ImageToolbar({
       <ReferencePromptInput
         value={node.prompt || ''}
         onChange={(prompt) => onUpdateNode(node.id, { prompt, status: 'idle' })}
-        references={references}
+        references={resolvedReferences}
         resolvePreviewUrl={(image) => normalizeImageUrl(image.url || image.data)}
         placeholder="输入图片提示词"
         disabled={isRunning}
@@ -2168,6 +2191,7 @@ export function CanvasNode({
           isRunning={isRunning}
           isTranslating={isTranslating}
           textInputLinks={textInputLinks}
+          imageInputLinks={imageInputLinks}
           onRunImageGeneration={onRunImageGeneration}
           onOpenAssetLibrary={onOpenAssetLibrary}
           onRemoveImageReference={onRemoveImageReference}

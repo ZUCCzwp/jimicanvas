@@ -1,4 +1,5 @@
-import { PLACEHOLDER_IMAGE } from './constants';
+import { PLACEHOLDER_IMAGE, getImageReferenceMax } from './constants';
+import { isDefaultDemoImageUrl } from './imageNodeLayout';
 
 export function getIncomingConnections(nodeId, connections = []) {
   return connections.filter((link) => link.toNodeId === nodeId);
@@ -79,6 +80,46 @@ export function getImageNodeOutputUrl(node) {
   return '';
 }
 
+export function getImageNodeReferenceUrl(node) {
+  const url = getImageNodeOutputUrl(node);
+  if (!url || isDefaultDemoImageUrl(url)) return '';
+  return url;
+}
+
+function dedupeReferenceImages(references = []) {
+  const seen = new Set();
+  return references.filter((item) => {
+    const key = item.url || item.id;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function mergeImageReferenceImages(node, imageInputLinks = []) {
+  const maxRef = getImageReferenceMax(node?.imageModel);
+  const assetRefs = Array.isArray(node?.referenceImages) ? [...node.referenceImages] : [];
+  const connected = (imageInputLinks || [])
+    .map((item) => {
+      const url = getImageNodeReferenceUrl(item.node);
+      if (!url) return null;
+      return {
+        id: `conn-${item.linkId}`,
+        linkId: item.linkId,
+        url,
+        name: formatImageInputLabel(item.node),
+        source: 'connection',
+      };
+    })
+    .filter(Boolean);
+
+  return dedupeReferenceImages([...connected, ...assetRefs]).slice(0, maxRef);
+}
+
+export function resolveImageReferenceImages(node, nodes = [], connections = []) {
+  return mergeImageReferenceImages(node, getImageInputLinks(node.id, nodes, connections));
+}
+
 export function formatImageInputLabel(node, maxLength = 18) {
   if (!node) return '图片节点';
 
@@ -104,7 +145,7 @@ export function resolveVideoReferenceImages(node, nodes = [], connections = []) 
   const assetRefs = Array.isArray(node?.referenceImages) ? [...node.referenceImages] : [];
   const connected = getImageInputLinks(node.id, nodes, connections)
     .map((item) => {
-      const url = getImageNodeOutputUrl(item.node);
+      const url = getImageNodeReferenceUrl(item.node);
       if (!url) return null;
       return {
         id: `conn-${item.linkId}`,
