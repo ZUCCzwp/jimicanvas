@@ -54,6 +54,17 @@ export const VEO_REFERENCE_IMAGE_MAX = 3;
 export const SEEDANCE_REF_IMAGE_MAX = 9;
 export const SEEDANCE_REF_VIDEO_MAX = 3;
 export const SEEDANCE_REF_AUDIO_MAX = 3;
+export const VIDEO_GENERIC_REFERENCE_MAX = 5;
+
+export const IMAGE_REFERENCE_LIMITS = {
+  nanobanana2: 5,
+  nanobananapro: 5,
+  'gpt-image-2': 16,
+};
+
+export function getImageReferenceMax(model) {
+  return IMAGE_REFERENCE_LIMITS[model] || IMAGE_REFERENCE_LIMITS[DEFAULT_IMAGE_MODEL] || 5;
+}
 
 export const DEFAULT_AUDIO_MODEL = 'gpt-4o-mini-tts';
 export const DEFAULT_AUDIO_VOICE = 'alloy';

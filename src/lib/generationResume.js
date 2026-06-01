@@ -1,5 +1,5 @@
 import { waitForImageTask } from './imageApi';
-import { buildImageNodeLayoutPatch } from './imageNodeLayout';
+import { buildImageNodeLayoutPatch, isDefaultDemoImageOutput } from './imageNodeLayout';
 import { buildVideoNodeLayoutPatch } from './videoNodeLayout';
 import { waitForVideoTask } from './videoApi';
 
@@ -7,13 +7,17 @@ const RECOVER_STAGGER_MS = 500;
 
 function isImageOutput(content) {
   const value = String(content || '').trim();
-  return (
+  if (!value) return false;
+  if (
     value.startsWith('http://') ||
     value.startsWith('https://') ||
     value.startsWith('data:image') ||
     value.startsWith('blob:') ||
     value.startsWith('/')
-  );
+  ) {
+    return true;
+  }
+  return /^(image|video|audio)\//.test(value);
 }
 
 function isVideoOutput(content) {
@@ -89,6 +93,49 @@ export function hasPendingTasks(documents) {
   return documents.some((doc) => Array.isArray(doc.nodes) && doc.nodes.some(hasNodePendingWork));
 }
 
+function getDisplayImageUrls(node) {
+  if (!node) return [];
+  const images = Array.isArray(node.images) ? node.images.filter(Boolean) : [];
+  if (images.length > 0) return images;
+  const content = String(node.content || '').trim();
+  return content ? [content] : [];
+}
+
+function hasGeneratedImageOutput(node) {
+  if (!hasImageOutput(node)) return false;
+  return !isDefaultDemoImageOutput(getDisplayImageUrls(node));
+}
+
+/** 合并同一节点时优先保留已有真实生成结果，避免云端 stale running 覆盖本地已完成输出 */
+export function pickPreferredCanvasNode(serverNode, clientNode) {
+  if (!clientNode) return serverNode;
+  if (!serverNode) return clientNode;
+
+  const serverPending = hasNodePendingWork(serverNode);
+  const clientPending = hasNodePendingWork(clientNode);
+  const serverGenerated = hasGeneratedImageOutput(serverNode);
+  const clientGenerated = hasGeneratedImageOutput(clientNode);
+  const serverVideo = hasVideoOutput(serverNode);
+  const clientVideo = hasVideoOutput(clientNode);
+
+  if (clientGenerated && (!serverGenerated || serverPending)) return clientNode;
+  if (serverGenerated && !clientGenerated && !clientPending) return serverNode;
+
+  if (clientVideo && (!serverVideo || serverPending)) return clientNode;
+  if (serverVideo && !clientVideo && !clientPending) return serverNode;
+
+  if (clientPending && !serverPending) return clientNode;
+  if (serverPending && !clientPending) {
+    if (clientGenerated || clientVideo) return clientNode;
+    return serverNode;
+  }
+
+  if (clientGenerated && !serverGenerated) return clientNode;
+  if (serverGenerated && !clientGenerated) return serverNode;
+
+  return clientNode;
+}
+
 export function mergeDocumentsPreservePending(localDocs, cloudDocs, options = {}) {
   const preserveCloudOnlyDocuments = options.preserveCloudOnlyDocuments !== false;
 
@@ -110,10 +157,10 @@ export function mergeDocumentsPreservePending(localDocs, cloudDocs, options = {}
     );
     const localNodeIds = new Set();
 
-    const nodes = (Array.isArray(localDoc.nodes) ? localDoc.nodes : []).map((localNode) => {
-      localNodeIds.add(localNode.id);
-      if (hasNodePendingWork(localNode)) return localNode;
-      return cloudNodeById.get(localNode.id) || localNode;
+    const nodes = (Array.isArray(localDoc.nodes) ? localDoc.nodes : []).map((serverNode) => {
+      localNodeIds.add(serverNode.id);
+      const clientNode = cloudNodeById.get(serverNode.id);
+      return pickPreferredCanvasNode(serverNode, clientNode);
     });
 
     for (const cloudNode of cloudNodeById.values()) {

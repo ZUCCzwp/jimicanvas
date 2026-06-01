@@ -43,6 +43,7 @@ import {
   SEEDANCE_REF_IMAGE_MAX,
   SEEDANCE_REF_VIDEO_MAX,
   SEEDANCE_REF_AUDIO_MAX,
+  getImageReferenceMax,
   VIDEO_FAMILY_OPTIONS,
   AUDIO_VOICE_OPTIONS,
   AUDIO_SPEED_OPTIONS,
@@ -70,6 +71,7 @@ import { buildVideoNodeLayoutPatch } from '../lib/videoNodeLayout';
 import { normalizeImageUrl } from '../lib/imageApi';
 import { CustomSelect } from './CustomSelect';
 import { NodeGenerationState } from './NodeGenerationState';
+import { ReferenceImageChip, ReferencePromptInput } from './ReferencePromptControls';
 
 function NodeIcon({ type }) {
   if (type === 'image') return <ImageIcon size={14} />;
@@ -1232,16 +1234,27 @@ function VideoToolbar({
       className={`node-bottom-toolbar image-toolbar video-toolbar ${isSeedance ? 'video-toolbar-seedance' : ''}`}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <div className="node-prompt-wrap">
-        <textarea
-          className="node-prompt-input"
-          value={node.prompt || ''}
-          onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
-          placeholder="输入视频提示词"
-        />
-        {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages ? (
+      {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages ? (
+        <div
+          className={`image-reference-row image-reference-row-top ${showSeedanceReferenceImages ? 'seedance-reference-row' : ''}`}
+        >
+          <span className="image-reference-label">
+            {showSeedanceReferenceImages ? '参考图（满血版素材库）' : '参考图'}
+          </span>
+          <div className="image-reference-list">
+            {references.map((image, index) => (
+              <ReferenceImageChip
+                key={image.id || image.url || index}
+                image={image}
+                index={index}
+                previewSrc={referencePreviewSrc(image)}
+                onRemove={() => onRemoveImageReference(node.id, index)}
+              />
+            ))}
+          </div>
           <button
-            className="prompt-asset-button"
+            type="button"
+            className="prompt-asset-button prompt-asset-button--inline"
             onClick={() =>
               onOpenAssetLibrary(
                 node.id,
@@ -1268,8 +1281,27 @@ function VideoToolbar({
             <FolderOpen size={14} />
             资产库
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
+      {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages ? (
+        <ReferencePromptInput
+          value={node.prompt || ''}
+          onChange={(prompt) => onUpdateNode(node.id, { prompt, status: 'idle' })}
+          references={references}
+          resolvePreviewUrl={(image) => referencePreviewSrc(image)}
+          placeholder="输入视频提示词"
+          disabled={isRunning}
+        />
+      ) : (
+        <div className="node-prompt-wrap node-prompt-wrap--plain">
+          <textarea
+            className="node-prompt-input"
+            value={node.prompt || ''}
+            onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
+            placeholder="输入视频提示词"
+          />
+        </div>
+      )}
       <OptionSegment
         title="系列"
         value={family}
@@ -1489,29 +1521,6 @@ function VideoToolbar({
           </div>
         </div>
       ) : null}
-      {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages ? (
-        <div
-          className={`image-reference-row ${showSeedanceReferenceImages ? 'seedance-reference-row' : ''}`}
-        >
-          <span className="image-reference-label">
-            {showSeedanceReferenceImages ? '参考图（满血版素材库）' : '参考图'}
-          </span>
-          <div className="image-reference-list">
-            {references.map((image, index) => (
-              <div className="image-reference-chip" key={image.id || image.url || index}>
-                <img src={referencePreviewSrc(image)} alt={image.name || `参考图 ${index + 1}`} />
-                <button
-                  type="button"
-                  onClick={() => onRemoveImageReference(node.id, index)}
-                  title="移除参考图"
-                >
-                  <X size={11} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
       <div className="node-bottom-actions image-bottom-actions">
         <button
           className="icon-button"
@@ -1551,6 +1560,7 @@ function ImageToolbar({
   const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
   const references = Array.isArray(node.referenceImages) ? node.referenceImages : [];
   const model = node.imageModel || IMAGE_MODEL_OPTIONS[0].value;
+  const maxReferenceCount = getImageReferenceMax(model);
   const resolutionOptions = getImageResolutionOptions(model);
   const ratioOptions = getImageRatioOptions(model);
   const countOptions = getImageCountOptions(model);
@@ -1573,23 +1583,38 @@ function ImageToolbar({
 
   return (
     <div className="node-bottom-toolbar image-toolbar" onPointerDown={(event) => event.stopPropagation()}>
-      <div className="node-prompt-wrap">
-        <textarea
-          className="node-prompt-input"
-          value={node.prompt || ''}
-          onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
-          placeholder="输入图片提示词"
-        />
+      <div className="image-reference-row image-reference-row-top">
+        <span className="image-reference-label">参考图</span>
+        <div className="image-reference-list">
+          {references.map((image, index) => (
+            <ReferenceImageChip
+              key={image.id || image.url || index}
+              image={image}
+              index={index}
+              previewSrc={normalizeImageUrl(image.url || image.data)}
+              onRemove={() => onRemoveImageReference(node.id, index)}
+            />
+          ))}
+        </div>
         <button
-          className="prompt-asset-button"
+          type="button"
+          className="prompt-asset-button prompt-asset-button--inline"
           onClick={() => onOpenAssetLibrary(node.id, 'reference')}
-          disabled={isRunning}
-          title="从资产库选择参考图"
+          disabled={isRunning || references.length >= maxReferenceCount}
+          title={`从资产库选择参考图（最多 ${maxReferenceCount} 张，支持多选）`}
         >
           <FolderOpen size={14} />
           参考图
         </button>
       </div>
+      <ReferencePromptInput
+        value={node.prompt || ''}
+        onChange={(prompt) => onUpdateNode(node.id, { prompt, status: 'idle' })}
+        references={references}
+        resolvePreviewUrl={(image) => normalizeImageUrl(image.url || image.data)}
+        placeholder="输入图片提示词"
+        disabled={isRunning}
+      />
       <div className="image-options-row">
         <OptionSegment
           title="模型"
@@ -1665,26 +1690,6 @@ function ImageToolbar({
           </div>
         </div>
       ) : null}
-      <div className="image-reference-row">
-        <span className="image-reference-label">参考图</span>
-        <div className="image-reference-list">
-          {references.map((image, index) => (
-            <div className="image-reference-chip" key={image.id || image.url || index}>
-              <img
-                src={normalizeImageUrl(image.url || image.data)}
-                alt={image.name || `参考图 ${index + 1}`}
-              />
-              <button
-                type="button"
-                onClick={() => onRemoveImageReference(node.id, index)}
-                title="移除参考图"
-              >
-                <X size={11} />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
       <div className="node-bottom-actions image-bottom-actions">
         <button
           className="icon-button"

@@ -37,6 +37,8 @@ import {
   SEEDANCE_REF_IMAGE_MAX,
   SEEDANCE_REF_VIDEO_MAX,
   SEEDANCE_REF_AUDIO_MAX,
+  VIDEO_GENERIC_REFERENCE_MAX,
+  getImageReferenceMax,
 } from './lib/constants';
 import {
   clampNoteSize,
@@ -1482,6 +1484,7 @@ function App() {
     } finally {
       setRunningNodeId(null);
       refreshUserQuota();
+      void flushPersist();
     }
   }
 
@@ -1554,6 +1557,7 @@ function App() {
     } finally {
       setRunningNodeId(null);
       refreshUserQuota();
+      void flushPersist();
     }
   }
 
@@ -1675,7 +1679,29 @@ function App() {
     if (pickMode === 'audio-output') {
       return { maxCount: 1, title: '资产库', subtitle: '选择音频' };
     }
+    if (pickMode === 'reference') {
+      const isImageNode = node?.type === 'image';
+      const maxRef = isImageNode ? getImageReferenceMax(node?.imageModel) : VIDEO_GENERIC_REFERENCE_MAX;
+      const currentCount = Array.isArray(node?.referenceImages) ? node.referenceImages.length : 0;
+      const remaining = Math.max(0, maxRef - currentCount);
+      return {
+        maxCount: Math.max(1, remaining),
+        title: '资产库',
+        subtitle:
+          remaining > 0
+            ? `选择参考图（已选 ${currentCount}/${maxRef}，本次最多 ${remaining} 张）`
+            : `选择参考图（已达上限 ${maxRef} 张）`,
+      };
+    }
     return { maxCount: 5, title: '资产库', subtitle: '选择图片作为参考图' };
+  }
+
+  function isSamePickerAsset(left, right) {
+    if (left === right) return true;
+    if (left?.id != null && right?.id != null && String(left.id) === String(right.id)) return true;
+    if (left?.assetId && right?.assetId && left.assetId === right.assetId) return true;
+    if (left?.url && right?.url && left.url === right.url) return true;
+    return false;
   }
 
   function normalizeSeedancePickedAsset(asset, mediaType) {
@@ -1861,9 +1887,11 @@ function App() {
     }
 
     const current = Array.isArray(node.referenceImages) ? node.referenceImages : [];
+    const maxRef =
+      node?.type === 'image' ? getImageReferenceMax(node?.imageModel) : VIDEO_GENERIC_REFERENCE_MAX;
     return {
       ...node,
-      referenceImages: [...current, ...normalized].slice(0, 5),
+      referenceImages: [...current, ...normalized].slice(0, maxRef),
       status: 'idle',
     };
   }
@@ -1872,12 +1900,12 @@ function App() {
     const token = getOrRequestToken({ onSaved: refreshUserQuota });
     if (!token) {
       updateNode(nodeId, { content: '缺少 token', status: 'error' });
-      return;
+      return false;
     }
 
     const node = nodes.find((item) => item.id === nodeId);
     if ((pickMode === 'veo-last' || pickMode === 'seedance-last') && !node?.videoFirstFrame) {
-      return;
+      return false;
     }
     const { maxCount } = getAssetPickerMeta(node, pickMode);
 
@@ -1906,6 +1934,7 @@ function App() {
           return applyPickedAssetsToNode(item, pickMode, references, 'local');
         }),
       }));
+      return references.length > 0;
     } catch (error) {
       const message =
         error instanceof Error
@@ -1916,9 +1945,51 @@ function App() {
               ? '上传音频失败'
               : '上传图片失败';
       updateNode(nodeId, { content: message, status: 'error' });
+      return false;
     } finally {
       setUploadingNodeId(null);
     }
+  }
+
+  async function uploadAssetsToLibrary(nodeId, files, pickMode) {
+    const token = getOrRequestToken({ onSaved: refreshUserQuota });
+    if (!token) return false;
+
+    const node = nodes.find((item) => item.id === nodeId);
+    const { maxCount } = getAssetPickerMeta(node, pickMode);
+    const isAudioOutput = pickMode === 'audio-output';
+    const uploadFiles = isAudioOutput ? filterAudioFiles(files) : files.slice(0, maxCount);
+
+    if (isAudioOutput && uploadFiles.length === 0) {
+      return false;
+    }
+
+    try {
+      for (const file of uploadFiles.slice(0, maxCount)) {
+        if (isAudioOutput && !isAudioFile(file)) continue;
+        await uploadAsset({ token, file });
+      }
+      return uploadFiles.length > 0;
+    } catch (error) {
+      console.error('Upload to asset library failed:', error);
+      return false;
+    }
+  }
+
+  async function uploadFromAssetPicker(nodeId, files, pickMode) {
+    const isReferenceLibraryUpload = pickMode === 'reference' || pickMode === 'veo-reference';
+    const succeeded = isReferenceLibraryUpload
+      ? await uploadAssetsToLibrary(nodeId, files, pickMode)
+      : await uploadImageReferences(nodeId, files, pickMode);
+    if (!succeeded) return;
+
+    setAssetPicker((current) => {
+      if (current.nodeId !== nodeId) return current;
+      return current.source === 'local'
+        ? current
+        : { ...current, source: 'local', selectedAssets: [] };
+    });
+    await loadAssetPickerAssets('local', pickMode);
   }
 
   function removeImageReference(nodeId, index) {
@@ -2087,18 +2158,19 @@ function App() {
       if (current.pickMode === 'audio-output' && !isAudioAssetRecord(asset)) {
         return current;
       }
-      const exists = current.selectedAssets.some(
-        (item) => item.id === asset.id || item.assetId === asset.assetId
-      );
+      const exists = current.selectedAssets.some((item) => isSamePickerAsset(item, asset));
       if (exists) {
         return {
           ...current,
-          selectedAssets: current.selectedAssets.filter(
-            (item) => item.id !== asset.id && item.assetId !== asset.assetId
-          ),
+          selectedAssets: current.selectedAssets.filter((item) => !isSamePickerAsset(item, asset)),
         };
       }
-      if (current.selectedAssets.length >= current.maxCount) return current;
+      if (current.selectedAssets.length >= current.maxCount) {
+        if (current.maxCount === 1) {
+          return { ...current, selectedAssets: [asset] };
+        }
+        return current;
+      }
       return {
         ...current,
         selectedAssets: [...current.selectedAssets, asset],
@@ -2702,7 +2774,7 @@ function App() {
             onSearchChange={(search) => setAssetPicker((current) => ({ ...current, search }))}
             onToggleAsset={toggleAssetSelection}
             onUploadImages={(files) =>
-              uploadImageReferences(assetPicker.nodeId, files, assetPicker.pickMode)
+              uploadFromAssetPicker(assetPicker.nodeId, files, assetPicker.pickMode)
             }
             onConfirm={confirmAssetSelection}
             onClose={() => setAssetPicker((current) => ({ ...current, nodeId: null }))}
