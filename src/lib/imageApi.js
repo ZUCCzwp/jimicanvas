@@ -126,7 +126,7 @@ async function buildImageRequest({ prompt, model, ratio, resolution, referenceIm
     return {
       model,
       prompt,
-      size: ratio || DEFAULT_IMAGE_RATIO,
+      ratio: ratio || DEFAULT_IMAGE_RATIO,
       resolution: resolution || DEFAULT_IMAGE_RESOLUTION,
       n: 1,
       images: referenceImages.map((image) => normalizeImageUrl(image.url || image.data)).filter(Boolean),
