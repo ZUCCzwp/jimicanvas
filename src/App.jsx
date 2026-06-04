@@ -13,6 +13,7 @@ import { CanvasMinimap } from './components/CanvasMinimap';
 import { FocusContentPrompt } from './components/FocusContentPrompt';
 import { ConnectionLayer } from './components/ConnectionLayer';
 import { FloatingDock } from './components/FloatingDock';
+import { ConfirmDialog } from './components/ConfirmDialog';
 import { CustomerServiceModal } from './components/CustomerServiceModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { RechargeModal } from './components/RechargeModal';
@@ -65,16 +66,22 @@ import {
 } from './lib/connections';
 import { createSpeech, normalizeAudioUrl, filterAudioFiles, isAudioFile, isAudioAssetRecord } from './lib/audioApi';
 import {
+  applyCanvasVersions,
+  deleteCanvasDocument,
   fetchCanvasDocuments,
   parseCloudDocuments,
+  saveCanvasDocument,
+  saveCanvasDocumentKeepalive,
   saveCanvasDocuments,
-  saveCanvasDocumentsKeepalive,
 } from './lib/canvasApi';
 import { getOrRequestToken, getStoredChatToken, runChatCompletion } from './lib/chatApi';
+import { isBackendInCooldown } from './lib/jimiaigoApi';
 import { fetchUserInfo } from './lib/userApi';
 import { fetchSiteConfig, getDefaultSiteSettings } from './lib/siteApi';
 import {
+  buildImageDownloadFilename,
   createImageGenerationTask,
+  downloadImageFile,
   getAssetList,
   normalizeImageUrl,
   uploadAsset,
@@ -175,7 +182,8 @@ function App() {
   const panRef = useRef(null);
   const marqueeRef = useRef(null);
   const spaceKeyRef = useRef(false);
-  const cloudVersionRef = useRef(0);
+  const cloudMetaVersionRef = useRef(0);
+  const cloudCanvasVersionsRef = useRef({});
   const cloudSyncReadyRef = useRef(false);
   const skipCloudSaveRef = useRef(true);
   const [cloudSyncStatus, setCloudSyncStatus] = useState(() =>
@@ -189,6 +197,8 @@ function App() {
     profile: null,
   }));
   const [showRechargeModal, setShowRechargeModal] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleteConfirmLoading, setDeleteConfirmLoading] = useState(false);
   const [hydrationDone, setHydrationDone] = useState(false);
   const recoveredTaskKeysRef = useRef(new Set());
   const recoveryStartedRef = useRef(false);
@@ -216,6 +226,10 @@ function App() {
     const token = getStoredChatToken();
     if (!token) {
       setUserQuota({ loading: false, remaining: null, percentage: null, profile: null });
+      return;
+    }
+    if (isBackendInCooldown()) {
+      setUserQuota((prev) => ({ ...prev, loading: false }));
       return;
     }
 
@@ -268,20 +282,38 @@ function App() {
     }
   };
 
+  const getActiveDocumentForCloudSave = (docs) => {
+    const sanitized = sanitizeDocumentsForPersist(docs);
+    const activeId = activeCanvasIdRef.current;
+    return sanitized.find((doc) => doc.id === activeId) || sanitized[0] || null;
+  };
+
+  const syncCloudVersions = (payload) => {
+    applyCanvasVersions(cloudCanvasVersionsRef, payload);
+    if (payload?.version != null) {
+      cloudMetaVersionRef.current = Number(payload.version) || 0;
+    }
+  };
+
+  const saveActiveCanvasToCloud = async (token) => {
+    const doc = getActiveDocumentForCloudSave(documentsRef.current);
+    if (!doc?.id) return null;
+    const saved = await saveCanvasDocument(token, doc.id, {
+      document: doc,
+      version: cloudCanvasVersionsRef.current[doc.id] || 0,
+      activeCanvasId: activeCanvasIdRef.current || doc.id,
+    });
+    syncCloudVersions(saved);
+    return saved;
+  };
+
   const flushPersist = async () => {
     const docsToSave = sanitizeDocumentsForPersist(documentsRef.current);
     writeStorage(docsToSave);
     if (docsToSave.length === 0 || skipCloudSaveRef.current) return;
     try {
       await runWithToken(async (token) => {
-        const saved = await saveCanvasDocuments(token, {
-          documents: docsToSave,
-          activeCanvasId: activeCanvasIdRef.current,
-          version: cloudVersionRef.current,
-        });
-        if (saved?.version != null) {
-          cloudVersionRef.current = saved.version;
-        }
+        await saveActiveCanvasToCloud(token);
         setCloudLastSyncedAt(Date.now());
         setCloudSyncStatus('synced');
       });
@@ -316,6 +348,9 @@ function App() {
       setCloudSyncStatus('loading');
 
       try {
+        if (isBackendInCooldown()) {
+          throw new Error('无法连接到画布服务');
+        }
         await runWithToken(async (authToken) => {
           const cloud = await fetchCanvasDocuments(authToken);
           if (cancelled) return;
@@ -342,7 +377,7 @@ function App() {
             setActiveCanvasId(nextActiveId);
             writeStorage(nextDocs);
             writeActiveCanvasId(nextActiveId);
-            cloudVersionRef.current = Number(cloud.version) || 0;
+            syncCloudVersions(cloud);
             setStorageNotice((prev) =>
               prev && !prev.includes('云端') && !prev.includes('本地')
                 ? prev
@@ -355,9 +390,7 @@ function App() {
               activeCanvasId: nextActiveId,
               version: Number(cloud?.version) || 0,
             });
-            if (!cancelled && saved?.version != null) {
-              cloudVersionRef.current = saved.version;
-            }
+            if (!cancelled) syncCloudVersions(saved);
             writeStorage(sessionDocs);
             writeActiveCanvasId(nextActiveId);
           } else {
@@ -372,9 +405,7 @@ function App() {
               activeCanvasId: first.id,
               version: Number(cloud?.version) || 0,
             });
-            if (!cancelled && saved?.version != null) {
-              cloudVersionRef.current = saved.version;
-            }
+            if (!cancelled) syncCloudVersions(saved);
           }
           if (!cancelled) {
             setCloudLastSyncedAt(Date.now());
@@ -420,27 +451,27 @@ function App() {
       return undefined;
     }
 
+    if (isBackendInCooldown()) {
+      return undefined;
+    }
+
     setCloudSyncStatus('pending');
 
     const timer = window.setTimeout(async () => {
+      if (isBackendInCooldown()) {
+        setCloudSyncStatus('error');
+        return;
+      }
       setCloudSyncStatus('saving');
       try {
         await runWithToken(async (authToken) => {
-          const docsToSave = sanitizeDocumentsForPersist(documents);
-          const saved = await saveCanvasDocuments(authToken, {
-            documents: docsToSave,
-            activeCanvasId,
-            version: cloudVersionRef.current,
-          });
-          if (saved?.version != null) {
-            cloudVersionRef.current = saved.version;
-          }
+          await saveActiveCanvasToCloud(authToken);
           setCloudLastSyncedAt(Date.now());
           setCloudSyncStatus('synced');
         });
       } catch (error) {
         if (error?.isConflict && error.latest) {
-          cloudVersionRef.current = Number(error.latest.version) || cloudVersionRef.current;
+          syncCloudVersions(error.latest);
           const latestDocs = parseCloudDocuments(error.latest.documents);
           if (latestDocs?.length) {
             setDocuments((prev) => {
@@ -511,11 +542,14 @@ function App() {
       }
       const token = getStoredChatToken();
       if (token && cloudSyncReadyRef.current && !skipCloudSaveRef.current) {
-        saveCanvasDocumentsKeepalive(token, {
-          documents: sanitizeDocumentsForPersist(documentsRef.current),
-          activeCanvasId: activeCanvasIdRef.current,
-          version: cloudVersionRef.current,
-        });
+        const doc = getActiveDocumentForCloudSave(documentsRef.current);
+        if (doc?.id) {
+          saveCanvasDocumentKeepalive(token, doc.id, {
+            document: doc,
+            version: cloudCanvasVersionsRef.current[doc.id] || 0,
+            activeCanvasId: activeCanvasIdRef.current,
+          });
+        }
       }
     }
 
@@ -929,9 +963,30 @@ function App() {
 
   function handleDeleteCurrentProject() {
     if (!activeCanvasId) return;
-    const name = activeCanvas?.name || '当前项目';
-    if (!window.confirm(`确定删除「${name}」吗？此操作不可恢复。`)) return;
-    deleteCanvas(activeCanvasId);
+    setDeleteConfirm({
+      canvasId: activeCanvasId,
+      name: activeCanvas?.name || '当前项目',
+    });
+  }
+
+  async function handleConfirmDeleteProject() {
+    if (!deleteConfirm?.canvasId || deleteConfirmLoading) return;
+    const { canvasId } = deleteConfirm;
+    setDeleteConfirmLoading(true);
+    try {
+      const token = getStoredChatToken();
+      if (token) {
+        await runWithToken((authToken) => deleteCanvasDocument(authToken, canvasId));
+      }
+      deleteCanvas(canvasId);
+      setDeleteConfirm(null);
+    } catch (error) {
+      if (!error?.isTokenExpired) {
+        setStorageNotice(error?.message || '删除失败，请稍后重试');
+      }
+    } finally {
+      setDeleteConfirmLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -1023,6 +1078,24 @@ function App() {
       showCopyNotice('视频下载已开始');
     } catch (error) {
       showCopyNotice(error?.message || '视频下载失败');
+    }
+  }
+
+  async function handleDownloadImage(images, title = 'image') {
+    const list = (Array.isArray(images) ? images : [images]).filter(Boolean);
+    if (!list.length) {
+      showCopyNotice('没有可下载的图片');
+      return;
+    }
+    try {
+      for (let index = 0; index < list.length; index += 1) {
+        const url = list[index];
+        const filename = buildImageDownloadFilename(title, url, index, list.length);
+        await downloadImageFile(url, filename);
+      }
+      showCopyNotice(list.length > 1 ? `已开始下载 ${list.length} 张图片` : '图片下载已开始');
+    } catch (error) {
+      showCopyNotice(error?.message || '图片下载失败');
     }
   }
 
@@ -2699,6 +2772,7 @@ function App() {
           activeIndex={imagePreview.index}
           title={imagePreview.title}
           onSelectIndex={(index) => setImagePreview((current) => ({ ...current, index }))}
+          onDownload={(images, title) => handleDownloadImage(images, title)}
           onClose={closeImagePreview}
         />
       ) : null}
@@ -2721,6 +2795,24 @@ function App() {
           onClose={() => setShowCustomerService(false)}
         />
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(deleteConfirm)}
+        title="删除项目"
+        message={
+          deleteConfirm
+            ? `确定删除「${deleteConfirm.name}」吗？此操作不可恢复。`
+            : ''
+        }
+        confirmLabel="删除"
+        cancelLabel="取消"
+        variant="danger"
+        loading={deleteConfirmLoading}
+        onConfirm={handleConfirmDeleteProject}
+        onCancel={() => {
+          if (!deleteConfirmLoading) setDeleteConfirm(null);
+        }}
+      />
 
       {showRechargeModal ? (
         <RechargeModal
@@ -2916,6 +3008,7 @@ function App() {
                 }
                 onPreviewVideo={(videoUrl, title) => openVideoPreview(videoUrl, title)}
                 onDownloadVideo={handleDownloadVideo}
+                onDownloadImage={handleDownloadImage}
                 onSyncImageOutputLayout={syncImageNodeOutputLayout}
                 onSplitImageNode={handleSplitImageNode}
                 onSyncVideoOutputLayout={syncVideoNodeOutputLayout}

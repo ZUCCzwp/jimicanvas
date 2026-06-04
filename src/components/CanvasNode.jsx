@@ -1915,6 +1915,7 @@ export function CanvasNode({
   onPreviewImage,
   onPreviewVideo,
   onDownloadVideo,
+  onDownloadImage,
   onSyncImageOutputLayout,
   onSplitImageNode,
   onSyncVideoOutputLayout,
@@ -1995,19 +1996,34 @@ export function CanvasNode({
           onPointerUp={(event) => event.stopPropagation()}
         >
           {node.type === 'image' && imageDisplayImages.length > 0 ? (
-            <button
-              className="icon-mini"
-              type="button"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onPreviewImage?.(imageDisplayImages, 0);
-              }}
-              title="预览图片"
-            >
-              <Maximize2 size={14} />
-            </button>
+            <>
+              <button
+                className="icon-mini"
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onPreviewImage?.(imageDisplayImages, 0);
+                }}
+                title="预览图片"
+              >
+                <Maximize2 size={14} />
+              </button>
+              <button
+                className="icon-mini"
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onDownloadImage?.(imageDisplayImages, node.title || 'image');
+                }}
+                title="下载图片"
+              >
+                <Download size={14} />
+              </button>
+            </>
           ) : null}
           {node.type === 'video' && videoDisplayUrl ? (
             <>

@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Image as ImageIcon, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Image as ImageIcon, X } from 'lucide-react';
 import { normalizeImageUrl } from '../lib/imageApi';
 
-export function ImagePreviewModal({ images, activeIndex, title, onSelectIndex, onClose }) {
+export function ImagePreviewModal({ images, activeIndex, title, onSelectIndex, onDownload, onClose }) {
   const safeIndex = Math.min(Math.max(activeIndex, 0), Math.max(images.length - 1, 0));
   const activeUrl = images[safeIndex];
   const hasMultiple = images.length > 1;
@@ -47,9 +47,21 @@ export function ImagePreviewModal({ images, activeIndex, title, onSelectIndex, o
               )}
             </div>
           </div>
-          <button type="button" className="panel-icon" onClick={onClose} title="关闭">
-            <X size={16} />
-          </button>
+          <div className="image-preview-header-actions">
+            {onDownload ? (
+              <button
+                type="button"
+                className="panel-icon"
+                onClick={() => onDownload([activeUrl], title)}
+                title="下载当前图片"
+              >
+                <Download size={16} />
+              </button>
+            ) : null}
+            <button type="button" className="panel-icon" onClick={onClose} title="关闭">
+              <X size={16} />
+            </button>
+          </div>
         </header>
 
         <div className="image-preview-stage">

@@ -378,4 +378,56 @@ export function dataURLtoFile(dataurl, filename) {
   return new File([u8arr], filename, { type: mime });
 }
 
+function guessImageExtension(url) {
+  const value = String(url || '').trim();
+  const match = value.match(/\.(jpe?g|png|webp|gif|bmp)(\?|#|$)/i);
+  if (!match) return '.png';
+  const ext = match[1].toLowerCase();
+  return ext === 'jpeg' ? '.jpg' : `.${ext}`;
+}
+
+export function buildImageDownloadFilename(title, url, index, total) {
+  const safeName = String(title || 'image')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .trim() || 'image';
+  const ext = guessImageExtension(url);
+  if (total > 1 && index != null) {
+    return `${safeName}-${index + 1}${ext}`;
+  }
+  return `${safeName}${ext}`;
+}
+
+export async function downloadImageFile(url, filename = 'image.png') {
+  const href = normalizeImageUrl(url);
+  if (!href) throw new Error('没有可下载的图片');
+
+  if (href.startsWith('data:') || href.startsWith('blob:')) {
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.download = filename;
+    anchor.rel = 'noopener';
+    anchor.click();
+    return;
+  }
+
+  try {
+    const response = await fetch(href);
+    if (!response.ok) throw new Error('下载失败');
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = blobUrl;
+    anchor.download = filename;
+    anchor.rel = 'noopener';
+    anchor.click();
+    URL.revokeObjectURL(blobUrl);
+  } catch {
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.download = filename;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+    anchor.click();
+  }
+}
 

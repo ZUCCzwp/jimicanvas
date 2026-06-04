@@ -7,6 +7,40 @@ import {
 export const API_SUCCESS_CODE = 20000;
 export const LOGIN_AGAIN_CODE = 20001;
 
+/** 连接失败后暂停请求，避免后端未启动时疯狂重试 */
+const BACKEND_COOLDOWN_MS = 30000;
+let backendUnavailableUntil = 0;
+
+export function isNetworkOrBackendError(error) {
+  if (!error) return false;
+  if (error.isBackendUnavailable) return true;
+  const message = String(error.message || '');
+  return (
+    error instanceof TypeError ||
+    /无法连接|无法连接到|Failed to fetch|NetworkError|Load failed|fetch failed/i.test(message)
+  );
+}
+
+export function isBackendInCooldown() {
+  return Date.now() < backendUnavailableUntil;
+}
+
+function markBackendSuccess() {
+  backendUnavailableUntil = 0;
+}
+
+function markBackendFailure(error) {
+  if (!isNetworkOrBackendError(error)) return;
+  backendUnavailableUntil = Date.now() + BACKEND_COOLDOWN_MS;
+}
+
+function throwIfBackendInCooldown(networkErrorMessage) {
+  if (!isBackendInCooldown()) return;
+  const err = new Error(networkErrorMessage || '服务暂不可用，请稍后再试');
+  err.isBackendUnavailable = true;
+  throw err;
+}
+
 export function getChatApiBaseUrl() {
   if (typeof import.meta !== 'undefined') {
     return import.meta.env.VITE_API_URL || import.meta.env.VITE_JIMIAIGO_API_URL || DEFAULT_CHAT_API_URL;
@@ -135,6 +169,8 @@ export async function fetchJimiaigo(path, options = {}) {
     requestBody = json ? JSON.stringify(body) : body;
   }
 
+  throwIfBackendInCooldown(networkErrorMessage);
+
   let response;
   try {
     response = await fetch(getApiUrl(path, query), {
@@ -144,7 +180,10 @@ export async function fetchJimiaigo(path, options = {}) {
     });
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(networkErrorMessage);
+      const networkErr = new Error(networkErrorMessage);
+      networkErr.isBackendUnavailable = true;
+      markBackendFailure(networkErr);
+      throw networkErr;
     }
     throw error;
   }
@@ -171,9 +210,13 @@ export async function requestJimiaigo(path, options = {}) {
     assertJimiaigoSuccess(response, parsed, { fallback, rawText });
   } catch (error) {
     enrichError?.(error, parsed);
+    if (!response.ok && response.status >= 500) {
+      markBackendFailure(error);
+    }
     throw error;
   }
 
+  markBackendSuccess();
   if (dataOnly) return parsed?.data ?? parsed;
   return parsed;
 }

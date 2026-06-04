@@ -18,20 +18,25 @@ import {
 } from 'lucide-react';
 import { AnimatedCharacters } from '../components/AnimatedCharacters';
 import { AuthModal } from '../components/AuthModal';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { RechargeModal } from '../components/RechargeModal';
 import { CanvasHomeBackground } from '../components/CanvasHomeBackground';
 import { useHomeEntranceAnimation } from '../hooks/useHomeEntranceAnimation';
 import { useTheme } from '../hooks/useTheme';
 import { openCanvasEditor } from '../lib/appNavigation';
-import { fetchCanvasDocuments, saveCanvasDocuments } from '../lib/canvasApi';
 import {
-  deleteDocument,
+  deleteCanvasDocument,
+  fetchCanvasDocument,
+  fetchCanvasList,
+  saveCanvasDocument,
+} from '../lib/canvasApi';
+import {
   documentsToProjects,
   duplicateDocument,
   parseRawDocuments,
   renameDocument,
 } from '../lib/canvasDocuments';
-import { getStoredChatToken } from '../lib/jimiaigoApi';
+import { getStoredChatToken, isBackendInCooldown } from '../lib/jimiaigoApi';
 import { fetchSiteConfig, getDefaultSiteSettings } from '../lib/siteApi';
 import {
   clearAuthToken,
@@ -95,9 +100,17 @@ const COPY = {
   },
 };
 
+/** 统一为毫秒：云端列表为 Unix 秒，画布 JSON 内 updatedAt 为毫秒 */
+function toTimestampMillis(timestamp) {
+  const n = Number(timestamp);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return n < 1e12 ? n * 1000 : n;
+}
+
 function formatProjectTime(timestamp) {
-  if (!timestamp) return '未知时间';
-  const date = new Date(timestamp);
+  const ms = toTimestampMillis(timestamp);
+  if (!ms) return '未知时间';
+  const date = new Date(ms);
   if (Number.isNaN(date.getTime())) return '未知时间';
 
   const now = Date.now();
@@ -254,42 +267,65 @@ function ProjectMenu({ project, onAction }) {
     return () => document.removeEventListener('pointerdown', handleClick);
   }, [open]);
 
-  const run = (command) => {
+  const run = (command, event) => {
+    event?.stopPropagation?.();
+    event?.preventDefault?.();
     setOpen(false);
     onAction(command, project);
   };
 
+  const stopMenuEvent = (event) => {
+    event.stopPropagation();
+  };
+
   return (
-    <div className="canvas-home-project-menu" ref={menuRef}>
+    <div
+      className="canvas-home-project-menu"
+      ref={menuRef}
+      onPointerDown={stopMenuEvent}
+      onClick={stopMenuEvent}
+    >
       <button
         type="button"
         className="canvas-home-project-menu-trigger"
         aria-label="更多操作"
+        aria-expanded={open}
+        onPointerDown={stopMenuEvent}
         onClick={(event) => {
-          event.stopPropagation();
+          stopMenuEvent(event);
           setOpen((prev) => !prev);
         }}
       >
         <MoreHorizontal size={16} />
       </button>
       {open ? (
-        <div className="canvas-home-project-menu-dropdown" role="menu">
-          <button type="button" role="menuitem" onClick={() => run('open')}>
+        <div
+          className="canvas-home-project-menu-dropdown"
+          role="menu"
+          onPointerDown={stopMenuEvent}
+          onClick={stopMenuEvent}
+        >
+          <button type="button" role="menuitem" onClick={(event) => run('open', event)}>
             {COPY.actionOpen}
           </button>
-          <button type="button" role="menuitem" onClick={() => run('rename')}>
+          <button type="button" role="menuitem" onClick={(event) => run('rename', event)}>
             {COPY.actionRename}
           </button>
-          <button type="button" role="menuitem" onClick={() => run('duplicate')}>
+          <button type="button" role="menuitem" onClick={(event) => run('duplicate', event)}>
             {COPY.actionDuplicate}
           </button>
-          <button type="button" role="menuitem" className="danger" onClick={() => run('delete')}>
+          <button type="button" role="menuitem" className="danger" onClick={(event) => run('delete', event)}>
             {COPY.actionDelete}
           </button>
         </div>
       ) : null}
     </div>
   );
+}
+
+function openProjectFromCard(event, project, onOpen) {
+  if (event.target.closest('.canvas-home-project-menu')) return;
+  onOpen(project);
 }
 
 export function CanvasHome() {
@@ -305,10 +341,13 @@ export function CanvasHome() {
   const [projects, setProjects] = useState([]);
   const [rawDocuments, setRawDocuments] = useState([]);
   const [canvasVersion, setCanvasVersion] = useState(0);
+  const [canvasVersions, setCanvasVersions] = useState({});
   const [activeCanvasId, setActiveCanvasId] = useState('');
   const [allProjectsVisible, setAllProjectsVisible] = useState(false);
   const [notice, setNotice] = useState('');
   const [showRechargeModal, setShowRechargeModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const recentProjects = useMemo(
     () => projects.slice(0, RECENT_PROJECT_LIMIT),
@@ -330,12 +369,35 @@ export function CanvasHome() {
     window.setTimeout(() => setNotice(''), 2800);
   }, []);
 
-  const applyCanvasPayload = useCallback((data) => {
+  const applyListPayload = useCallback((data) => {
+    setCanvasVersion(Number(data?.version) || 0);
+    setActiveCanvasId((data && data.active_canvas_id) || '');
+    const summaries = Array.isArray(data?.canvases) ? data.canvases : [];
+    const docs = summaries.map((item) => ({
+      id: item.id,
+      name: item.name,
+      nodes: [],
+      connections: [],
+      updatedAt: toTimestampMillis(item.updated_at) || Date.now(),
+    }));
+    setRawDocuments(docs);
+    setProjects(documentsToProjects(docs));
+    const versions = {};
+    summaries.forEach((item) => {
+      if (item.id) versions[item.id] = Number(item.version) || 0;
+    });
+    setCanvasVersions(versions);
+  }, []);
+
+  const applyFullPayload = useCallback((data) => {
     setCanvasVersion(Number(data?.version) || 0);
     setActiveCanvasId((data && data.active_canvas_id) || '');
     const docs = parseRawDocuments(data?.documents);
     setRawDocuments(docs);
     setProjects(documentsToProjects(docs));
+    if (data?.canvas_versions) {
+      setCanvasVersions((prev) => ({ ...prev, ...data.canvas_versions }));
+    }
   }, []);
 
   const fetchProjects = useCallback(async () => {
@@ -345,17 +407,19 @@ export function CanvasHome() {
       setRawDocuments([]);
       return;
     }
+    if (isBackendInCooldown()) return;
+
     setProjectsLoading(true);
     try {
-      const data = await fetchCanvasDocuments(authToken);
-      applyCanvasPayload(data);
+      const data = await fetchCanvasList(authToken);
+      applyListPayload(data);
     } catch {
       setRawDocuments([]);
       setProjects([]);
     } finally {
       setProjectsLoading(false);
     }
-  }, [applyCanvasPayload]);
+  }, [applyListPayload]);
 
   const refreshAuth = useCallback(async () => {
     const authToken = getStoredChatToken();
@@ -367,9 +431,11 @@ export function CanvasHome() {
     try {
       const info = await fetchUserInfo(authToken);
       setUser(info);
-    } catch {
-      clearAuthToken();
-      setToken('');
+    } catch (error) {
+      if (error?.isTokenExpired) {
+        clearAuthToken();
+        setToken('');
+      }
       setUser(null);
     }
   }, []);
@@ -379,15 +445,20 @@ export function CanvasHome() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     refreshAuth().then(() => {
-      if (getStoredChatToken()) fetchProjects();
+      if (!cancelled && getStoredChatToken() && !isBackendInCooldown()) fetchProjects();
     });
+    return () => {
+      cancelled = true;
+    };
   }, [fetchProjects, refreshAuth]);
 
   useEffect(() => {
     const onTokenChange = () => {
+      if (isBackendInCooldown()) return;
       refreshAuth().then(() => {
-        if (getStoredChatToken()) fetchProjects();
+        if (getStoredChatToken() && !isBackendInCooldown()) fetchProjects();
       });
     };
     window.addEventListener('auth:token-saved', onTokenChange);
@@ -424,34 +495,6 @@ export function CanvasHome() {
     refreshAuth();
   }, [refreshAuth]);
 
-  const persistDocuments = async ({ documents, nextActiveCanvasId, successMessage }) => {
-    const authToken = getStoredChatToken();
-    if (!authToken) {
-      setAuthMode('login');
-      setAuthOpen(true);
-      return false;
-    }
-    setProjectsSaving(true);
-    try {
-      const data = await saveCanvasDocuments(authToken, {
-        documents,
-        activeCanvasId: nextActiveCanvasId != null ? nextActiveCanvasId : activeCanvasId,
-        version: canvasVersion,
-      });
-      applyCanvasPayload(data);
-      if (successMessage) showNotice(successMessage);
-      return true;
-    } catch (error) {
-      if (error?.isConflict) {
-        await fetchProjects();
-      }
-      showNotice(error.message || '保存失败');
-      return false;
-    } finally {
-      setProjectsSaving(false);
-    }
-  };
-
   const handleStartCreate = () => {
     requireAuth(() => openCanvasEditor({ createNew: true }));
   };
@@ -482,7 +525,7 @@ export function CanvasHome() {
     }
   };
 
-  const handleRenameProject = (project) => {
+  const handleRenameProject = async (project) => {
     const value = window.prompt(COPY.renamePrompt, project.name);
     if (value == null) return;
     const trimmed = value.trim();
@@ -490,40 +533,94 @@ export function CanvasHome() {
       showNotice(COPY.renameRequired);
       return;
     }
-    const documents = renameDocument(rawDocuments, project.id, trimmed);
-    persistDocuments({ documents, successMessage: COPY.renameSuccess });
+    const authToken = getStoredChatToken();
+    if (!authToken) {
+      setAuthMode('login');
+      setAuthOpen(true);
+      return;
+    }
+    setProjectsSaving(true);
+    try {
+      const cloud = await fetchCanvasDocument(authToken, project.id);
+      const docs = parseRawDocuments(cloud?.documents);
+      const source = docs.find((doc) => doc.id === project.id);
+      if (!source) {
+        showNotice(COPY.projectNotFound);
+        return;
+      }
+      const renamed = renameDocument([source], project.id, trimmed)[0];
+      const data = await saveCanvasDocument(authToken, project.id, {
+        document: renamed,
+        version: canvasVersions[project.id] || 0,
+        activeCanvasId,
+      });
+      applyFullPayload(data);
+      showNotice(COPY.renameSuccess);
+    } catch (error) {
+      if (error?.isConflict) await fetchProjects();
+      showNotice(error.message || '保存失败');
+    } finally {
+      setProjectsSaving(false);
+    }
   };
 
   const handleDuplicateProject = async (project) => {
-    const source = rawDocuments.find((doc) => doc.id === project.id);
-    if (!source) {
-      showNotice(COPY.projectNotFound);
+    const authToken = getStoredChatToken();
+    if (!authToken) {
+      setAuthMode('login');
+      setAuthOpen(true);
       return;
     }
-    const duplicated = duplicateDocument(source);
-    const documents = [duplicated, ...rawDocuments];
-    await persistDocuments({
-      documents,
-      nextActiveCanvasId: duplicated.id,
-      successMessage: COPY.duplicateSuccess,
-    });
+    setProjectsSaving(true);
+    try {
+      const cloud = await fetchCanvasDocument(authToken, project.id);
+      const docs = parseRawDocuments(cloud?.documents);
+      const source = docs.find((doc) => doc.id === project.id);
+      if (!source) {
+        showNotice(COPY.projectNotFound);
+        return;
+      }
+      const duplicated = duplicateDocument(source);
+      const data = await saveCanvasDocument(authToken, duplicated.id, {
+        document: duplicated,
+        version: 0,
+        activeCanvasId: duplicated.id,
+      });
+      applyFullPayload(data);
+      showNotice(COPY.duplicateSuccess);
+    } catch (error) {
+      if (error?.isConflict) await fetchProjects();
+      showNotice(error.message || '保存失败');
+    } finally {
+      setProjectsSaving(false);
+    }
   };
 
   const handleDeleteProject = (project) => {
-    const confirmed = window.confirm(
-      COPY.deleteConfirmMessage.replace('{name}', project.name)
-    );
-    if (!confirmed) return;
-    const { documents, activeCanvasId: nextActive } = deleteDocument(
-      rawDocuments,
-      activeCanvasId,
-      project.id
-    );
-    persistDocuments({
-      documents,
-      nextActiveCanvasId: nextActive,
-      successMessage: COPY.deleteSuccess,
-    });
+    if (!project?.id) return;
+    setDeleteTarget(project);
+  };
+
+  const handleConfirmDeleteProject = async () => {
+    if (!deleteTarget?.id || deleteLoading) return;
+    const authToken = getStoredChatToken();
+    if (!authToken) {
+      setDeleteTarget(null);
+      setAuthMode('login');
+      setAuthOpen(true);
+      return;
+    }
+    setDeleteLoading(true);
+    try {
+      const data = await deleteCanvasDocument(authToken, deleteTarget.id);
+      applyFullPayload(data);
+      setDeleteTarget(null);
+      showNotice(COPY.deleteSuccess);
+    } catch (error) {
+      showNotice(error.message || '删除失败');
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   const handleAuthSuccess = () => {
@@ -650,11 +747,19 @@ export function CanvasHome() {
               </button>
 
               {recentProjects.map((project) => (
-                <button
+                <div
                   key={project.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   className="canvas-home-project-card"
-                  onClick={() => handleOpenProject(project)}
+                  onClick={(event) => openProjectFromCard(event, project, handleOpenProject)}
+                  onKeyDown={(event) => {
+                    if (event.target.closest('.canvas-home-project-menu')) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleOpenProject(project);
+                    }
+                  }}
                 >
                   <ProjectMenu project={project} onAction={handleProjectAction} />
                   <div className="canvas-home-project-cover">
@@ -669,7 +774,7 @@ export function CanvasHome() {
                   <div className="canvas-home-project-action">
                     <span>{COPY.openProject}</span>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
 
@@ -717,11 +822,19 @@ export function CanvasHome() {
                 <p className="canvas-home-empty-hint">{COPY.emptyProjects}</p>
               ) : null}
               {projects.map((project) => (
-                <button
+                <div
                   key={project.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   className="canvas-home-all-project-row"
-                  onClick={() => handleOpenProject(project)}
+                  onClick={(event) => openProjectFromCard(event, project, handleOpenProject)}
+                  onKeyDown={(event) => {
+                    if (event.target.closest('.canvas-home-project-menu')) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleOpenProject(project);
+                    }
+                  }}
                 >
                   <div className="canvas-home-all-project-icon">
                     <Grid3x3 size={18} />
@@ -733,7 +846,7 @@ export function CanvasHome() {
                     </span>
                   </div>
                   <ProjectMenu project={project} onAction={handleProjectAction} />
-                </button>
+                </div>
               ))}
             </div>
             <footer className="canvas-home-dialog-footer">
@@ -769,6 +882,24 @@ export function CanvasHome() {
           onSuccess={handleRechargeSuccess}
         />
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title={COPY.deleteConfirmTitle}
+        message={
+          deleteTarget
+            ? COPY.deleteConfirmMessage.replace('{name}', deleteTarget.name)
+            : ''
+        }
+        confirmLabel={COPY.actionDelete}
+        cancelLabel={COPY.cancel}
+        variant="danger"
+        loading={deleteLoading}
+        onConfirm={handleConfirmDeleteProject}
+        onCancel={() => {
+          if (!deleteLoading) setDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }

@@ -2922,6 +2922,13 @@ button {
   border-bottom: 1px solid rgba(148, 163, 184, 0.12);
 }
 
+.image-preview-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .image-preview-stage {
   position: relative;
   flex: 1;
@@ -3302,6 +3309,109 @@ button {
   font-size: 13px;
   line-height: 1.5;
   text-align: center;
+}
+
+.confirm-dialog-backdrop {
+  z-index: 130;
+}
+
+.confirm-dialog {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid var(--border-subtle);
+  background: var(--modal-bg);
+  box-shadow: var(--modal-shadow);
+}
+
+.confirm-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 0;
+}
+
+.confirm-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.confirm-dialog-title strong {
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.confirm-dialog-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.confirm-dialog-icon-danger {
+  color: var(--sync-error-text);
+  background: var(--sync-error-bg);
+  border: 1px solid var(--sync-error-border);
+}
+
+.confirm-dialog-message {
+  margin: 0;
+  padding: 14px 18px 18px 64px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.confirm-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 18px 18px;
+}
+
+.confirm-dialog-btn {
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.confirm-dialog-btn:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.confirm-dialog-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.confirm-dialog-btn-confirm.confirm-dialog-btn-danger {
+  border-color: var(--sync-error-border);
+  background: var(--sync-error-bg);
+  color: var(--sync-error-text);
+}
+
+.confirm-dialog-btn-confirm.confirm-dialog-btn-danger:hover:not(:disabled) {
+  filter: brightness(1.08);
 }
 
 .recharge-modal-backdrop {
