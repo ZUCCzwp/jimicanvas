@@ -20,6 +20,45 @@ export function isDefaultDemoImageOutput(imageUrls = []) {
   return imageUrls.length > 0 && imageUrls.every((url) => isDefaultDemoImageUrl(url));
 }
 
+function isImageUrlLike(value) {
+  const str = String(value || '').trim();
+  if (!str) return false;
+  return (
+    str.startsWith('data:image') ||
+    str.startsWith('blob:') ||
+    /^https?:\/\//.test(str) ||
+    str.startsWith('/demo/')
+  );
+}
+
+export function collectImageNodeOutputUrls(node) {
+  if (!node || node.type !== 'image') return [];
+
+  const images = Array.isArray(node.images) ? node.images.filter(Boolean) : [];
+  if (images.length > 0) return images;
+
+  const content = String(node.content || '').trim();
+  if (isImageUrlLike(content)) return [content];
+
+  return [];
+}
+
+/** 有真实输出时隐藏内置示例图，仅展示真实结果 */
+export function filterRealImageOutputs(imageUrls = []) {
+  const list = (imageUrls || []).filter(Boolean);
+  const real = list.filter((url) => !isDefaultDemoImageUrl(url));
+  return real.length > 0 ? real : list;
+}
+
+export function getImageNodeDisplayImages(node) {
+  return filterRealImageOutputs(collectImageNodeOutputUrls(node));
+}
+
+export function hasRealImageNodeOutput(node) {
+  const display = getImageNodeDisplayImages(node);
+  return display.length > 0 && !isDefaultDemoImageOutput(display);
+}
+
 export const IMAGE_OUTPUT_BASE_WIDTH = 320;
 export const IMAGE_OUTPUT_MIN_WIDTH = 180;
 export const IMAGE_OUTPUT_MAX_WIDTH = 520;

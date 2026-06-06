@@ -98,7 +98,7 @@ import {
   formatImageUnderstandingResult,
 } from './lib/imageApi';
 import { buildStructuredTranslateInstruction, formatStructuredPromptResult } from './lib/promptStructured';
-import { buildImageNodeLayoutPatch, computeSplitImageNodePositions, formatCellAspectRatio } from './lib/imageNodeLayout';
+import { buildImageNodeLayoutPatch, collectImageNodeOutputUrls, computeSplitImageNodePositions, filterRealImageOutputs, formatCellAspectRatio, resolveImageOutputLayout } from './lib/imageNodeLayout';
 import { buildVideoNodeLayoutPatch } from './lib/videoNodeLayout';
 import {
   executeImageGeneration,
@@ -1294,6 +1294,89 @@ function App() {
         ...doc,
         nodes: doc.nodes.map((n) =>
           newNodes.some((item) => item.id === n.id) ? { ...n, isEntrance: false } : n
+        ),
+      }));
+    }, 1000);
+
+    flushPersist();
+  }
+
+  async function handleExplodeImageOutputs(nodeId) {
+    const targetNode = nodes.find((n) => n.id === nodeId);
+    if (!targetNode) return;
+
+    const imageUrls = filterRealImageOutputs(collectImageNodeOutputUrls(targetNode));
+    if (imageUrls.length <= 1) {
+      showCopyNotice('至少需要 2 张输出图片才能拆分');
+      return;
+    }
+
+    const layouts = await Promise.all(
+      imageUrls.map((url) =>
+        resolveImageOutputLayout({
+          imageUrls: [url],
+          imageRatio: targetNode.imageRatio,
+          imageCount: 1,
+        })
+      )
+    );
+
+    const nodeWidth = Math.max(...layouts.map((layout) => layout.width));
+    const nodeHeight = Math.max(...layouts.map((layout) => layout.height));
+    const cols = Math.min(2, imageUrls.length);
+    const rows = Math.ceil(imageUrls.length / cols);
+    const positions = computeSplitImageNodePositions({
+      originX: targetNode.x,
+      originY: targetNode.y,
+      originWidth: targetNode.width,
+      cols,
+      rows,
+      nodeWidth,
+      nodeHeight,
+    });
+
+    const newNodes = imageUrls.map((url, idx) => {
+      const layout = layouts[idx];
+      const { x, y } = positions[idx];
+      const newNode = createNode('image', x, y);
+      newNode.title = `${targetNode.title || '图片'}_${idx + 1}`;
+      newNode.content = url;
+      newNode.images = [url];
+      newNode.imageCount = 1;
+      newNode.imageRatio = targetNode.imageRatio;
+      newNode.imageModel = targetNode.imageModel;
+      newNode.imageResolution = targetNode.imageResolution;
+      newNode.imageQuality = targetNode.imageQuality;
+      newNode.prompt = targetNode.prompt;
+      newNode.referenceImages = Array.isArray(targetNode.referenceImages)
+        ? [...targetNode.referenceImages]
+        : [];
+      newNode.isEntrance = true;
+      newNode.width = layout.width;
+      newNode.height = layout.height;
+      newNode.outputAspectCss = layout.outputAspectCss;
+      return newNode;
+    });
+
+    const firstNewId = newNodes[0]?.id;
+
+    updateActiveCanvas((doc) => ({
+      ...doc,
+      nodes: doc.nodes.filter((node) => node.id !== nodeId).concat(newNodes),
+      connections: doc.connections.map((link) => {
+        if (link.fromNodeId === nodeId) return { ...link, fromNodeId: firstNewId };
+        if (link.toNodeId === nodeId) return { ...link, toNodeId: firstNewId };
+        return link;
+      }),
+    }));
+
+    setSelectedNodeIds(newNodes.map((node) => node.id));
+
+    setTimeout(() => {
+      updateActiveCanvas((doc) => ({
+        ...doc,
+        nodes: doc.nodes.map((node) =>
+          newNodes.some((item) => item.id === node.id) ? { ...node, isEntrance: false } : node
         ),
       }));
     }, 1000);
@@ -3250,6 +3333,7 @@ function App() {
                 onDownloadImage={handleDownloadImage}
                 onSyncImageOutputLayout={syncImageNodeOutputLayout}
                 onSplitImageNode={handleSplitImageNode}
+                onExplodeImageOutputs={handleExplodeImageOutputs}
                 onSyncVideoOutputLayout={syncVideoNodeOutputLayout}
                 onSyncAudioOutputLayout={syncAudioNodeOutputLayout}
                 onRemoveVeoFrame={removeVeoFrame}

@@ -141,6 +141,7 @@ async function buildImageRequest({ prompt, model, ratio, resolution, quality, re
       resolution: resolution || DEFAULT_IMAGE_RESOLUTION,
       quality: quality || 'auto',
       n: 1,
+      generation_mode: 'queue',
       images: referenceImages.map((image) => normalizeImageUrl(image.url || image.data)).filter(Boolean),
     };
   }

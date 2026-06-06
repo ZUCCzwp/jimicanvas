@@ -72,6 +72,8 @@ import {
 } from '../lib/connections';
 import {
   buildImageNodeLayoutPatch,
+  getImageNodeDisplayImages,
+  hasRealImageNodeOutput,
   isDefaultDemoImageOutput,
   resolveImageOutputLayout,
 } from '../lib/imageNodeLayout';
@@ -89,11 +91,7 @@ function NodeIcon({ type }) {
 }
 
 function getImageDisplayImages(node) {
-  const images = Array.isArray(node.images) && node.images.length > 0 ? node.images : [];
-  if (images.length > 0) return images;
-  const content = String(node.content || '').trim();
-  if (content && content !== PLACEHOLDER_IMAGE && isImageContent(content)) return [content];
-  return [];
+  return getImageNodeDisplayImages(node);
 }
 
 function isDefaultDemoMediaUrl(url, defaultUrl) {
@@ -2076,6 +2074,7 @@ export function CanvasNode({
   onDownloadImage,
   onSyncImageOutputLayout,
   onSplitImageNode,
+  onExplodeImageOutputs,
   onSyncVideoOutputLayout,
   onSyncAudioOutputLayout,
   onRemoveVeoFrame,
@@ -2084,11 +2083,14 @@ export function CanvasNode({
   onFinishLink,
 }) {
   const imageDisplayImages = node.type === 'image' ? getImageDisplayImages(node) : [];
+  const canExplodeImageOutputs =
+    node.type === 'image' && hasRealImageNodeOutput(node) && imageDisplayImages.length > 1;
   const videoDisplayUrl = node.type === 'video' ? getVideoDisplayUrl(node) : '';
   const audioDisplayUrl = node.type === 'audio' ? getAudioDisplayUrl(node) : '';
 
   const [openSplitMenu, setOpenSplitMenu] = useState(false);
   const [isSplitting, setIsSplitting] = useState(false);
+  const [isExploding, setIsExploding] = useState(false);
 
   useEffect(() => {
     if (!openSplitMenu) return;
@@ -2108,6 +2110,19 @@ export function CanvasNode({
       alert(err.message || '图片切分失败');
     } finally {
       setIsSplitting(false);
+    }
+  }
+
+  async function handleExplodeHeaderTrigger() {
+    if (!canExplodeImageOutputs) return;
+    setOpenSplitMenu(false);
+    setIsExploding(true);
+    try {
+      await onExplodeImageOutputs?.(node.id);
+    } catch (err) {
+      alert(err.message || '拆分图片节点失败');
+    } finally {
+      setIsExploding(false);
     }
   }
 
@@ -2230,18 +2245,31 @@ export function CanvasNode({
               <button
                 className={`icon-mini ${openSplitMenu ? 'active' : ''}`}
                 type="button"
+                disabled={isSplitting || isExploding}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
                   setOpenSplitMenu(!openSplitMenu);
                 }}
-                title="宫格切分"
+                title={canExplodeImageOutputs ? '拆分输出 / 宫格切分' : '宫格切分'}
               >
                 <Scissors size={14} />
               </button>
               {openSplitMenu && (
                 <div className="image-split-dropdown header-split-dropdown" onClick={(e) => e.stopPropagation()}>
+                  {canExplodeImageOutputs ? (
+                    <>
+                      <button
+                        type="button"
+                        className="image-split-dropdown-item"
+                        onClick={handleExplodeHeaderTrigger}
+                      >
+                        拆分为 {imageDisplayImages.length} 个独立节点
+                      </button>
+                      <div className="image-split-dropdown-divider" />
+                    </>
+                  ) : null}
                   <button
                     type="button"
                     className="image-split-dropdown-item"
@@ -2321,7 +2349,6 @@ export function CanvasNode({
             onOpenAssetLibrary={onOpenAssetLibrary}
             onUploadImageOutput={onUploadImageOutput}
             onSyncOutputLayout={onSyncImageOutputLayout}
-            onSplitImageNode={onSplitImageNode}
           />
         ) : node.type === 'audio' ? (
           <AudioBody

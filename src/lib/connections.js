@@ -1,5 +1,5 @@
 import { PLACEHOLDER_IMAGE, DEFAULT_VIDEO_URL, getImageReferenceMax } from './constants';
-import { isDefaultDemoImageUrl } from './imageNodeLayout';
+import { isDefaultDemoImageUrl, getImageNodeDisplayImages } from './imageNodeLayout';
 import { isVideoContent } from './canvas';
 
 export function getIncomingConnections(nodeId, connections = []) {
@@ -72,22 +72,8 @@ export function getVideoInputLinks(nodeId, nodes = [], connections = []) {
 
 export function getImageNodeOutputUrl(node) {
   if (!node || node.type !== 'image') return '';
-
-  const images = Array.isArray(node.images) && node.images.length > 0 ? node.images : [];
-  if (images[0]) return images[0];
-
-  const content = String(node.content || '').trim();
-  if (
-    content &&
-    content !== PLACEHOLDER_IMAGE &&
-    (content.startsWith('data:image') ||
-      /^https?:\/\//.test(content) ||
-      content.startsWith('/demo/'))
-  ) {
-    return content;
-  }
-
-  return '';
+  const display = getImageNodeDisplayImages(node);
+  return display[0] || '';
 }
 
 export function getImageNodeReferenceUrl(node) {

@@ -4470,6 +4470,12 @@ html[data-theme='light'] .workflow-template-icon.icon-layers {
   color: var(--text-strong);
 }
 
+.image-split-dropdown-divider {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border-default);
+}
+
 /* Slicing loader overlay */
 .image-split-loading-overlay {
   position: absolute;

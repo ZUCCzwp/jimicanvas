@@ -1,5 +1,5 @@
 import { waitForImageTask } from './imageApi';
-import { buildImageNodeLayoutPatch, isDefaultDemoImageOutput } from './imageNodeLayout';
+import { buildImageNodeLayoutPatch, filterRealImageOutputs, isDefaultDemoImageOutput } from './imageNodeLayout';
 import { buildVideoNodeLayoutPatch } from './videoNodeLayout';
 import { waitForVideoTask } from './videoApi';
 
@@ -285,7 +285,7 @@ export async function executeImageGeneration(
   });
   let batch = getGenerationBatch(node, settings.count);
   const isResume = batch.completed > 0 || Boolean(getImageTaskId(node));
-  let images = isResume && Array.isArray(node.images) ? [...node.images] : [];
+  let images = isResume && Array.isArray(node.images) ? filterRealImageOutputs(node.images) : [];
 
   updateNode(node.id, {
     status: 'running',
@@ -326,7 +326,7 @@ export async function executeImageGeneration(
         });
       },
     });
-    images = [...images, ...taskImages];
+    images = filterRealImageOutputs([...images, ...taskImages]);
     batch = { ...batch, completed: batch.completed + 1 };
 
     updateNode(node.id, {
