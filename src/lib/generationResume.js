@@ -281,6 +281,7 @@ export async function executeImageGeneration(
     resolution: node.imageResolution,
     ratio: node.imageRatio,
     count: node.imageCount,
+    quality: node.imageQuality,
   });
   let batch = getGenerationBatch(node, settings.count);
   const isResume = batch.completed > 0 || Boolean(getImageTaskId(node));
@@ -301,6 +302,7 @@ export async function executeImageGeneration(
         model: settings.model,
         ratio: settings.ratio,
         resolution: settings.resolution,
+        quality: settings.quality,
         referenceImages: node.referenceImages || [],
       });
 

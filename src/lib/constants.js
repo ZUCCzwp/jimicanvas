@@ -17,6 +17,7 @@ export const DEFAULT_IMAGE_MODEL = 'gpt-image-2';
 export const DEFAULT_IMAGE_RESOLUTION = '1k';
 export const DEFAULT_IMAGE_RATIO = '1:1';
 export const DEFAULT_IMAGE_COUNT = 1;
+export const DEFAULT_IMAGE_QUALITY = 'auto';
 export const DEFAULT_NODE_WIDTH = 260;
 export const DEFAULT_NODE_HEIGHT = 180;
 export const MIN_NOTE_WIDTH = 180;
@@ -505,6 +506,13 @@ export const IMAGE_COUNT_OPTIONS = [
   { value: 5, label: '5 次' },
 ];
 
+export const IMAGE_QUALITY_OPTIONS = [
+  { value: 'auto', label: '自动' },
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+];
+
 export const IMAGE_MODEL_LIMITS = {
   nanobanana2: {
     resolutions: ['1k', '2k', '4k'],
@@ -519,7 +527,8 @@ export const IMAGE_MODEL_LIMITS = {
   'gpt-image-2': {
     resolutions: ['1k', '2k', '4k'],
     ratios: GPT_IMAGE_RATIO_OPTIONS.map((option) => option.value),
-    maxCount: 1,
+    qualities: IMAGE_QUALITY_OPTIONS.map((option) => option.value),
+    maxCount: 5,
   },
 };
 
@@ -544,14 +553,23 @@ export function getImageCountOptions(model) {
   return IMAGE_COUNT_OPTIONS.filter((option) => option.value <= maxCount);
 }
 
+export function getImageQualityOptions(model) {
+  const allowed = getImageModelLimits(model).qualities;
+  if (!allowed) return [];
+  const allowedSet = new Set(allowed);
+  return IMAGE_QUALITY_OPTIONS.filter((option) => allowedSet.has(option.value));
+}
+
 export function normalizeImageModelSettings({
   model = DEFAULT_IMAGE_MODEL,
   resolution = DEFAULT_IMAGE_RESOLUTION,
   ratio = DEFAULT_IMAGE_RATIO,
   count = DEFAULT_IMAGE_COUNT,
+  quality = DEFAULT_IMAGE_QUALITY,
 } = {}) {
   const resolutionOptions = getImageResolutionOptions(model);
   const ratioOptions = getImageRatioOptions(model);
+  const qualityOptions = getImageQualityOptions(model);
   const maxCount = getImageModelLimits(model).maxCount;
 
   return {
@@ -563,6 +581,12 @@ export function normalizeImageModelSettings({
       ? ratio
       : ratioOptions[0]?.value || DEFAULT_IMAGE_RATIO,
     count: Math.min(maxCount, Math.max(1, Number(count) || DEFAULT_IMAGE_COUNT)),
+    quality:
+      qualityOptions.length === 0
+        ? undefined
+        : qualityOptions.some((option) => option.value === quality)
+          ? quality
+          : qualityOptions[0]?.value || DEFAULT_IMAGE_QUALITY,
   };
 }
 

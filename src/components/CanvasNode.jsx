@@ -33,6 +33,7 @@ import {
   IMAGE_MODEL_OPTIONS,
   getImageRatioOptions,
   getImageResolutionOptions,
+  getImageQualityOptions,
   normalizeImageModelSettings,
   normalizeVideoModelSettings,
   VEO_GENERATION_TYPE_OPTIONS,
@@ -1567,11 +1568,13 @@ function ImageToolbar({
   const resolutionOptions = getImageResolutionOptions(model);
   const ratioOptions = getImageRatioOptions(model);
   const countOptions = getImageCountOptions(model);
+  const qualityOptions = getImageQualityOptions(model);
   const normalizedSettings = normalizeImageModelSettings({
     model,
     resolution: node.imageResolution,
     ratio: node.imageRatio,
     count: node.imageCount,
+    quality: node.imageQuality,
   });
   const displayImages = getImageDisplayImages(node);
   const hasOutputImages = displayImages.length > 0;
@@ -1649,12 +1652,14 @@ function ImageToolbar({
               resolution: node.imageResolution,
               ratio: node.imageRatio,
               count: node.imageCount,
+              quality: node.imageQuality,
             });
             onUpdateNode(node.id, {
               imageModel: value,
               imageResolution: nextSettings.resolution,
               imageRatio: nextSettings.ratio,
               imageCount: nextSettings.count,
+              imageQuality: nextSettings.quality,
               ...patchLayoutForEmptyNode({
                 imageRatio: nextSettings.ratio,
                 imageCount: nextSettings.count,
@@ -1668,6 +1673,14 @@ function ImageToolbar({
           options={resolutionOptions}
           onChange={(value) => onUpdateNode(node.id, { imageResolution: value })}
         />
+        {qualityOptions.length > 0 ? (
+          <OptionSegment
+            title="画质"
+            value={normalizedSettings.quality}
+            options={qualityOptions}
+            onChange={(value) => onUpdateNode(node.id, { imageQuality: value, status: 'idle' })}
+          />
+        ) : null}
       </div>
       <OptionSegment
         title="尺寸"

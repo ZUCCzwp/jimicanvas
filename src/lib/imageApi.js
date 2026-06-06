@@ -121,13 +121,14 @@ async function buildReferenceParts(referenceImages = []) {
   return parts;
 }
 
-async function buildImageRequest({ prompt, model, ratio, resolution, referenceImages = [] }) {
+async function buildImageRequest({ prompt, model, ratio, resolution, quality, referenceImages = [] }) {
   if (model === 'gpt-image-2') {
     return {
       model,
       prompt,
       ratio: ratio || DEFAULT_IMAGE_RATIO,
       resolution: resolution || DEFAULT_IMAGE_RESOLUTION,
+      quality: quality || 'auto',
       n: 1,
       images: referenceImages.map((image) => normalizeImageUrl(image.url || image.data)).filter(Boolean),
     };
@@ -147,11 +148,19 @@ async function buildImageRequest({ prompt, model, ratio, resolution, referenceIm
   };
 }
 
-export async function createImageGenerationTask({ token, prompt, model, ratio, resolution, referenceImages }) {
+export async function createImageGenerationTask({
+  token,
+  prompt,
+  model,
+  ratio,
+  resolution,
+  quality,
+  referenceImages,
+}) {
   const data = await requestJson(imagePathForModel(model), {
     token,
     method: 'POST',
-    body: await buildImageRequest({ prompt, model, ratio, resolution, referenceImages }),
+    body: await buildImageRequest({ prompt, model, ratio, resolution, quality, referenceImages }),
   });
 
   const taskId = data?.task_id || data?.taskId || data?.id;
