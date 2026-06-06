@@ -1011,8 +1011,9 @@ function VeoFrameSlot({ label, optional, image, disabled, blockedHint, onPick, o
   );
 }
 
-function VideoToolbar({
+export function VideoToolbar({
   node,
+  variant = 'dock',
   isRunning,
   isTranslating,
   textInputLinks = [],
@@ -1024,6 +1025,7 @@ function VideoToolbar({
   onRemoveVeoFrame,
   onRemoveSeedanceMedia,
   onUpdateNode,
+  onOpenEnlargedSettings,
 }) {
   const toolbarRef = useRef(null);
   const hasTextInput = textInputLinks.length > 0;
@@ -1073,7 +1075,7 @@ function VideoToolbar({
   const resolutionTitle = family === 'grok' ? '画质' : '分辨率';
 
   useEffect(() => {
-    if (!isSeedance) return undefined;
+    if (variant === 'modal' || !isSeedance) return undefined;
 
     const toolbar = toolbarRef.current;
     if (!toolbar) return undefined;
@@ -1130,6 +1132,7 @@ function VideoToolbar({
       toolbar.style.removeProperty('--seedance-toolbar-offset-y');
     };
   }, [
+    variant,
     isSeedance,
     node.id,
     references.length,
@@ -1233,9 +1236,15 @@ function VideoToolbar({
   return (
     <div
       ref={toolbarRef}
-      className={`node-bottom-toolbar image-toolbar video-toolbar ${isSeedance ? 'video-toolbar-seedance' : ''}`}
+      className={`node-bottom-toolbar image-toolbar video-toolbar ${isSeedance ? 'video-toolbar-seedance' : ''} ${variant === 'modal' ? 'node-settings-toolbar-modal' : ''}`}
       onPointerDown={(event) => event.stopPropagation()}
     >
+      {variant === 'dock' && onOpenEnlargedSettings ? (
+        <div className="node-toolbar-header">
+          <span className="node-toolbar-header-title">视频设置</span>
+          <NodeEnlargeButton title="放大编辑设置" onClick={onOpenEnlargedSettings} />
+        </div>
+      ) : null}
       {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages ? (
         <div
           className={`image-reference-row image-reference-row-top ${showSeedanceReferenceImages ? 'seedance-reference-row' : ''}`}
@@ -1547,8 +1556,9 @@ function VideoToolbar({
   );
 }
 
-function ImageToolbar({
+export function ImageToolbar({
   node,
+  variant = 'dock',
   isRunning,
   isTranslating,
   textInputLinks = [],
@@ -1558,6 +1568,7 @@ function ImageToolbar({
   onRemoveImageReference,
   onRemoveTextReference,
   onUpdateNode,
+  onOpenEnlargedSettings,
 }) {
   const hasTextInput = textInputLinks.length > 0;
   const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
@@ -1588,7 +1599,16 @@ function ImageToolbar({
   }
 
   return (
-    <div className="node-bottom-toolbar image-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+    <div
+      className={`node-bottom-toolbar image-toolbar ${variant === 'modal' ? 'node-settings-toolbar-modal' : ''}`}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      {variant === 'dock' && onOpenEnlargedSettings ? (
+        <div className="node-toolbar-header">
+          <span className="node-toolbar-header-title">图片设置</span>
+          <NodeEnlargeButton title="放大编辑设置" onClick={onOpenEnlargedSettings} />
+        </div>
+      ) : null}
       <div className="image-reference-row image-reference-row-top">
         <span className="image-reference-label">参考图</span>
         <div className="image-reference-list">
@@ -1911,6 +1931,7 @@ export function CanvasNode({
   onBeginDrag,
   onBeginResize,
   onOpenTextEdit,
+  onOpenEnlargedSettings,
   onCopyNode,
   onUpdateNode,
   onRemoveNode,
@@ -2226,6 +2247,7 @@ export function CanvasNode({
           onRemoveImageReference={onRemoveImageReference}
           onRemoveTextReference={onRemoveTextReference}
           onUpdateNode={onUpdateNode}
+          onOpenEnlargedSettings={onOpenEnlargedSettings}
         />
       ) : node.type === 'video' && showToolbar ? (
         <VideoToolbar
@@ -2241,6 +2263,7 @@ export function CanvasNode({
           onRemoveVeoFrame={onRemoveVeoFrame}
           onRemoveSeedanceMedia={onRemoveSeedanceMedia}
           onUpdateNode={onUpdateNode}
+          onOpenEnlargedSettings={onOpenEnlargedSettings}
         />
       ) : node.type === 'audio' && showToolbar ? (
         <AudioToolbar

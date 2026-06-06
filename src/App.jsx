@@ -6,6 +6,7 @@ import { ImagePreviewModal } from './components/ImagePreviewModal';
 import { VideoPreviewModal } from './components/VideoPreviewModal';
 import { NodeTypePickerPopover } from './components/NodeTypePickerPopover';
 import { TextEditModal } from './components/TextEditModal';
+import { NodeSettingsModal } from './components/NodeSettingsModal';
 import { CanvasNode } from './components/CanvasNode';
 import { CanvasZoomControls } from './components/CanvasZoomControls';
 import { CanvasBackgroundPicker } from './components/CanvasBackgroundPicker';
@@ -134,6 +135,7 @@ function App() {
   const [selectionMarquee, setSelectionMarquee] = useState(null);
   const [selectedConnectionId, setSelectedConnectionId] = useState(null);
   const [enlargedTextEdit, setEnlargedTextEdit] = useState(null);
+  const [enlargedNodeSettings, setEnlargedNodeSettings] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [videoPreview, setVideoPreview] = useState(null);
   const [linkFromNodeId, setLinkFromNodeId] = useState(null);
@@ -868,6 +870,12 @@ function App() {
   const enlargedTextEditNode =
     enlargedTextEdit &&
     nodes.find((node) => node.id === enlargedTextEdit.nodeId && node.type === 'note');
+  const enlargedSettingsNode =
+    enlargedNodeSettings && nodes.find((node) => node.id === enlargedNodeSettings.nodeId);
+  const enlargedSettingsNodeType =
+    enlargedSettingsNode?.type === 'image' || enlargedSettingsNode?.type === 'video'
+      ? enlargedSettingsNode.type
+      : null;
 
   function setCanvasScaleClamped(nextScale) {
     setCanvasScale(snapScale(clampValue(nextScale, MIN_CANVAS_SCALE, MAX_CANVAS_SCALE)));
@@ -1044,6 +1052,14 @@ function App() {
 
   function closeEnlargedTextEdit() {
     setEnlargedTextEdit(null);
+  }
+
+  function openEnlargedNodeSettings(nodeId) {
+    setEnlargedNodeSettings({ nodeId });
+  }
+
+  function closeEnlargedNodeSettings() {
+    setEnlargedNodeSettings(null);
   }
 
   function openImagePreview(images, index = 0, title = '图片预览') {
@@ -1382,6 +1398,9 @@ function App() {
 
     if (enlargedTextEdit && idSet.has(enlargedTextEdit.nodeId)) {
       setEnlargedTextEdit(null);
+    }
+    if (enlargedNodeSettings && idSet.has(enlargedNodeSettings.nodeId)) {
+      setEnlargedNodeSettings(null);
     }
     if (selectedConnectionId) {
       const selectedLink = connections.find((link) => link.id === selectedConnectionId);
@@ -2766,6 +2785,26 @@ function App() {
         />
       ) : null}
 
+      {enlargedSettingsNode && enlargedSettingsNodeType ? (
+        <NodeSettingsModal
+          node={enlargedSettingsNode}
+          nodeType={enlargedSettingsNodeType}
+          textInputLinks={getTextInputLinks(enlargedSettingsNode.id, nodes, connections)}
+          imageInputLinks={getImageInputLinks(enlargedSettingsNode.id, nodes, connections)}
+          isRunning={isNodeActivelyRunning(enlargedSettingsNode, runningNodeId)}
+          isTranslating={translatingNodeId === enlargedSettingsNode.id}
+          onUpdateNode={updateNode}
+          onClose={closeEnlargedNodeSettings}
+          onRunImageGeneration={runImageGeneration}
+          onRunVideoGeneration={runVideoGeneration}
+          onOpenAssetLibrary={openAssetLibrary}
+          onRemoveImageReference={removeImageReference}
+          onRemoveTextReference={removeTextReference}
+          onRemoveVeoFrame={removeVeoFrame}
+          onRemoveSeedanceMedia={removeSeedanceMedia}
+        />
+      ) : null}
+
       {imagePreview ? (
         <ImagePreviewModal
           images={imagePreview.images}
@@ -2968,7 +3007,8 @@ function App() {
                 showToolbar={
                   !selectionMarquee &&
                   selectedNodeIds.length === 1 &&
-                  selectedNodeIds[0] === node.id
+                  selectedNodeIds[0] === node.id &&
+                  enlargedNodeSettings?.nodeId !== node.id
                 }
                 isRunning={isNodeActivelyRunning(node, runningNodeId)}
                 isTranslating={translatingNodeId === node.id}
@@ -2989,6 +3029,7 @@ function App() {
                 onBeginDrag={beginDrag}
                 onBeginResize={beginResize}
                 onOpenTextEdit={openEnlargedTextEdit}
+                onOpenEnlargedSettings={() => openEnlargedNodeSettings(node.id)}
                 onCopyNode={duplicateNodeById}
                 onUpdateNode={updateNode}
                 onRemoveNode={removeNode}
