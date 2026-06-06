@@ -5,9 +5,10 @@ import {
   Film,
   Headphones,
   Image as ImageIcon,
+  Workflow,
 } from 'lucide-react';
 
-export function FloatingDock({ onAddNode, onImport, onExport }) {
+export function FloatingDock({ onAddNode, onImport, onExport, onOpenWorkflowTemplates }) {
   return (
     <aside className="floating-dock" onPointerDown={(event) => event.stopPropagation()}>
       <button className="dock-button" onClick={() => onAddNode('note')} title="文本节点">
@@ -24,6 +25,12 @@ export function FloatingDock({ onAddNode, onImport, onExport }) {
       </button>
 
       <div className="dock-divider" />
+
+      {onOpenWorkflowTemplates ? (
+        <button className="dock-button" onClick={onOpenWorkflowTemplates} title="预设工作流模版">
+          <Workflow size={18} />
+        </button>
+      ) : null}
 
       <button className="dock-button" onClick={onImport} title="导入画布">
         <FileUp size={18} />

@@ -15,11 +15,13 @@ import {
   Sun,
   Video,
   Wallet,
+  Workflow,
 } from 'lucide-react';
 import { AnimatedCharacters } from '../components/AnimatedCharacters';
 import { AuthModal } from '../components/AuthModal';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { RechargeModal } from '../components/RechargeModal';
+import { WorkflowTemplateModal } from '../components/WorkflowTemplateModal';
 import { CanvasHomeBackground } from '../components/CanvasHomeBackground';
 import { useHomeEntranceAnimation } from '../hooks/useHomeEntranceAnimation';
 import { useTheme } from '../hooks/useTheme';
@@ -54,6 +56,8 @@ const COPY = {
   heroSubtitle:
     '自由排布图片、视频与文本节点，在同一画布内完成灵感整理、AI 生图与生视频，并自动同步到云端。',
   startCreateButton: '开始创作',
+  workflowTemplatesButton: '预设工作流模版',
+  workflowTemplatesDesc: '文生图、图生视频、图片/视频反推提示词等常用流程',
   createCardDesc: '新建空白画布，开启新的创作',
   createCardAction: '立即创建',
   recentProjectsTitle: '最近项目',
@@ -348,6 +352,7 @@ export function CanvasHome() {
   const [showRechargeModal, setShowRechargeModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [workflowTemplateOpen, setWorkflowTemplateOpen] = useState(false);
 
   const recentProjects = useMemo(
     () => projects.slice(0, RECENT_PROJECT_LIMIT),
@@ -497,6 +502,15 @@ export function CanvasHome() {
 
   const handleStartCreate = () => {
     requireAuth(() => openCanvasEditor({ createNew: true }));
+  };
+
+  const handleOpenWorkflowTemplates = () => {
+    requireAuth(() => setWorkflowTemplateOpen(true));
+  };
+
+  const handleSelectWorkflowTemplate = (templateId) => {
+    setWorkflowTemplateOpen(false);
+    requireAuth(() => openCanvasEditor({ createNew: true, templateId }));
   };
 
   const handleOpenProject = (project) => {
@@ -705,10 +719,20 @@ export function CanvasHome() {
               </div>
               <h1>{COPY.heroTitle}</h1>
               <p className="canvas-home-hero-subtitle">{COPY.heroSubtitle}</p>
-              <button type="button" className="canvas-home-hero-cta" onClick={handleStartCreate}>
-                <Sparkles size={16} />
-                {COPY.startCreateButton}
-              </button>
+              <div className="canvas-home-hero-actions">
+                <button type="button" className="canvas-home-hero-cta" onClick={handleStartCreate}>
+                  <Sparkles size={16} />
+                  {COPY.startCreateButton}
+                </button>
+                <button
+                  type="button"
+                  className="canvas-home-hero-cta is-secondary"
+                  onClick={handleOpenWorkflowTemplates}
+                >
+                  <Workflow size={16} />
+                  {COPY.workflowTemplatesButton}
+                </button>
+              </div>
             </div>
             <div className="canvas-home-hero-visual">
               <AnimatedCharacters />
@@ -743,6 +767,23 @@ export function CanvasHome() {
                 </div>
                 <div className="canvas-home-project-action">
                   <span>{COPY.createCardAction}</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                className="canvas-home-project-card template-card"
+                onClick={handleOpenWorkflowTemplates}
+              >
+                <div className="canvas-home-project-cover template-cover">
+                  <Workflow size={32} />
+                </div>
+                <div className="canvas-home-project-body">
+                  <h3>{COPY.workflowTemplatesButton}</h3>
+                  <p>{COPY.workflowTemplatesDesc}</p>
+                </div>
+                <div className="canvas-home-project-action">
+                  <span>选择模版</span>
                 </div>
               </button>
 
@@ -899,6 +940,12 @@ export function CanvasHome() {
         onCancel={() => {
           if (!deleteLoading) setDeleteTarget(null);
         }}
+      />
+
+      <WorkflowTemplateModal
+        isOpen={workflowTemplateOpen}
+        onClose={() => setWorkflowTemplateOpen(false)}
+        onSelect={handleSelectWorkflowTemplate}
       />
     </div>
   );

@@ -1,5 +1,16 @@
 import { DEFAULT_IMAGE_MODEL, DEFAULT_IMAGE_RATIO, DEFAULT_IMAGE_RESOLUTION } from './constants';
 import { getChatApiBaseUrl, requestJimiaigo, requestJimiaigoForm } from './jimiaigoApi';
+import {
+  DEFAULT_IMAGE_TO_PROMPT_INSTRUCTION,
+  formatStructuredPromptResult as formatImageUnderstandingResult,
+  parseStructuredPromptJson as parseImageUnderstandingStructured,
+} from './promptStructured';
+
+export {
+  DEFAULT_IMAGE_TO_PROMPT_INSTRUCTION,
+  formatImageUnderstandingResult,
+  parseImageUnderstandingStructured,
+};
 
 const FINISHED_STATUS = new Set(['success', 'completed']);
 const FAILED_STATUS = new Set(['failed', 'error']);
@@ -438,5 +449,86 @@ export async function downloadImageFile(url, filename = 'image.png') {
     anchor.rel = 'noopener noreferrer';
     anchor.click();
   }
+}
+
+export function extractImageUnderstandingText(data) {
+  if (!data) return '';
+
+  if (typeof data === 'string') return data.trim();
+
+  const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+  if (candidates.length > 0) {
+    const parts = candidates[0]?.content?.parts;
+    if (Array.isArray(parts)) {
+      const text = parts
+        .map((part) => String(part?.text || '').trim())
+        .filter(Boolean)
+        .join('\n\n');
+      if (text) return text;
+    }
+  }
+
+  if (typeof data.text === 'string' && data.text.trim()) return data.text.trim();
+  if (typeof data.content === 'string' && data.content.trim()) return data.content.trim();
+  if (typeof data.prompt === 'string' && data.prompt.trim()) return data.prompt.trim();
+
+  const contents = Array.isArray(data.contents) ? data.contents : [];
+  const fromContents = contents
+    .flatMap((content) => (Array.isArray(content?.parts) ? content.parts : []))
+    .map((part) => String(part?.text || '').trim())
+    .filter(Boolean)
+    .join('\n\n');
+  if (fromContents) return fromContents;
+
+  return '';
+}
+
+export async function understandImage({
+  token,
+  imageUrls = [],
+  promptText = '',
+  language = 'zh',
+}) {
+  const urls = (imageUrls || []).map((url) => String(url || '').trim()).filter(Boolean);
+  if (!urls.length) {
+    throw new Error('请先连接有效图片或上传图片后再反推提示词');
+  }
+
+  const parts = [];
+  for (const imageUrl of urls) {
+    const inlineData = await urlToInlineData(imageUrl);
+    if (inlineData) {
+      parts.push({ inline_data: inlineData });
+    }
+  }
+
+  if (!parts.length) {
+    throw new Error('无法读取图片内容，请检查图片是否可访问');
+  }
+
+  const instruction = String(promptText || '').trim() || DEFAULT_IMAGE_TO_PROMPT_INSTRUCTION;
+  parts.push({ text: instruction });
+
+  const body = {
+    contents: [{ role: 'user', parts }],
+    generationConfig: {},
+  };
+  if (language) {
+    body.language = language;
+  }
+
+  const data = await requestJson('/api/image/understand', {
+    token,
+    method: 'POST',
+    body,
+    networkErrorMessage: '图片理解失败，无法连接到服务',
+  });
+
+  const generated = extractImageUnderstandingText(data);
+  if (!generated) {
+    throw new Error('图片理解返回内容为空');
+  }
+
+  return generated;
 }
 

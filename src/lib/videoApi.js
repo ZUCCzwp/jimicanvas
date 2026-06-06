@@ -1,6 +1,17 @@
 import { DEFAULT_VIDEO_FAMILY, DEFAULT_VIDEO_ROUTE } from './constants';
 import { requestJimiaigo, requestJimiaigoForm } from './jimiaigoApi';
 import { normalizeImageUrl, uploadAsset } from './imageApi';
+import {
+  DEFAULT_VIDEO_TO_PROMPT_INSTRUCTION,
+  formatStructuredPromptResult as formatVideoUnderstandingResult,
+  parseStructuredPromptJson as parseVideoUnderstandingStructured,
+} from './promptStructured';
+
+export {
+  DEFAULT_VIDEO_TO_PROMPT_INSTRUCTION,
+  formatVideoUnderstandingResult,
+  parseVideoUnderstandingStructured,
+};
 
 const TASK_SUCCESS_STATUS = new Set(['success', 'completed', 'succeed', '1']);
 const TASK_FAILED_STATUS = new Set(['failed', 'error', 'failure', 'fail', 'cancelled', 'canceled', '2']);
@@ -526,4 +537,130 @@ export async function downloadVideoFile(url, filename = 'video.mp4') {
     anchor.rel = 'noopener noreferrer';
     anchor.click();
   }
+}
+
+const VIDEO_UNDERSTAND_POLL_INTERVAL_MS = 3000;
+const VIDEO_UNDERSTAND_MAX_RETRIES = 100;
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function dataUrlToVideoInlineData(dataUrl) {
+  const match = String(dataUrl || '').match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return null;
+  return {
+    mime_type: match[1],
+    data: match[2],
+  };
+}
+
+async function urlToVideoInlineData(url) {
+  const normalized = normalizeVideoUrl(url);
+  if (!normalized) return null;
+
+  if (normalized.startsWith('data:')) {
+    return dataUrlToVideoInlineData(normalized);
+  }
+
+  const response = await fetch(normalized, { mode: 'cors' });
+  if (!response.ok) {
+    throw new Error(`视频读取失败: ${response.statusText}`);
+  }
+
+  const blob = await response.blob();
+  const dataUrl = await fileToDataUrl(blob);
+  const inlineData = dataUrlToVideoInlineData(dataUrl);
+  if (inlineData && !inlineData.mime_type) {
+    inlineData.mime_type = blob.type || 'video/mp4';
+  }
+  return inlineData;
+}
+
+async function pollVideoUnderstandingTask(token, taskId) {
+  for (let attempt = 0; attempt < VIDEO_UNDERSTAND_MAX_RETRIES; attempt += 1) {
+    const task = await requestJson(`/api/video/understand/task/${encodeURIComponent(taskId)}`, {
+      token,
+      method: 'GET',
+      networkErrorMessage: '视频理解状态查询失败，无法连接到服务',
+    });
+
+    const status = String(task?.status || '').toLowerCase();
+    if (status === 'completed') {
+      const result = String(task?.result || '').trim();
+      if (!result) {
+        throw new Error('视频理解返回内容为空');
+      }
+      return result;
+    }
+
+    if (status === 'failed') {
+      throw new Error(String(task?.error || '视频理解失败'));
+    }
+
+    await sleep(VIDEO_UNDERSTAND_POLL_INTERVAL_MS);
+  }
+
+  throw new Error('视频理解任务执行时间过长，请稍后在任务中心查看');
+}
+
+export async function understandVideo({
+  token,
+  videoUrls = [],
+  promptText = '',
+  language = 'zh',
+  type = '',
+}) {
+  const urls = (videoUrls || []).map((url) => String(url || '').trim()).filter(Boolean);
+  if (!urls.length) {
+    throw new Error('请先连接有效视频或上传视频后再反推提示词');
+  }
+
+  const parts = [];
+  for (const videoUrl of urls) {
+    const inlineData = await urlToVideoInlineData(videoUrl);
+    if (inlineData) {
+      parts.push({ inline_data: inlineData });
+    }
+  }
+
+  if (!parts.length) {
+    throw new Error('无法读取视频内容，请检查视频是否可访问');
+  }
+
+  const instruction = String(promptText || '').trim() || DEFAULT_VIDEO_TO_PROMPT_INSTRUCTION;
+  parts.push({ text: instruction });
+
+  const body = {
+    contents: [{ role: 'user', parts }],
+    generationConfig: {},
+  };
+  if (language) body.language = language;
+  if (type) body.type = type;
+
+  const submission = await requestJson('/api/video/understand/async', {
+    token,
+    method: 'POST',
+    body,
+    networkErrorMessage: '视频理解失败，无法连接到服务',
+  });
+
+  const taskId = submission?.taskId || submission?.task_id;
+  if (!taskId) {
+    throw new Error('视频理解任务提交失败，未返回任务 ID');
+  }
+
+  await sleep(2000);
+  return pollVideoUnderstandingTask(token, taskId);
 }

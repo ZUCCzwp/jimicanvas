@@ -19,6 +19,7 @@ import { CustomerServiceModal } from './components/CustomerServiceModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { RechargeModal } from './components/RechargeModal';
 import { Topbar } from './components/Topbar';
+import { WorkflowTemplateModal } from './components/WorkflowTemplateModal';
 import { useTheme } from './hooks/useTheme';
 import { navigateToCanvasHome } from './lib/appNavigation';
 import { normalizeCanvasBackground } from './lib/canvasBackground';
@@ -59,6 +60,11 @@ import {
 import {
   getImageInputLinks,
   getTextInputLinks,
+  getVideoInputLinks,
+  isImageToPromptNode,
+  isVideoToPromptNode,
+  resolveNoteImageInputUrls,
+  resolveNoteVideoInputUrls,
   resolveImagePrompt,
   resolveVideoPrompt,
   resolveAudioPrompt,
@@ -87,7 +93,11 @@ import {
   normalizeImageUrl,
   uploadAsset,
   splitImageIntoGridBlobs,
+  understandImage,
+  DEFAULT_IMAGE_TO_PROMPT_INSTRUCTION,
+  formatImageUnderstandingResult,
 } from './lib/imageApi';
+import { buildStructuredTranslateInstruction, formatStructuredPromptResult } from './lib/promptStructured';
 import { buildImageNodeLayoutPatch, computeSplitImageNodePositions, formatCellAspectRatio } from './lib/imageNodeLayout';
 import { buildVideoNodeLayoutPatch } from './lib/videoNodeLayout';
 import {
@@ -103,6 +113,7 @@ import {
   loadInitialState,
   readPendingCanvasId,
   readPendingNewCanvas,
+  readPendingWorkflowTemplate,
   sanitizeDocumentsForPersist,
   writeActiveCanvasId,
   writeStorage,
@@ -110,11 +121,19 @@ import {
 import {
   createVideoGenerationTask,
   downloadVideoFile,
+  formatVideoUnderstandingResult,
   getSd2ManxueAssetList,
   normalizeVideoUrl,
   resolveSeedanceMediaPreviewUrl,
+  understandVideo,
+  DEFAULT_VIDEO_TO_PROMPT_INSTRUCTION,
   uploadAndAuditSeedanceAssets,
 } from './lib/videoApi';
+import {
+  buildWorkflowTemplateFragment,
+  getWorkflowTemplateDefaultName,
+  createWorkflowTemplateDocument,
+} from './lib/workflowTemplates';
 
 function App() {
   const { theme, toggleTheme } = useTheme();
@@ -155,6 +174,7 @@ function App() {
   const [uploadingNodeId, setUploadingNodeId] = useState(null);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [showCustomerService, setShowCustomerService] = useState(false);
+  const [workflowTemplateOpen, setWorkflowTemplateOpen] = useState(false);
   const [siteSettings, setSiteSettings] = useState(getDefaultSiteSettings);
   const [assetPicker, setAssetPicker] = useState({
     nodeId: null,
@@ -1002,9 +1022,12 @@ function App() {
     pendingUrlAppliedRef.current = true;
 
     if (readPendingNewCanvas()) {
+      const templateId = readPendingWorkflowTemplate();
       clearPendingCanvasIntent();
       const count = documentsRef.current.length + 1;
-      const canvas = createDocument(`画布 ${count}`, false);
+      const canvas = templateId
+        ? createWorkflowTemplateDocument(templateId, getWorkflowTemplateDefaultName(templateId, count))
+        : createDocument(`画布 ${count}`, false);
       setDocuments((prev) => {
         const next = [canvas, ...prev];
         writeStorage(next);
@@ -1044,6 +1067,32 @@ function App() {
     setSelectedNodeIds([node.id]);
     setSelectedConnectionId(null);
     setEnlargedTextEdit(null);
+  }
+
+  function insertWorkflowTemplate(templateId) {
+    const rect = stageRef.current?.getBoundingClientRect();
+    const centerX = rect
+      ? (rect.width / 2 - viewportOffset.x) / canvasScale - 220
+      : 220;
+    const centerY = rect
+      ? (rect.height / 2 - viewportOffset.y) / canvasScale - 120
+      : 160;
+    const { nodes, connections } = buildWorkflowTemplateFragment(
+      templateId,
+      centerX + Math.random() * 40 - 20,
+      centerY + Math.random() * 40 - 20
+    );
+    if (!nodes.length) return;
+
+    updateActiveCanvas((doc) => ({
+      ...doc,
+      nodes: [...doc.nodes, ...nodes],
+      connections: [...doc.connections, ...connections],
+    }));
+    setSelectedNodeIds(nodes.map((node) => node.id));
+    setSelectedConnectionId(null);
+    setEnlargedTextEdit(null);
+    setWorkflowTemplateOpen(false);
   }
 
   function openEnlargedTextEdit(nodeId, field = 'content') {
@@ -1474,7 +1523,150 @@ function App() {
   }
 
   async function runTextGeneration(node, mode = 'generate') {
+    const imageInputLinks = getImageInputLinks(node.id, nodes, connections);
+    const videoInputLinks = getVideoInputLinks(node.id, nodes, connections);
+    const videoToPromptMode = isVideoToPromptNode(node, videoInputLinks);
+    const imageToPromptMode = !videoToPromptMode && isImageToPromptNode(node, imageInputLinks);
+    const connectedVideos = resolveNoteVideoInputUrls(videoInputLinks);
+    const connectedImages = resolveNoteImageInputUrls(imageInputLinks);
     const promptText = String(node.prompt || node.content || node.title || '').trim();
+    const reversePromptMode = videoToPromptMode || imageToPromptMode;
+
+    if (reversePromptMode && mode === 'translate-structured-en') {
+      const sourceContent = String(node.content || '').trim();
+      if (!sourceContent || node.status === 'error') {
+        updateNode(node.id, { content: '暂无可翻译的反推结果，请先运行反推', status: 'error' });
+        return;
+      }
+
+      const token = getOrRequestToken({ onSaved: refreshUserQuota });
+      if (!token) {
+        updateNode(node.id, { content: '缺少 token', status: 'error' });
+        return;
+      }
+
+      setTranslatingNodeId(node.id);
+      try {
+        const translated = await runChatCompletion({
+          token,
+          content: buildStructuredTranslateInstruction(sourceContent),
+        });
+        const formatted = formatStructuredPromptResult(translated, ['prompt', 'shortPrompt']);
+        updateNode(node.id, {
+          content: formatted.content,
+          prompt: formatted.prompt,
+          promptLocale: 'en',
+          ...(videoToPromptMode
+            ? { videoPromptStructured: formatted.structured }
+            : { imagePromptStructured: formatted.structured }),
+          status: 'idle',
+        });
+        setSelectedNodeIds([node.id]);
+        openEnlargedTextEdit(node.id, 'content');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '翻译失败';
+        updateNode(node.id, { content: message, status: 'error' });
+        setSelectedNodeIds([node.id]);
+        setEnlargedTextEdit(null);
+      } finally {
+        setTranslatingNodeId(null);
+        refreshUserQuota();
+      }
+      return;
+    }
+
+    if (videoToPromptMode && mode === 'generate') {
+      if (!connectedVideos.length) {
+        updateNode(node.id, {
+          content: '请先连接有效视频节点（需上传或生成真实视频，示例视频不可用）',
+          status: 'error',
+        });
+        return;
+      }
+
+      const token = getOrRequestToken({ onSaved: refreshUserQuota });
+      if (!token) {
+        updateNode(node.id, { content: '缺少 token', status: 'error' });
+        return;
+      }
+
+      setRunningNodeId(node.id);
+      try {
+        const generated = await understandVideo({
+          token,
+          videoUrls: connectedVideos.map((item) => item.url),
+          promptText: String(node.prompt || '').trim() || DEFAULT_VIDEO_TO_PROMPT_INSTRUCTION,
+          language: 'zh',
+        });
+
+        const formatted = formatVideoUnderstandingResult(generated);
+        updateNode(node.id, {
+          content: formatted.content,
+          prompt: formatted.prompt,
+          videoPromptStructured: formatted.structured,
+          promptLocale: formatted.locale || 'zh',
+          status: 'idle',
+        });
+        setSelectedNodeIds([node.id]);
+        openEnlargedTextEdit(node.id, 'content');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '视频理解失败';
+        updateNode(node.id, { content: message, status: 'error' });
+        setSelectedNodeIds([node.id]);
+        setEnlargedTextEdit(null);
+      } finally {
+        setRunningNodeId(null);
+        refreshUserQuota();
+      }
+      return;
+    }
+
+    if (imageToPromptMode && mode === 'generate') {
+      if (!connectedImages.length) {
+        updateNode(node.id, {
+          content: '请先连接有效图片节点（需上传或生成真实图片，示例图不可用）',
+          status: 'error',
+        });
+        return;
+      }
+
+      const token = getOrRequestToken({ onSaved: refreshUserQuota });
+      if (!token) {
+        updateNode(node.id, { content: '缺少 token', status: 'error' });
+        return;
+      }
+
+      setRunningNodeId(node.id);
+      try {
+        const generated = await understandImage({
+          token,
+          imageUrls: connectedImages.map((item) => item.url),
+          promptText: String(node.prompt || '').trim() || DEFAULT_IMAGE_TO_PROMPT_INSTRUCTION,
+          language: 'zh',
+        });
+
+        const formatted = formatImageUnderstandingResult(generated);
+        updateNode(node.id, {
+          content: formatted.content,
+          prompt: formatted.prompt,
+          imagePromptStructured: formatted.structured,
+          promptLocale: formatted.locale || 'zh',
+          status: 'idle',
+        });
+        setSelectedNodeIds([node.id]);
+        openEnlargedTextEdit(node.id, 'content');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '图片理解失败';
+        updateNode(node.id, { content: message, status: 'error' });
+        setSelectedNodeIds([node.id]);
+        setEnlargedTextEdit(null);
+      } finally {
+        setRunningNodeId(null);
+        refreshUserQuota();
+      }
+      return;
+    }
+
     if (!promptText) {
       updateNode(node.id, { content: '文本节点内容为空', status: 'error' });
       return;
@@ -2758,6 +2950,7 @@ function App() {
         onAddNode={addNode}
         onImport={triggerImport}
         onExport={exportJson}
+        onOpenWorkflowTemplates={() => setWorkflowTemplateOpen(true)}
       />
 
       {importError ? <div className="toast-error">{importError}</div> : null}
@@ -3018,8 +3211,13 @@ function App() {
                     : []
                 }
                 imageInputLinks={
-                  node.type === 'image' || node.type === 'video'
+                  node.type === 'image' || node.type === 'video' || node.type === 'note'
                     ? getImageInputLinks(node.id, nodes, connections)
+                    : []
+                }
+                videoInputLinks={
+                  node.type === 'note'
+                    ? getVideoInputLinks(node.id, nodes, connections)
                     : []
                 }
                 isInputsHighlighted={inputHighlightNodeId === node.id}
@@ -3092,6 +3290,13 @@ function App() {
           />
         </section>
       </main>
+
+      <WorkflowTemplateModal
+        isOpen={workflowTemplateOpen}
+        onClose={() => setWorkflowTemplateOpen(false)}
+        onSelect={insertWorkflowTemplate}
+        mode="insert"
+      />
     </div>
   );
 }

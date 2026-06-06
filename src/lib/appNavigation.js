@@ -2,6 +2,7 @@ import { getStoredChatToken, syncStoredChatToken } from './jimiaigoApi';
 import {
   setPendingCanvasId,
   setPendingNewCanvas,
+  setPendingNewCanvasWithTemplate,
 } from './storage';
 import { CANVAS_EDITOR_PATH } from './routing';
 
@@ -51,14 +52,18 @@ export function buildCanvasEditorUrl({ canvasId, createNew, crossOriginBase } = 
   return url.toString();
 }
 
-export function openCanvasEditor({ canvasId, createNew } = {}) {
+export function openCanvasEditor({ canvasId, createNew, templateId } = {}) {
   if (typeof window === 'undefined') return;
 
   const token = getStoredChatToken();
   if (token) syncStoredChatToken(token);
 
   if (createNew) {
-    setPendingNewCanvas();
+    if (templateId) {
+      setPendingNewCanvasWithTemplate(templateId);
+    } else {
+      setPendingNewCanvas();
+    }
   } else if (canvasId) {
     setPendingCanvasId(canvasId);
   }

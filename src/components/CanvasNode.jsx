@@ -60,9 +60,15 @@ import { normalizeAudioUrl, AUDIO_FILE_ACCEPT, filterAudioFiles } from '../lib/a
 import {
   formatImageInputLabel,
   formatTextInputLabel,
+  formatVideoInputLabel,
   getImageNodeOutputUrl,
   getTextInputPreview,
+  getVideoNodeOutputUrl,
+  isImageToPromptNode,
+  isVideoToPromptNode,
   mergeImageReferenceImages,
+  resolveNoteImageInputUrls,
+  resolveNoteVideoInputUrls,
 } from '../lib/connections';
 import {
   buildImageNodeLayoutPatch,
@@ -1863,20 +1869,104 @@ function NoteToolbar({
   node,
   isRunning,
   isTranslating,
+  imageInputLinks = [],
+  videoInputLinks = [],
   onRunTextGeneration,
   onUpdateNode,
   onOpenTextEdit,
+  onRemoveTextReference,
 }) {
+  const videoToPromptMode = isVideoToPromptNode(node, videoInputLinks);
+  const imageToPromptMode = !videoToPromptMode && isImageToPromptNode(node, imageInputLinks);
+  const reversePromptMode = videoToPromptMode || imageToPromptMode;
+  const connectedVideos = resolveNoteVideoInputUrls(videoInputLinks);
+  const connectedImages = resolveNoteImageInputUrls(imageInputLinks);
   const isPromptEmpty = !String(node.prompt || '').trim();
+  const canRunReversePrompt =
+    (videoToPromptMode && connectedVideos.length > 0) ||
+    (imageToPromptMode && connectedImages.length > 0);
+  const canRunText = !reversePromptMode && !isPromptEmpty;
+  const hasReverseResult = Boolean(String(node.content || '').trim()) && node.status !== 'error';
+  const canTranslateReverse = reversePromptMode && hasReverseResult;
 
   return (
     <div className="node-bottom-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+      {videoToPromptMode && videoInputLinks.length > 0 ? (
+        <div className="image-reference-row">
+          <span className="image-reference-label">视频引用</span>
+          <div className="image-reference-list">
+            {videoInputLinks.map(({ linkId, node: videoNode }) => {
+              const previewUrl = getVideoNodeOutputUrl(videoNode);
+              return (
+                <div className="image-reference-chip connection-image-chip" key={linkId}>
+                  {previewUrl ? (
+                    <video
+                      className="connection-video-thumb"
+                      src={normalizeVideoUrl(previewUrl)}
+                      muted
+                      playsInline
+                      preload="metadata"
+                    />
+                  ) : (
+                    <div className="connection-image-placeholder">
+                      <Film size={16} />
+                    </div>
+                  )}
+                  <span className="connection-image-label" title={formatVideoInputLabel(videoNode)}>
+                    {formatVideoInputLabel(videoNode)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveTextReference(linkId)}
+                    title="移除视频引用并断开连线"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      {imageToPromptMode && imageInputLinks.length > 0 ? (
+        <div className="image-reference-row">
+          <span className="image-reference-label">图片引用</span>
+          <div className="image-reference-list">
+            {imageInputLinks.map(({ linkId, node: imageNode }) => {
+              const previewUrl = getImageNodeOutputUrl(imageNode);
+              return (
+                <div className="image-reference-chip connection-image-chip" key={linkId}>
+                  {previewUrl ? (
+                    <img src={normalizeImageUrl(previewUrl)} alt={formatImageInputLabel(imageNode)} />
+                  ) : (
+                    <div className="connection-image-placeholder">
+                      <ImageIcon size={16} />
+                    </div>
+                  )}
+                  <span className="connection-image-label" title={formatImageInputLabel(imageNode)}>
+                    {formatImageInputLabel(imageNode)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveTextReference(linkId)}
+                    title="移除图片引用并断开连线"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
       <div className="node-field-wrap node-prompt-wrap">
         <textarea
           className="node-prompt-input"
           value={node.prompt || ''}
           onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
-          placeholder="输入文字"
+          placeholder={
+            reversePromptMode ? '可选：补充反推指令（留空则输出中文结构化 JSON）' : '输入文字'
+          }
         />
         <NodeEnlargeButton
           title="放大编辑输入"
@@ -1884,31 +1974,64 @@ function NoteToolbar({
         />
       </div>
       <div className="node-bottom-actions">
-        <CustomSelect
-          title="模型"
-          icon={<Bot size={14} />}
-          value={DEFAULT_TEXT_MODEL}
-          options={[{ value: DEFAULT_TEXT_MODEL, label: DEFAULT_TEXT_MODEL }]}
-          onChange={() => {}}
-        />
+        {reversePromptMode ? (
+          <CustomSelect
+            title="能力"
+            icon={videoToPromptMode ? <Film size={14} /> : <ImageIcon size={14} />}
+            value={videoToPromptMode ? 'video-understand' : 'image-understand'}
+            options={[
+              {
+                value: videoToPromptMode ? 'video-understand' : 'image-understand',
+                label: videoToPromptMode ? '视频理解' : '图片理解',
+              },
+            ]}
+            onChange={() => {}}
+          />
+        ) : (
+          <CustomSelect
+            title="模型"
+            icon={<Bot size={14} />}
+            value={DEFAULT_TEXT_MODEL}
+            options={[{ value: DEFAULT_TEXT_MODEL, label: DEFAULT_TEXT_MODEL }]}
+            onChange={() => {}}
+          />
+        )}
         <div className="node-run-actions">
-          <button
-            className="icon-button"
-            onClick={() => onRunTextGeneration(node, 'translate-en')}
-            title="一键翻译英文"
-            disabled={isTranslating || isRunning || isPromptEmpty}
-          >
-            {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
-            翻译
-          </button>
+          {reversePromptMode ? (
+            <button
+              className="icon-button"
+              onClick={() => onRunTextGeneration(node, 'translate-structured-en')}
+              title="一键翻译反推结果为英文"
+              disabled={isTranslating || isRunning || !canTranslateReverse}
+            >
+              {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
+              翻译
+            </button>
+          ) : (
+            <button
+              className="icon-button"
+              onClick={() => onRunTextGeneration(node, 'translate-en')}
+              title="一键翻译英文"
+              disabled={isTranslating || isRunning || isPromptEmpty}
+            >
+              {isTranslating ? <LoaderCircle size={14} className="spin-icon" /> : <Languages size={14} />}
+              翻译
+            </button>
+          )}
           <button
             className="icon-button primary"
             onClick={() => onRunTextGeneration(node)}
-            title="运行文本生成"
-            disabled={isRunning || isTranslating || isPromptEmpty}
+            title={
+              videoToPromptMode
+                ? '运行视频理解反推提示词'
+                : imageToPromptMode
+                  ? '运行图片理解反推提示词'
+                  : '运行文本生成'
+            }
+            disabled={isRunning || isTranslating || (!canRunReversePrompt && !canRunText)}
           >
             {isRunning ? <LoaderCircle size={14} className="spin-icon" /> : <Play size={14} />}
-            运行
+            {reversePromptMode ? '反推' : '运行'}
           </button>
         </div>
       </div>
@@ -1924,6 +2047,7 @@ export function CanvasNode({
   isTranslating,
   textInputLinks = [],
   imageInputLinks = [],
+  videoInputLinks = [],
   isInputsHighlighted = false,
   linkFromNodeId,
   onSelectNode,
@@ -2231,9 +2355,12 @@ export function CanvasNode({
           node={node}
           isRunning={isRunning}
           isTranslating={isTranslating}
+          imageInputLinks={imageInputLinks}
+          videoInputLinks={videoInputLinks}
           onRunTextGeneration={onRunTextGeneration}
           onUpdateNode={onUpdateNode}
           onOpenTextEdit={onOpenTextEdit}
+          onRemoveTextReference={onRemoveTextReference}
         />
       ) : node.type === 'image' && showToolbar ? (
         <ImageToolbar

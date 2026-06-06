@@ -4,6 +4,7 @@ import {
   ACTIVE_CANVAS_ID_KEY,
   PENDING_CANVAS_ID_KEY,
   PENDING_NEW_CANVAS_KEY,
+  PENDING_WORKFLOW_TEMPLATE_KEY,
   STORAGE_KEY,
 } from './constants';
 import { normalizeImageUrl } from './imageApi';
@@ -35,12 +36,24 @@ export function setPendingNewCanvas() {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(PENDING_NEW_CANVAS_KEY, '1');
   window.localStorage.removeItem(PENDING_CANVAS_ID_KEY);
+  window.localStorage.removeItem(PENDING_WORKFLOW_TEMPLATE_KEY);
+}
+
+export function setPendingNewCanvasWithTemplate(templateId) {
+  setPendingNewCanvas();
+  if (typeof window === 'undefined' || !templateId) return;
+  window.localStorage.setItem(PENDING_WORKFLOW_TEMPLATE_KEY, String(templateId).trim());
+}
+
+export function readPendingWorkflowTemplate() {
+  return readPendingStorage(PENDING_WORKFLOW_TEMPLATE_KEY);
 }
 
 export function clearPendingCanvasIntent() {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(PENDING_CANVAS_ID_KEY);
   window.localStorage.removeItem(PENDING_NEW_CANVAS_KEY);
+  window.localStorage.removeItem(PENDING_WORKFLOW_TEMPLATE_KEY);
 }
 
 export function readActiveCanvasId() {

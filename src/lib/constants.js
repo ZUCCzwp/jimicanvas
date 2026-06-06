@@ -8,6 +8,8 @@ export const ADMIN_TOKEN_COOKIE_KEY = 'Admin-Token';
 export const PENDING_CANVAS_ID_KEY = 'jimicanvas.pending_canvas_id';
 /** 从 jimiaiapp 跳转时标记需要新建画布 */
 export const PENDING_NEW_CANVAS_KEY = 'jimicanvas.pending_new_canvas';
+/** 新建画布时使用的预设工作流模版 ID */
+export const PENDING_WORKFLOW_TEMPLATE_KEY = 'jimicanvas.pending_workflow_template';
 export const DEFAULT_CHAT_API_URL = 'http://localhost:27355';
 export const DEFAULT_SITE_TITLE = 'JimiCanvas';
 export const DEFAULT_SITE_SLOGAN = '轻量画布工作台';
