@@ -1358,19 +1358,12 @@ function App() {
       return newNode;
     });
 
-    const firstNewId = newNodes[0]?.id;
-
     updateActiveCanvas((doc) => ({
       ...doc,
-      nodes: doc.nodes.filter((node) => node.id !== nodeId).concat(newNodes),
-      connections: doc.connections.map((link) => {
-        if (link.fromNodeId === nodeId) return { ...link, fromNodeId: firstNewId };
-        if (link.toNodeId === nodeId) return { ...link, toNodeId: firstNewId };
-        return link;
-      }),
+      nodes: [...doc.nodes, ...newNodes],
     }));
 
-    setSelectedNodeIds(newNodes.map((node) => node.id));
+    setSelectedNodeIds([nodeId, ...newNodes.map((node) => node.id)]);
 
     setTimeout(() => {
       updateActiveCanvas((doc) => ({
