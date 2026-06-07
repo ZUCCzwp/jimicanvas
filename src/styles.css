@@ -7515,3 +7515,93 @@ html[data-theme='light'] .canvas-home-user-dropdown-item.is-danger svg {
   }
 }
 
+/* ── Canvas Empty State ── */
+.canvas-empty-state {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  animation: canvas-empty-state-fade-in 0.4s ease-out;
+  max-width: 400px;
+}
+
+.canvas-empty-state-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 2px dashed var(--text-muted);
+  background: transparent;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+  opacity: 0.5;
+  animation: canvas-empty-icon-pulse 3s infinite ease-in-out;
+}
+
+.canvas-empty-state-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 8px 0;
+  letter-spacing: -0.02em;
+}
+
+.canvas-empty-state-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+@keyframes canvas-empty-state-fade-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -46%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+@keyframes canvas-empty-icon-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 0.75;
+  }
+}
+
+/* ── Click Ripple Effect ── */
+.click-ripple {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 2px solid var(--accent);
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+  z-index: 9999;
+  animation: click-ripple-anim 0.5s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes click-ripple-anim {
+  to {
+    transform: translate(-50%, -50%) scale(2.5);
+    opacity: 0;
+  }
+}
+

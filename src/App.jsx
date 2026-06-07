@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Sparkles, Plus } from 'lucide-react';
 import { AssetPickerModal } from './components/AssetPickerModal';
 import { SeedanceAssetPickerModal } from './components/SeedanceAssetPickerModal';
 import { ImagePreviewModal } from './components/ImagePreviewModal';
@@ -159,6 +159,8 @@ function App() {
   const [videoPreview, setVideoPreview] = useState(null);
   const [linkFromNodeId, setLinkFromNodeId] = useState(null);
   const [linkNodePicker, setLinkNodePicker] = useState(null);
+  const [doubleClickPicker, setDoubleClickPicker] = useState(null);
+  const [ripples, setRipples] = useState([]);
   const [inputHighlightNodeId, setInputHighlightNodeId] = useState(null);
   const [hoverLinkNodeId, setHoverLinkNodeId] = useState(null);
   const [pointerPos, setPointerPos] = useState({ x: 0, y: 0 });
@@ -3002,13 +3004,44 @@ function App() {
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
+  function handleStageDoubleClick(event) {
+    if (!isStageBackgroundTarget(event)) return;
+
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const clientX = event.clientX;
+    const clientY = event.clientY;
+    const canvasX = (clientX - rect.left - viewportOffset.x) / canvasScale - DEFAULT_NODE_WIDTH / 2;
+    const canvasY = (clientY - rect.top - viewportOffset.y) / canvasScale - DEFAULT_NODE_HEIGHT / 2;
+
+    setDoubleClickPicker({
+      screenX: clientX,
+      screenY: clientY,
+      canvasX,
+      canvasY,
+    });
+  }
+
   function handleStagePointerDown(event) {
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (rect) {
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const id = `${Date.now()}-${Math.random()}`;
+      setRipples((prev) => [...prev, { id, x, y }]);
+      setTimeout(() => {
+        setRipples((prev) => prev.filter((r) => r.id !== id));
+      }, 500);
+    }
+
     if (!isStageBackgroundTarget(event)) return;
 
     setSelectedConnectionId(null);
     setEnlargedTextEdit(null);
     setInputHighlightNodeId(null);
     if (linkNodePicker || linkFromNodeId) clearLinkDraft();
+    if (doubleClickPicker) setDoubleClickPicker(null);
 
     if (event.button === 1 || spaceKeyRef.current) {
       beginPan(event);
@@ -3221,6 +3254,26 @@ function App() {
         />
       ) : null}
 
+      {doubleClickPicker ? (
+        <NodeTypePickerPopover
+          screenX={doubleClickPicker.screenX}
+          screenY={doubleClickPicker.screenY}
+          onSelect={(type) => {
+            const { canvasX, canvasY } = doubleClickPicker;
+            const node = createNode(type, canvasX, canvasY);
+            updateActiveCanvas((doc) => ({
+              ...doc,
+              nodes: [...doc.nodes, node],
+            }));
+            setSelectedNodeIds([node.id]);
+            setSelectedConnectionId(null);
+            setEnlargedTextEdit(null);
+            setDoubleClickPicker(null);
+          }}
+          onClose={() => setDoubleClickPicker(null)}
+        />
+      ) : null}
+
       {assetPicker.nodeId ? (
         String(assetPicker.pickMode).startsWith('seedance-') ? (
           <SeedanceAssetPickerModal
@@ -3319,6 +3372,7 @@ function App() {
           onPointerMove={handleStagePointerMove}
           onPointerUp={handleStagePointerUp}
           onPointerDown={handleStagePointerDown}
+          onDoubleClick={handleStageDoubleClick}
         >
           {!canvasReady ? (
             <div className="canvas-hydrate-overlay" aria-live="polite" aria-busy="true">
@@ -3326,6 +3380,17 @@ function App() {
               <span>正在同步画布…</span>
             </div>
           ) : null}
+
+          {canvasReady && nodes.length === 0 ? (
+            <div className="canvas-empty-state" onDoubleClick={(e) => e.stopPropagation()}>
+              <div className="canvas-empty-state-icon">
+                <Plus size={24} strokeWidth={1.5} />
+              </div>
+              <p className="canvas-empty-state-title">双击画布开始创作</p>
+              <p className="canvas-empty-state-desc">或使用左侧面板添加节点</p>
+            </div>
+          ) : null}
+
           <div className={`stage-content ${!canvasReady ? 'is-hidden' : ''}`}>
             <ConnectionLayer
               nodes={nodes}
@@ -3446,6 +3511,14 @@ function App() {
             onViewportChange={setViewportOffset}
             disabled={!canvasReady}
           />
+
+          {ripples.map((ripple) => (
+            <span
+              key={ripple.id}
+              className="click-ripple"
+              style={{ left: ripple.x, top: ripple.y }}
+            />
+          ))}
         </section>
       </main>
 
