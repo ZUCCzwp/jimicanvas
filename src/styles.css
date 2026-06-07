@@ -16,6 +16,7 @@ body,
   width: 100%;
   height: 100%;
   margin: 0;
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 32 32'%3E%3Cg transform='translate(7, 7) rotate(135) scale(0.7)'%3E%3Cpath d='M0,5 C0,5 4,1 4,-2 C4,-4.5 2,-6 0,-3.5 C-2,-6 -4,-4.5 -4,-2 C-4,1 0,5 0,5 Z' fill='%23594f4f' transform='scale(1.3)'/%3E%3Cpath d='M0,5 C0,5 4,1 4,-2 C4,-4.5 2,-6 0,-3.5 C-2,-6 -4,-4.5 -4,-2 C-4,1 0,5 0,5 Z' fill='%23ff6584'/%3E%3C/g%3E%3Cpath d='M7,18 C7,11, 23,11, 23,18 C23,24, 7,24, 7,18 Z' fill='%23c5bbb1' stroke='%23594f4f' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpolygon points='9,12 12,14 9,15' fill='%23c5bbb1' stroke='%23594f4f' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpolygon points='21,12 18,14 21,15' fill='%23c5bbb1' stroke='%23594f4f' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M14,12 V13.5 M16,12 V13.5 M18,12 V13.5' stroke='%23594f4f' stroke-width='1.2' stroke-linecap='round'/%3E%3Cpath d='M22.5,16 H23.5 M22.5,18 H23.5' stroke='%23594f4f' stroke-width='1.2' stroke-linecap='round'/%3E%3Ccircle cx='13' cy='16' r='0.8' fill='%23594f4f'/%3E%3Ccircle cx='17' cy='16' r='0.8' fill='%23594f4f'/%3E%3Cpath d='M14.5,17 Q15,17.6 15.5,17 Q16,17.6 16.5,17' stroke='%23594f4f' stroke-width='1' fill='none' stroke-linecap='round'/%3E%3Cpath d='M5,16.5 H7 M5,18 H7 M23,16.5 H25 M23,18 H25' stroke='%23594f4f' stroke-width='0.8' stroke-linecap='round'/%3E%3Cpath d='M23,21 Q27,21 28,18 Q29,15 27,15' fill='none' stroke='%23594f4f' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M8,23 L20,23 L22,27 L6,27 Z' fill='%2394a3b8' stroke='%23594f4f' stroke-width='1.2' stroke-linejoin='round'/%3E%3Cpath d='M8,23 L20,23 L19,19 L9,19 Z' fill='%23cbd5e1' stroke='%23594f4f' stroke-width='1.2' stroke-linejoin='round'/%3E%3Cpath d='M10,20 L18,20 L17.5,22 L10.5,22 Z' fill='%2338bdf8' opacity='0.7'/%3E%3Cellipse cx='11' cy='22.5' rx='1.8' ry='1.2' fill='%23c5bbb1' stroke='%23594f4f' stroke-width='1.2'%3E%3Canimate attributeName='cy' values='22.5;21.5;22.5' dur='0.3s' repeatCount='indefinite'/%3E%3C/ellipse%3E%3Cellipse cx='17' cy='21.5' rx='1.8' ry='1.2' fill='%23c5bbb1' stroke='%23594f4f' stroke-width='1.2'%3E%3Canimate attributeName='cy' values='21.5;22.5;21.5' dur='0.3s' repeatCount='indefinite'/%3E%3C/ellipse%3E%3C/svg%3E") 7 7, auto;
 }
 
 body {
@@ -959,7 +960,7 @@ button {
   --grid-cell: 28px;
   --viewport-x: 0px;
   --viewport-y: 0px;
-  cursor: grab;
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 32 32'%3E%3Cg transform='translate(7, 7) rotate(135) scale(0.7)'%3E%3Cpath d='M0,5 C0,5 4,1 4,-2 C4,-4.5 2,-6 0,-3.5 C-2,-6 -4,-4.5 -4,-2 C-4,1 0,5 0,5 Z' fill='%23594f4f' transform='scale(1.3)'/%3E%3Cpath d='M0,5 C0,5 4,1 4,-2 C4,-4.5 2,-6 0,-3.5 C-2,-6 -4,-4.5 -4,-2 C-4,1 0,5 0,5 Z' fill='%23ff6584'/%3E%3C/g%3E%3Cpath d='M7,18 C7,11, 23,11, 23,18 C23,24, 7,24, 7,18 Z' fill='%23c5bbb1' stroke='%23594f4f' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpolygon points='9,12 12,14 9,15' fill='%23c5bbb1' stroke='%23594f4f' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpolygon points='21,12 18,14 21,15' fill='%23c5bbb1' stroke='%23594f4f' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M14,12 V13.5 M16,12 V13.5 M18,12 V13.5' stroke='%23594f4f' stroke-width='1.2' stroke-linecap='round'/%3E%3Cpath d='M22.5,16 H23.5 M22.5,18 H23.5' stroke='%23594f4f' stroke-width='1.2' stroke-linecap='round'/%3E%3Ccircle cx='13' cy='16' r='0.8' fill='%23594f4f'/%3E%3Ccircle cx='17' cy='16' r='0.8' fill='%23594f4f'/%3E%3Cpath d='M14.5,17 Q15,17.6 15.5,17 Q16,17.6 16.5,17' stroke='%23594f4f' stroke-width='1' fill='none' stroke-linecap='round'/%3E%3Cpath d='M5,16.5 H7 M5,18 H7 M23,16.5 H25 M23,18 H25' stroke='%23594f4f' stroke-width='0.8' stroke-linecap='round'/%3E%3Cpath d='M23,21 Q27,21 28,18 Q29,15 27,15' fill='none' stroke='%23594f4f' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M8,23 L20,23 L22,27 L6,27 Z' fill='%2394a3b8' stroke='%23594f4f' stroke-width='1.2' stroke-linejoin='round'/%3E%3Cpath d='M8,23 L20,23 L19,19 L9,19 Z' fill='%23cbd5e1' stroke='%23594f4f' stroke-width='1.2' stroke-linejoin='round'/%3E%3Cpath d='M10,20 L18,20 L17.5,22 L10.5,22 Z' fill='%2338bdf8' opacity='0.7'/%3E%3Cellipse cx='11' cy='22.5' rx='1.8' ry='1.2' fill='%23c5bbb1' stroke='%23594f4f' stroke-width='1.2'%3E%3Canimate attributeName='cy' values='22.5;21.5;22.5' dur='0.3s' repeatCount='indefinite'/%3E%3C/ellipse%3E%3Cellipse cx='17' cy='21.5' rx='1.8' ry='1.2' fill='%23c5bbb1' stroke='%23594f4f' stroke-width='1.2'%3E%3Canimate attributeName='cy' values='21.5;22.5;21.5' dur='0.3s' repeatCount='indefinite'/%3E%3C/ellipse%3E%3C/svg%3E") 7 7, auto;
   touch-action: none;
   background-color: var(--stage-bg);
   background-image:
@@ -7584,24 +7585,98 @@ html[data-theme='light'] .canvas-home-user-dropdown-item.is-danger svg {
   }
 }
 
-/* ── Click Ripple Effect ── */
+/* ── Click Bubble Effect ── */
 .click-ripple {
   position: absolute;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  background: var(--accent-soft);
-  border: 2px solid var(--accent);
+  /* Sphere shading & Iridescence */
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(255, 255, 255, 0.45) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    var(--accent-soft) 80%,
+    rgba(56, 189, 248, 0.15) 100%
+  );
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 
+    inset -4px -4px 10px rgba(56, 189, 248, 0.2),
+    inset 4px 4px 8px rgba(255, 255, 255, 0.45),
+    0 4px 12px rgba(0, 0, 0, 0.12);
   transform: translate(-50%, -50%) scale(0);
   pointer-events: none;
   z-index: 9999;
-  animation: click-ripple-anim 0.8s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+  animation: click-bubble-anim 0.7s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
 }
 
-@keyframes click-ripple-anim {
-  to {
-    transform: translate(-50%, -50%) scale(2.5);
+/* Shine/Reflection highlight inside the bubble */
+.click-ripple::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 8px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.75);
+  transform: rotate(-30deg);
+}
+
+@keyframes click-bubble-anim {
+  0% {
+    transform: translate(-50%, -50%) scale(0.15) translateY(0);
+    opacity: 0;
+  }
+  35% {
+    transform: translate(-50%, -50%) scale(1.4) translateY(0);
+    opacity: 1;
+  }
+  45% {
+    transform: translate(-50%, -50%) scale(1.4) translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.4) translateY(-40px);
     opacity: 0;
   }
 }
+
+/* Custom Pusheen Resting hover/pointer cursor */
+a,
+button,
+[role="button"],
+.node,
+.node-floating-header,
+.icon-mini,
+.menu-item,
+.btn,
+.toolbar-button,
+.clickable,
+.cursor-pointer,
+.sidebar-item,
+.dock-item,
+input,
+textarea,
+.port {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 32 32'%3E%3Cg transform='translate(7, 7) rotate(135) scale(0.7)'%3E%3Cpath d='M0,5 C0,5 4,1 4,-2 C4,-4.5 2,-6 0,-3.5 C-2,-6 -4,-4.5 -4,-2 C-4,1 0,5 0,5 Z' fill='%23594f4f' transform='scale(1.3)'/%3E%3Cpath d='M0,5 C0,5 4,1 4,-2 C4,-4.5 2,-6 0,-3.5 C-2,-6 -4,-4.5 -4,-2 C-4,1 0,5 0,5 Z' fill='%23ff6584'/%3E%3C/g%3E%3Cpath d='M6,21 C6,15, 24,15, 24,21 C24,26, 6,26, 6,21 Z' fill='%23c5bbb1' stroke='%23594f4f' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpolygon points='8,16 11,18 8,19' fill='%23c5bbb1' stroke='%23594f4f' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpolygon points='20,16 17,18 20,19' fill='%23c5bbb1' stroke='%23594f4f' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M11.5,19.5 Q12.5,20.2 13.5,19.5' stroke='%23594f4f' stroke-width='1.2' fill='none' stroke-linecap='round'/%3E%3Cpath d='M16.5,19.5 Q17.5,20.2 18.5,19.5' stroke='%23594f4f' stroke-width='1.2' fill='none' stroke-linecap='round'/%3E%3Cpath d='M14.5,20.5 Q15,21.1 15.5,20.5' stroke='%23594f4f' stroke-width='1' fill='none' stroke-linecap='round'/%3E%3Cpath d='M13,16 V17 M15,16 V17 M17,16 V17' stroke='%23594f4f' stroke-width='1.2' stroke-linecap='round'/%3E%3Cpath d='M23,22 Q27,24 28,21 Q29,18 26,18' fill='none' stroke='%23594f4f' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M5,25 L15,25 L14,27 L4,27 Z' fill='%2394a3b8' stroke='%23594f4f' stroke-width='1.2' stroke-linejoin='round'/%3E%3Ctext x='22' y='12' font-family='Arial, sans-serif' font-size='6' font-weight='bold' fill='%23594f4f' opacity='0.8'%3Ez%3Canimate attributeName='opacity' values='0;0.8;0' dur='1.5s' repeatCount='indefinite'/%3E%3Canimate attributeName='y' values='12;8;12' dur='1.5s' repeatCount='indefinite'/%3E%3C/text%3E%3Ctext x='25' y='8' font-family='Arial, sans-serif' font-size='8' font-weight='bold' fill='%23594f4f' opacity='0.8'%3EZ%3Canimate attributeName='opacity' values='0;0.8;0' dur='1.5s' begin='0.5s' repeatCount='indefinite'/%3E%3Canimate attributeName='y' values='8;4;8' dur='1.5s' begin='0.5s' repeatCount='indefinite'/%3E%3C/text%3E%3C/svg%3E") 7 7, pointer !important;
+}
+
+/* Active stage tools overrides */
+.stage.is-panning,
+.stage.is-panning * {
+  cursor: grabbing !important;
+}
+
+.stage.is-resizing,
+.stage.is-resizing * {
+  cursor: nwse-resize !important;
+}
+
+.stage.is-marquee-selecting,
+.stage.is-marquee-selecting * {
+  cursor: crosshair !important;
+}
+
+
 
