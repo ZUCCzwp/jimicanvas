@@ -1,5 +1,5 @@
 /** 画布有改动后，延迟多久再上传到云端（防抖，减少频繁保存） */
-export const CLOUD_SYNC_DEBOUNCE_MS = 5000;
+export const CLOUD_SYNC_DEBOUNCE_MS = 3000;
 export const STORAGE_KEY = 'jimicanvas.documents.v1';
 export const ACTIVE_CANVAS_ID_KEY = 'jimicanvas.active_canvas_id';
 export const JIMIAIGO_TOKEN_STORAGE_KEY = 'jimicanvas.jimiaigo.token';
@@ -26,7 +26,7 @@ export const MIN_NOTE_WIDTH = 180;
 export const MIN_NOTE_HEIGHT = 100;
 export const MAX_NOTE_WIDTH = 800;
 export const MAX_NOTE_HEIGHT = 640;
-export const MIN_CANVAS_SCALE = 0.6;
+export const MIN_CANVAS_SCALE = 0.1;
 export const MAX_CANVAS_SCALE = 1.4;
 export const CANVAS_SCALE_STEP = 0.1;
 export const CANVAS_WHEEL_PAN_FACTOR = 1;

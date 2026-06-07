@@ -724,14 +724,6 @@ export function CanvasHome() {
                   <Sparkles size={16} />
                   {COPY.startCreateButton}
                 </button>
-                <button
-                  type="button"
-                  className="canvas-home-hero-cta is-secondary"
-                  onClick={handleOpenWorkflowTemplates}
-                >
-                  <Workflow size={16} />
-                  {COPY.workflowTemplatesButton}
-                </button>
               </div>
             </div>
             <div className="canvas-home-hero-visual">
@@ -767,23 +759,6 @@ export function CanvasHome() {
                 </div>
                 <div className="canvas-home-project-action">
                   <span>{COPY.createCardAction}</span>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                className="canvas-home-project-card template-card"
-                onClick={handleOpenWorkflowTemplates}
-              >
-                <div className="canvas-home-project-cover template-cover">
-                  <Workflow size={32} />
-                </div>
-                <div className="canvas-home-project-body">
-                  <h3>{COPY.workflowTemplatesButton}</h3>
-                  <p>{COPY.workflowTemplatesDesc}</p>
-                </div>
-                <div className="canvas-home-project-action">
-                  <span>选择模版</span>
                 </div>
               </button>
 

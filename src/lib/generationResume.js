@@ -156,15 +156,21 @@ export function mergeDocumentsPreservePending(localDocs, cloudDocs, options = {}
       (Array.isArray(cloudDoc.nodes) ? cloudDoc.nodes : []).map((node) => [node.id, node])
     );
     const localNodeIds = new Set();
+    const deletedNodeIds = new Set([
+      ...(Array.isArray(localDoc.deletedNodeIds) ? localDoc.deletedNodeIds : []),
+      ...(Array.isArray(cloudDoc.deletedNodeIds) ? cloudDoc.deletedNodeIds : []),
+    ]);
 
-    const nodes = (Array.isArray(localDoc.nodes) ? localDoc.nodes : []).map((serverNode) => {
-      localNodeIds.add(serverNode.id);
-      const clientNode = cloudNodeById.get(serverNode.id);
-      return pickPreferredCanvasNode(serverNode, clientNode);
-    });
+    const nodes = (Array.isArray(localDoc.nodes) ? localDoc.nodes : [])
+      .filter((serverNode) => !deletedNodeIds.has(serverNode.id))
+      .map((serverNode) => {
+        localNodeIds.add(serverNode.id);
+        const clientNode = cloudNodeById.get(serverNode.id);
+        return pickPreferredCanvasNode(serverNode, clientNode);
+      });
 
     for (const cloudNode of cloudNodeById.values()) {
-      if (!localNodeIds.has(cloudNode.id)) {
+      if (!localNodeIds.has(cloudNode.id) && !deletedNodeIds.has(cloudNode.id)) {
         nodes.push(cloudNode);
       }
     }
@@ -174,6 +180,7 @@ export function mergeDocumentsPreservePending(localDocs, cloudDocs, options = {}
       name: cloudDoc.name || localDoc.name,
       connections: Array.isArray(cloudDoc.connections) ? cloudDoc.connections : localDoc.connections,
       nodes,
+      deletedNodeIds: Array.from(deletedNodeIds),
       updatedAt: Math.max(Number(localDoc.updatedAt) || 0, Number(cloudDoc.updatedAt) || 0),
     };
   });

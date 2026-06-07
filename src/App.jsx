@@ -199,6 +199,7 @@ function App() {
   const canvasScaleRef = useRef(canvasScale);
   const viewportOffsetRef = useRef(viewportOffset);
   const fileInputRef = useRef(null);
+  const directUploadInputRef = useRef(null);
   const dragRef = useRef(null);
   const resizeRef = useRef(null);
   const panRef = useRef(null);
@@ -1069,6 +1070,68 @@ function App() {
     setEnlargedTextEdit(null);
   }
 
+  async function uploadAndCreateMultipleNodes(files) {
+    const token = getStoredChatToken();
+    if (!token) {
+      const requested = getOrRequestToken({ onSaved: refreshUserQuota });
+      if (!requested) return;
+    }
+
+    const fileList = Array.from(files);
+    if (fileList.length === 0) return;
+
+    showCopyNotice(`正在上传 ${fileList.length} 个文件...`);
+
+    const rect = stageRef.current?.getBoundingClientRect();
+    const centerX = rect
+      ? (rect.width / 2 - viewportOffset.x) / canvasScale - DEFAULT_NODE_WIDTH / 2
+      : 220;
+    const centerY = rect
+      ? (rect.height / 2 - viewportOffset.y) / canvasScale - DEFAULT_NODE_HEIGHT / 2
+      : 160;
+
+    const uploadPromises = fileList.map(async (file, index) => {
+      const isImage = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/');
+      const type = isImage ? 'image' : isVideo ? 'video' : null;
+
+      if (!type) {
+        throw new Error(`不支持的文件类型: ${file.name}`);
+      }
+
+      const uploadedUrl = await uploadAsset({ token, file });
+      if (!uploadedUrl) {
+        throw new Error(`文件 ${file.name} 上传失败`);
+      }
+
+      const offset = index * 40;
+      const node = createNode(type, centerX + offset + Math.random() * 20 - 10, centerY + offset + Math.random() * 20 - 10);
+      node.content = uploadedUrl;
+      node.title = file.name || (type === 'image' ? '已上传图片' : '已上传视频');
+      if (type === 'image') {
+        node.images = [uploadedUrl];
+      } else if (type === 'video') {
+        node.videos = [uploadedUrl];
+      }
+      return node;
+    });
+
+    try {
+      const nodesToCreate = await Promise.all(uploadPromises);
+      updateActiveCanvas((doc) => ({
+        ...doc,
+        nodes: [...doc.nodes, ...nodesToCreate],
+      }));
+      setSelectedNodeIds(nodesToCreate.map((node) => node.id));
+      setSelectedConnectionId(null);
+      setEnlargedTextEdit(null);
+      showCopyNotice(`成功上传并生成 ${nodesToCreate.length} 个节点`);
+    } catch (error) {
+      console.error(error);
+      showCopyNotice(error instanceof Error ? error.message : '部分或全部文件上传失败');
+    }
+  }
+
   function insertWorkflowTemplate(templateId) {
     const rect = stageRef.current?.getBoundingClientRect();
     const centerX = rect
@@ -1511,13 +1574,17 @@ function App() {
     const idSet = new Set(nodeIds.filter(Boolean));
     if (idSet.size === 0) return;
 
-    updateActiveCanvas((doc) => ({
-      ...doc,
-      nodes: doc.nodes.filter((node) => !idSet.has(node.id)),
-      connections: doc.connections.filter(
-        (link) => !idSet.has(link.fromNodeId) && !idSet.has(link.toNodeId)
-      ),
-    }));
+    updateActiveCanvas((doc) => {
+      const currentDeleted = Array.isArray(doc.deletedNodeIds) ? doc.deletedNodeIds : [];
+      return {
+        ...doc,
+        nodes: doc.nodes.filter((node) => !idSet.has(node.id)),
+        connections: doc.connections.filter(
+          (link) => !idSet.has(link.fromNodeId) && !idSet.has(link.toNodeId)
+        ),
+        deletedNodeIds: Array.from(new Set([...currentDeleted, ...nodeIds.filter(Boolean)])),
+      };
+    });
 
     setSelectedNodeIds((prev) => prev.filter((id) => !idSet.has(id)));
 
@@ -3021,12 +3088,26 @@ function App() {
   return (
     <div className="app-shell">
       <input ref={fileInputRef} type="file" accept="application/json" hidden onChange={handleImport} />
+      <input
+        ref={directUploadInputRef}
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            uploadAndCreateMultipleNodes(e.target.files);
+          }
+          e.target.value = '';
+        }}
+      />
 
       <FloatingDock
         onAddNode={addNode}
         onImport={triggerImport}
         onExport={exportJson}
         onOpenWorkflowTemplates={() => setWorkflowTemplateOpen(true)}
+        onUploadMedia={() => directUploadInputRef.current?.click()}
       />
 
       {importError ? <div className="toast-error">{importError}</div> : null}
