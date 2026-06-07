@@ -7595,7 +7595,7 @@ html[data-theme='light'] .canvas-home-user-dropdown-item.is-danger svg {
   transform: translate(-50%, -50%) scale(0);
   pointer-events: none;
   z-index: 9999;
-  animation: click-ripple-anim 0.5s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+  animation: click-ripple-anim 0.8s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
 }
 
 @keyframes click-ripple-anim {

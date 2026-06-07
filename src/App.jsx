@@ -3032,7 +3032,7 @@ function App() {
       setRipples((prev) => [...prev, { id, x, y }]);
       setTimeout(() => {
         setRipples((prev) => prev.filter((r) => r.id !== id));
-      }, 500);
+      }, 800);
     }
 
     if (!isStageBackgroundTarget(event)) return;
