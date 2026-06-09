@@ -14,6 +14,7 @@ export const DEFAULT_CHAT_API_URL = 'http://localhost:27355';
 export const DEFAULT_SITE_TITLE = 'JimiCanvas';
 export const DEFAULT_SITE_SLOGAN = '轻量画布工作台';
 export const DEFAULT_KEFU_QR_URL = '/wechat-qrcode.png';
+export const CANVAS_TUTORIAL_URL = 'https://www.bilibili.com/video/BV1GWEw6gEJ9/';
 export const DEFAULT_TEXT_MODEL = 'gpt-5.4-mini';
 export const DEFAULT_IMAGE_MODEL = 'gpt-image-2';
 export const DEFAULT_IMAGE_RESOLUTION = '1k';

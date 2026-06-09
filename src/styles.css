@@ -6119,6 +6119,16 @@ html[data-theme='light'] .workflow-template-icon.icon-layers {
   color: var(--text-secondary);
 }
 
+.canvas-home-tutorial-link {
+  text-decoration: none;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.canvas-home-tutorial-link:hover {
+  color: var(--text-primary);
+  background: var(--button-ghost-bg);
+}
+
 .canvas-home-topbar-divider {
   flex-shrink: 0;
   width: 1px;
@@ -6606,6 +6616,7 @@ html[data-theme='light'] .canvas-home-user-dropdown-item.is-danger svg {
 }
 
 .canvas-home-hero-cta.is-secondary {
+  text-decoration: none;
   color: #fff;
   background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.22);

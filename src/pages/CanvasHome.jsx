@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BookOpen,
   ChevronDown,
   Crown,
   CloudUpload,
@@ -38,6 +39,7 @@ import {
   parseRawDocuments,
   renameDocument,
 } from '../lib/canvasDocuments';
+import { CANVAS_TUTORIAL_URL } from '../lib/constants';
 import { getStoredChatToken, isBackendInCooldown } from '../lib/jimiaigoApi';
 import { fetchSiteConfig, getDefaultSiteSettings } from '../lib/siteApi';
 import {
@@ -56,6 +58,7 @@ const COPY = {
   heroSubtitle:
     '自由排布图片、视频与文本节点，在同一画布内完成灵感整理、AI 生图与生视频，并自动同步到云端。',
   startCreateButton: '开始创作',
+  tutorialLink: '使用教程',
   workflowTemplatesButton: '预设工作流模版',
   workflowTemplatesDesc: '文生图、图生视频、图片/视频反推提示词等常用流程',
   createCardDesc: '新建空白画布，开启新的创作',
@@ -670,6 +673,15 @@ export function CanvasHome() {
           </div>
         </div>
         <div className="canvas-home-topbar-actions">
+          <a
+            href={CANVAS_TUTORIAL_URL}
+            className="canvas-home-text-btn canvas-home-tutorial-link"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <BookOpen size={16} />
+            <span>{COPY.tutorialLink}</span>
+          </a>
           <button type="button" className="canvas-home-icon-btn" onClick={toggleTheme} aria-label="切换主题">
             {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
           </button>
@@ -724,6 +736,15 @@ export function CanvasHome() {
                   <Sparkles size={16} />
                   {COPY.startCreateButton}
                 </button>
+                <a
+                  href={CANVAS_TUTORIAL_URL}
+                  className="canvas-home-hero-cta is-secondary"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <BookOpen size={16} />
+                  {COPY.tutorialLink}
+                </a>
               </div>
             </div>
             <div className="canvas-home-hero-visual">
