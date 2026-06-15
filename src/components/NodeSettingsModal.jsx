@@ -32,6 +32,7 @@ export function NodeSettingsModal({
   onRemoveVeoFrame,
   onRemoveSeedanceMedia,
   onVideoGenerationTypeChange,
+  onPreviewImage,
 }) {
   const meta = NODE_META[nodeType] || NODE_META.image;
   const Icon = meta.icon;
@@ -58,6 +59,7 @@ export function NodeSettingsModal({
     onOpenAssetLibrary,
     onRemoveImageReference,
     onRemoveTextReference,
+    onPreviewImage,
   };
 
   return (

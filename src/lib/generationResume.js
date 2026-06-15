@@ -2,6 +2,7 @@ import { waitForImageTask } from './imageApi';
 import { buildImageNodeLayoutPatch, filterRealImageOutputs, isDefaultDemoImageOutput } from './imageNodeLayout';
 import { buildVideoNodeLayoutPatch } from './videoNodeLayout';
 import { waitForVideoTask } from './videoApi';
+import { waitForVideoTaskViaSSE } from './videoTaskEvents';
 
 const RECOVER_STAGGER_MS = 500;
 
@@ -458,10 +459,14 @@ export async function executeVideoGeneration(
       if (onPersist) onPersist();
     }
 
-    const videoUrl = await waitForVideoTask({
+    const activeProvider = node.taskProvider || provider;
+    const waitVideoTask =
+      activeProvider === 'omni' ? waitForVideoTaskViaSSE : waitForVideoTask;
+
+    const videoUrl = await waitVideoTask({
       token,
       taskId,
-      provider: node.taskProvider || provider,
+      provider: activeProvider,
       queryModel: node.taskQueryModel || queryModel,
       onProgress: ({ status, progress }) => {
         updateNode(node.id, {

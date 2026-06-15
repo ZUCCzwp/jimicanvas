@@ -17,12 +17,26 @@ export function ReferenceImageChip({
   index,
   previewSrc,
   onRemove,
+  onPreview,
   removeTitle = '移除参考图',
 }) {
+  const alt = image?.name || getReferenceLabel(index);
+
   return (
-    <div className="image-reference-chip">
+    <div className={`image-reference-chip${onPreview ? ' is-previewable' : ''}`}>
       <span className="image-reference-index">{index + 1}</span>
-      <img src={previewSrc} alt={image?.name || getReferenceLabel(index)} />
+      {onPreview ? (
+        <button
+          type="button"
+          className="image-reference-preview"
+          onClick={onPreview}
+          title="预览参考图"
+        >
+          <img src={previewSrc} alt={alt} />
+        </button>
+      ) : (
+        <img src={previewSrc} alt={alt} />
+      )}
       <button type="button" onClick={onRemove} title={removeTitle}>
         <X size={11} />
       </button>

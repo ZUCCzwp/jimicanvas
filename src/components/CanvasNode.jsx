@@ -843,6 +843,10 @@ function referencePreviewSrc(image) {
   return image.source === 'local' ? value : normalizeImageUrl(value);
 }
 
+function getReferencePreviewUrls(references, resolvePreviewUrl = referencePreviewSrc) {
+  return references.map((image) => resolvePreviewUrl(image)).filter(Boolean);
+}
+
 function useSeedancePreviewSrc(item, mediaType) {
   const direct = resolveSeedanceMediaPreviewUrl(item, mediaType);
   const assetUrl = String(item?.url || '').trim();
@@ -1034,6 +1038,7 @@ export function VideoToolbar({
   onUpdateNode,
   onOpenEnlargedSettings,
   onVideoGenerationTypeChange,
+  onPreviewImage,
 }) {
   const toolbarRef = useRef(null);
   const hasTextInput = textInputLinks.length > 0;
@@ -1089,6 +1094,14 @@ export function VideoToolbar({
   const ratioValue = family === 'sora' ? normalizedSettings.orientation : normalizedSettings.ratio;
   const resolutionTitle = family === 'grok' ? '画质' : '分辨率';
   const genericReferenceMax = getVideoReferenceImageMax(node);
+  const referencePreviewUrls = getReferencePreviewUrls(resolvedReferences);
+
+  function previewReferenceAt(index) {
+    const targetUrl = referencePreviewSrc(resolvedReferences[index]);
+    if (!targetUrl || !onPreviewImage) return;
+    const activeIndex = referencePreviewUrls.indexOf(targetUrl);
+    onPreviewImage(referencePreviewUrls, activeIndex >= 0 ? activeIndex : 0);
+  }
 
   useEffect(() => {
     if (variant === 'modal' || !isSeedance) return undefined;
@@ -1312,6 +1325,11 @@ export function VideoToolbar({
                 image={image}
                 index={index}
                 previewSrc={referencePreviewSrc(image)}
+                onPreview={
+                  onPreviewImage && referencePreviewSrc(image)
+                    ? () => previewReferenceAt(index)
+                    : undefined
+                }
                 onRemove={() => removeVideoReferenceAt(index)}
               />
             ))}
@@ -1592,6 +1610,7 @@ export function ImageToolbar({
   onRemoveTextReference,
   onUpdateNode,
   onOpenEnlargedSettings,
+  onPreviewImage,
 }) {
   const hasTextInput = textInputLinks.length > 0;
   const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
@@ -1612,6 +1631,17 @@ export function ImageToolbar({
   });
   const displayImages = getImageDisplayImages(node);
   const hasOutputImages = displayImages.length > 0;
+  const referencePreviewUrls = getReferencePreviewUrls(resolvedReferences, (image) =>
+    normalizeImageUrl(image.url || image.data)
+  );
+  const resolveImageReferencePreview = (image) => normalizeImageUrl(image.url || image.data);
+
+  function previewReferenceAt(index) {
+    const targetUrl = resolveImageReferencePreview(resolvedReferences[index]);
+    if (!targetUrl || !onPreviewImage) return;
+    const activeIndex = referencePreviewUrls.indexOf(targetUrl);
+    onPreviewImage(referencePreviewUrls, activeIndex >= 0 ? activeIndex : 0);
+  }
 
   function patchLayoutForEmptyNode(overrides = {}) {
     if (hasOutputImages) return {};
@@ -1645,12 +1675,17 @@ export function ImageToolbar({
                     (image.url && (item.url === image.url || item.data === image.url))
                 );
 
+            const previewSrc = normalizeImageUrl(image.url || image.data);
+
             return (
               <ReferenceImageChip
                 key={image.id || image.url || index}
                 image={image}
                 index={index}
-                previewSrc={normalizeImageUrl(image.url || image.data)}
+                previewSrc={previewSrc}
+                onPreview={
+                  onPreviewImage && previewSrc ? () => previewReferenceAt(index) : undefined
+                }
                 onRemove={() => {
                   if (isConnection) {
                     onRemoveTextReference(image.linkId);
@@ -2422,6 +2457,7 @@ export function CanvasNode({
           onRemoveTextReference={onRemoveTextReference}
           onUpdateNode={onUpdateNode}
           onOpenEnlargedSettings={onOpenEnlargedSettings}
+          onPreviewImage={onPreviewImage}
         />
       ) : node.type === 'video' && showToolbar ? (
         <VideoToolbar
@@ -2439,6 +2475,7 @@ export function CanvasNode({
           onVideoGenerationTypeChange={onVideoGenerationTypeChange}
           onUpdateNode={onUpdateNode}
           onOpenEnlargedSettings={onOpenEnlargedSettings}
+          onPreviewImage={onPreviewImage}
         />
       ) : node.type === 'audio' && showToolbar ? (
         <AudioToolbar

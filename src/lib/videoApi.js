@@ -426,7 +426,17 @@ function pickTaskVideoUrl(task) {
   return normalizeVideoUrl(task.videoPath || task.video_path || '');
 }
 
-function pickOmniQueryVideoUrl(data) {
+export async function queryOmniVideoTaskOnce({ token, taskId, queryModel }) {
+  return requestJson('/api/video/gemini/query', {
+    token,
+    query: {
+      id: taskId,
+      model: queryModel || 'Gemini-Omini',
+    },
+  });
+}
+
+export function pickOmniQueryVideoUrl(data) {
   if (!data) return '';
   return normalizeVideoUrl(
     data.result?.video_url ||
@@ -436,16 +446,6 @@ function pickOmniQueryVideoUrl(data) {
       data.mediaUrl ||
       ''
   );
-}
-
-async function queryOmniVideoTask({ token, taskId, queryModel }) {
-  return requestJson('/api/video/gemini/query', {
-    token,
-    query: {
-      id: taskId,
-      model: queryModel || 'Gemini-Omini',
-    },
-  });
 }
 
 function normalizeTaskStatus(status) {
@@ -491,51 +491,11 @@ export async function getTaskDetail({ token, taskId, allowPendingRecord = false 
 export async function waitForVideoTask({
   token,
   taskId,
-  provider,
-  queryModel,
   maxAttempts = 400,
   intervalMs = 3000,
   onProgress,
 }) {
-  const pollOmni = provider === 'omni';
-
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    if (pollOmni) {
-      const data = await queryOmniVideoTask({ token, taskId, queryModel });
-      const status = data?.status;
-      const progress = Number(data?.progress) || 0;
-
-      if (onProgress) {
-        onProgress({ status, progress });
-      }
-
-      if (isTaskSuccess(status)) {
-        const videoUrl = pickOmniQueryVideoUrl(data);
-        if (!videoUrl) {
-          await wait(intervalMs);
-          continue;
-        }
-        return videoUrl;
-      }
-
-      if (isTaskFailed(status)) {
-        const errorPayload = data?.error;
-        const remark =
-          (typeof errorPayload === 'string' ? errorPayload : '') ||
-          errorPayload?.message ||
-          data?.remark ||
-          '视频生成失败';
-        throw new Error(remark);
-      }
-
-      if (!isTaskPending(status)) {
-        throw new Error(`未知的视频任务状态: ${status || 'unknown'}`);
-      }
-
-      await wait(intervalMs);
-      continue;
-    }
-
     const task = await getTaskDetail({ token, taskId, allowPendingRecord: true });
 
     if (!task) {

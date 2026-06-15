@@ -2624,6 +2624,19 @@ button {
   display: block;
 }
 
+.image-reference-chip.is-previewable {
+  cursor: zoom-in;
+}
+
+.image-reference-chip .image-reference-preview {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+
 .image-reference-chip button {
   position: absolute;
   right: 2px;

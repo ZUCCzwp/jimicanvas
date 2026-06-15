@@ -88,6 +88,7 @@ import {
   saveCanvasDocuments,
 } from './lib/canvasApi';
 import { getOrRequestToken, getStoredChatToken, runChatCompletion } from './lib/chatApi';
+import { sseManager } from './lib/sseManager';
 import { isBackendInCooldown } from './lib/jimiaigoApi';
 import { fetchUserInfo } from './lib/userApi';
 import { fetchSiteConfig, getDefaultSiteSettings } from './lib/siteApi';
@@ -256,9 +257,11 @@ function App() {
   const refreshUserQuota = async () => {
     const token = getStoredChatToken();
     if (!token) {
+      sseManager.disconnect();
       setUserQuota({ loading: false, remaining: null, percentage: null, profile: null });
       return;
     }
+    sseManager.connect();
     if (isBackendInCooldown()) {
       setUserQuota((prev) => ({ ...prev, loading: false }));
       return;
@@ -1501,6 +1504,17 @@ function App() {
     const doc = documentsRef.current.find((item) => item.id === canvasId);
     return doc?.nodes?.find((node) => node.id === nodeId) || null;
   }
+
+  useEffect(() => {
+    if (!hydrationDone) return undefined;
+    const token = getStoredChatToken();
+    if (token) {
+      sseManager.connect();
+    } else {
+      sseManager.disconnect();
+    }
+    return undefined;
+  }, [hydrationDone]);
 
   useEffect(() => {
     if (!hydrationDone || recoveryStartedRef.current) return undefined;
@@ -3264,6 +3278,9 @@ function App() {
           onRemoveVeoFrame={removeVeoFrame}
           onRemoveSeedanceMedia={removeSeedanceMedia}
           onVideoGenerationTypeChange={updateVideoGenerationType}
+          onPreviewImage={(images, index) =>
+            openImagePreview(images, index, enlargedSettingsNode.title || '参考图预览')
+          }
         />
       ) : null}
 
