@@ -1,4 +1,4 @@
-import { DEFAULT_VIDEO_FAMILY, DEFAULT_VIDEO_ROUTE } from './constants';
+import { DEFAULT_VIDEO_FAMILY, DEFAULT_VIDEO_ROUTE, OMNI_REFERENCE_IMAGE_MAX } from './constants';
 import { requestJimiaigo, requestJimiaigoForm } from './jimiaigoApi';
 import { normalizeImageUrl, uploadAsset } from './imageApi';
 import {
@@ -21,6 +21,11 @@ const TASK_PENDING_STATUS = new Set([
   'processing',
   'in_progress',
   'running',
+  'submitted',
+  'created',
+  'prompt_enhancing',
+  'prompt_enhancement_checking',
+  'image_downloading',
   '0',
 ]);
 
@@ -152,7 +157,7 @@ async function createOmniTask({ token, prompt, settings, referenceImages }) {
       duration: Number(settings.duration) || 6,
       resolution: settings.resolution,
       aspect_ratio: settings.ratio,
-      image_urls: buildReferenceImageUrls(referenceImages),
+      image_urls: buildReferenceImageUrls(referenceImages).slice(0, OMNI_REFERENCE_IMAGE_MAX),
     },
   });
 
@@ -421,6 +426,28 @@ function pickTaskVideoUrl(task) {
   return normalizeVideoUrl(task.videoPath || task.video_path || '');
 }
 
+function pickOmniQueryVideoUrl(data) {
+  if (!data) return '';
+  return normalizeVideoUrl(
+    data.result?.video_url ||
+      data.result?.videoUrl ||
+      data.video_url ||
+      data.videoUrl ||
+      data.mediaUrl ||
+      ''
+  );
+}
+
+async function queryOmniVideoTask({ token, taskId, queryModel }) {
+  return requestJson('/api/video/gemini/query', {
+    token,
+    query: {
+      id: taskId,
+      model: queryModel || 'Gemini-Omini',
+    },
+  });
+}
+
 function normalizeTaskStatus(status) {
   return String(status ?? '').trim().toLowerCase();
 }
@@ -464,11 +491,51 @@ export async function getTaskDetail({ token, taskId, allowPendingRecord = false 
 export async function waitForVideoTask({
   token,
   taskId,
+  provider,
+  queryModel,
   maxAttempts = 400,
   intervalMs = 3000,
   onProgress,
 }) {
+  const pollOmni = provider === 'omni';
+
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (pollOmni) {
+      const data = await queryOmniVideoTask({ token, taskId, queryModel });
+      const status = data?.status;
+      const progress = Number(data?.progress) || 0;
+
+      if (onProgress) {
+        onProgress({ status, progress });
+      }
+
+      if (isTaskSuccess(status)) {
+        const videoUrl = pickOmniQueryVideoUrl(data);
+        if (!videoUrl) {
+          await wait(intervalMs);
+          continue;
+        }
+        return videoUrl;
+      }
+
+      if (isTaskFailed(status)) {
+        const errorPayload = data?.error;
+        const remark =
+          (typeof errorPayload === 'string' ? errorPayload : '') ||
+          errorPayload?.message ||
+          data?.remark ||
+          '视频生成失败';
+        throw new Error(remark);
+      }
+
+      if (!isTaskPending(status)) {
+        throw new Error(`未知的视频任务状态: ${status || 'unknown'}`);
+      }
+
+      await wait(intervalMs);
+      continue;
+    }
+
     const task = await getTaskDetail({ token, taskId, allowPendingRecord: true });
 
     if (!task) {
@@ -495,7 +562,8 @@ export async function waitForVideoTask({
     if (isTaskSuccess(status)) {
       const videoUrl = pickTaskVideoUrl(task);
       if (!videoUrl) {
-        throw new Error('视频任务已完成，但未返回视频地址');
+        await wait(intervalMs);
+        continue;
       }
       return videoUrl;
     }

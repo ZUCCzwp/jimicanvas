@@ -1,4 +1,11 @@
-import { PLACEHOLDER_IMAGE, DEFAULT_VIDEO_URL, getImageReferenceMax } from './constants';
+import {
+  PLACEHOLDER_IMAGE,
+  DEFAULT_VIDEO_URL,
+  getImageReferenceMax,
+  inferVideoFamily,
+  getVideoReferenceImageMax,
+  VIDEO_FRAME_IMAGE_CONNECTION_MAX,
+} from './constants';
 import { isDefaultDemoImageUrl, getImageNodeDisplayImages } from './imageNodeLayout';
 import { isVideoContent } from './canvas';
 
@@ -204,28 +211,113 @@ export function resolveVideoPrompt(node, nodes = [], connections = []) {
     .join('\n\n');
 }
 
-export function resolveVideoReferenceImages(node, nodes = [], connections = []) {
-  const assetRefs = Array.isArray(node?.referenceImages) ? [...node.referenceImages] : [];
-  const connected = getImageInputLinks(node.id, nodes, connections)
-    .map((item) => {
-      const url = getImageNodeReferenceUrl(item.node);
-      if (!url) return null;
-      return {
-        id: `conn-${item.linkId}`,
-        url,
-        name: item.node?.title || '图片节点',
-        source: 'connection',
-      };
-    })
-    .filter(Boolean);
+export function isVideoFrameImageMode(node) {
+  const family = inferVideoFamily(node);
+  if (family === 'veo') {
+    return (node?.videoGenerationType || 'frame') === 'frame';
+  }
+  if (family === 'seedance') {
+    const refs = Array.isArray(node?.referenceImages) ? node.referenceImages : [];
+    return refs.length === 0;
+  }
+  return false;
+}
 
-  const seen = new Set();
-  return [...connected, ...assetRefs].filter((item) => {
-    const key = item.url || item.id;
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+export function isVideoReferenceImageMode(node) {
+  return !isVideoFrameImageMode(node);
+}
+
+export function getVideoImageConnectionMax(node) {
+  if (isVideoFrameImageMode(node)) {
+    return VIDEO_FRAME_IMAGE_CONNECTION_MAX;
+  }
+  return getVideoReferenceImageMax(node);
+}
+
+export function buildVideoConnectedImageAsset(linkItem) {
+  const url = getImageNodeReferenceUrl(linkItem.node);
+  if (!url) return null;
+  return {
+    id: `conn-${linkItem.linkId}`,
+    linkId: linkItem.linkId,
+    url,
+    name: formatImageInputLabel(linkItem.node),
+    source: 'connection',
+  };
+}
+
+export function resolveVideoConnectedImageAssets(imageInputLinks = []) {
+  return (imageInputLinks || []).map(buildVideoConnectedImageAsset).filter(Boolean);
+}
+
+export function resolveVideoToolbarReferences(node, imageInputLinks = []) {
+  const assetRefs = Array.isArray(node?.referenceImages) ? [...node.referenceImages] : [];
+  if (!isVideoReferenceImageMode(node)) {
+    return dedupeReferenceImages(assetRefs);
+  }
+
+  const connected = resolveVideoConnectedImageAssets(imageInputLinks);
+  const max = getVideoReferenceImageMax(node);
+
+  return dedupeReferenceImages([...connected, ...assetRefs]).slice(0, max);
+}
+
+export function resolveVideoToolbarFrames(node, imageInputLinks = []) {
+  const connected = resolveVideoConnectedImageAssets(imageInputLinks);
+  let connIdx = 0;
+
+  let firstFrame = node?.videoFirstFrame || null;
+  let lastFrame = node?.videoLastFrame || null;
+  let firstConnectionLinkId = null;
+  let lastConnectionLinkId = null;
+
+  if (!firstFrame && connected[connIdx]) {
+    firstFrame = connected[connIdx];
+    firstConnectionLinkId = connected[connIdx].linkId;
+    connIdx += 1;
+  }
+  if (!lastFrame && connected[connIdx]) {
+    lastFrame = connected[connIdx];
+    lastConnectionLinkId = connected[connIdx].linkId;
+  }
+
+  return {
+    firstFrame,
+    lastFrame,
+    firstConnectionLinkId,
+    lastConnectionLinkId,
+  };
+}
+
+export function resolveVideoGenerationFrames(node, nodes = [], connections = []) {
+  const imageInputLinks = getImageInputLinks(node.id, nodes, connections);
+  const { firstFrame, lastFrame } = resolveVideoToolbarFrames(node, imageInputLinks);
+  return { firstFrame, lastFrame };
+}
+
+export function validateVideoImageConnection(videoNode, imageInputLinks = []) {
+  if (!videoNode || videoNode.type !== 'video') return null;
+
+  const max = getVideoImageConnectionMax(videoNode);
+  if (imageInputLinks.length >= max) {
+    if (isVideoFrameImageMode(videoNode)) {
+      return `首尾帧模式最多连接 ${VIDEO_FRAME_IMAGE_CONNECTION_MAX} 张图片`;
+    }
+    return `参考图模式最多连接 ${max} 张图片`;
+  }
+
+  return null;
+}
+
+export function resolveVideoReferenceImages(node, nodes = [], connections = []) {
+  const imageInputLinks = getImageInputLinks(node.id, nodes, connections);
+  return resolveVideoToolbarReferences(node, imageInputLinks).map((item) => ({
+    id: item.id,
+    linkId: item.linkId,
+    url: item.url,
+    name: item.name,
+    source: item.source,
+  }));
 }
 
 export function hasVideoPromptSource(node, nodes = [], connections = []) {

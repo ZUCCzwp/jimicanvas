@@ -31,6 +31,7 @@ export function NodeSettingsModal({
   onRemoveTextReference,
   onRemoveVeoFrame,
   onRemoveSeedanceMedia,
+  onVideoGenerationTypeChange,
 }) {
   const meta = NODE_META[nodeType] || NODE_META.image;
   const Icon = meta.icon;
@@ -87,6 +88,7 @@ export function NodeSettingsModal({
               onRunVideoGeneration={onRunVideoGeneration}
               onRemoveVeoFrame={onRemoveVeoFrame}
               onRemoveSeedanceMedia={onRemoveSeedanceMedia}
+              onVideoGenerationTypeChange={onVideoGenerationTypeChange}
             />
           )}
         </div>

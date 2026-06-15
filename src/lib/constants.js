@@ -55,10 +55,16 @@ export const DEFAULT_VIDEO_QUALITY = '720p';
 export const DEFAULT_VIDEO_COUNT = 1;
 export const DEFAULT_VEO_GENERATION_TYPE = 'frame';
 export const VEO_REFERENCE_IMAGE_MAX = 3;
+/** 视频节点首尾帧模式：最多连接的图片节点数 */
+export const VIDEO_FRAME_IMAGE_CONNECTION_MAX = 2;
+/** 视频节点参考图模式：最多连接的图片节点数 */
+export const VIDEO_REFERENCE_IMAGE_CONNECTION_MAX = 3;
 export const SEEDANCE_REF_IMAGE_MAX = 9;
 export const SEEDANCE_REF_VIDEO_MAX = 3;
 export const SEEDANCE_REF_AUDIO_MAX = 3;
 export const VIDEO_GENERIC_REFERENCE_MAX = 5;
+/** Gemini Omni 参考图上限 */
+export const OMNI_REFERENCE_IMAGE_MAX = 7;
 
 export const IMAGE_REFERENCE_LIMITS = {
   nanobanana2: 5,
@@ -175,7 +181,7 @@ export const VIDEO_FAMILY_CONFIG = {
       { value: '8', label: '8 秒' },
       { value: '10', label: '10 秒' },
     ],
-    maxCount: 3,
+    maxCount: 7,
     resolutionKey: 'resolution',
     ratioKey: 'ratio',
   },
@@ -314,6 +320,14 @@ export function inferVideoFamily(node = {}) {
   if (model.includes('veo') || model.startsWith('sc-veo')) return 'veo';
   if (model.includes('omni') || model.includes('gemini')) return 'omni';
   return 'sora';
+}
+
+export function getVideoReferenceImageMax(node = {}) {
+  const family = inferVideoFamily(node);
+  if (family === 'veo') return VEO_REFERENCE_IMAGE_MAX;
+  if (family === 'seedance') return SEEDANCE_REF_IMAGE_MAX;
+  if (family === 'omni') return OMNI_REFERENCE_IMAGE_MAX;
+  return VIDEO_GENERIC_REFERENCE_MAX;
 }
 
 export function getVideoFamilyConfig(family = DEFAULT_VIDEO_FAMILY) {

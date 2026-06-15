@@ -30,6 +30,7 @@ import {
   getVideoResolutionOptions,
   defaultSoraSize,
   inferVideoFamily,
+  getVideoReferenceImageMax,
   IMAGE_MODEL_OPTIONS,
   getImageRatioOptions,
   getImageResolutionOptions,
@@ -69,6 +70,8 @@ import {
   mergeImageReferenceImages,
   resolveNoteImageInputUrls,
   resolveNoteVideoInputUrls,
+  resolveVideoToolbarFrames,
+  resolveVideoToolbarReferences,
 } from '../lib/connections';
 import {
   buildImageNodeLayoutPatch,
@@ -1030,12 +1033,19 @@ export function VideoToolbar({
   onRemoveSeedanceMedia,
   onUpdateNode,
   onOpenEnlargedSettings,
+  onVideoGenerationTypeChange,
 }) {
   const toolbarRef = useRef(null);
   const hasTextInput = textInputLinks.length > 0;
-  const hasImageInput = imageInputLinks.length > 0;
   const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
-  const references = Array.isArray(node.referenceImages) ? node.referenceImages : [];
+  const resolvedReferences = resolveVideoToolbarReferences(node, imageInputLinks);
+  const assetReferences = Array.isArray(node.referenceImages) ? node.referenceImages : [];
+  const {
+    firstFrame: resolvedFirstFrame,
+    lastFrame: resolvedLastFrame,
+    firstConnectionLinkId,
+    lastConnectionLinkId,
+  } = resolveVideoToolbarFrames(node, imageInputLinks);
   const referenceVideos = Array.isArray(node.videoReferenceVideos) ? node.videoReferenceVideos : [];
   const referenceAudios = Array.isArray(node.videoReferenceAudios) ? node.videoReferenceAudios : [];
   const family = inferVideoFamily(node);
@@ -1043,10 +1053,11 @@ export function VideoToolbar({
   const isSeedance = family === 'seedance';
   const veoGenerationType = node.videoGenerationType || 'frame';
   const showVeoReferenceImages = isVeo && veoGenerationType === 'reference';
-  const hasSeedanceFrames = Boolean(node.videoFirstFrame || node.videoLastFrame);
-  const hasSeedanceReferenceImages = references.length > 0;
-  const showSeedanceReferenceImages = isSeedance && !hasSeedanceFrames;
-  const showSeedanceFrames = isSeedance && !hasSeedanceReferenceImages;
+  const seedanceReferenceMode = isSeedance && assetReferences.length > 0;
+  const showSeedanceReferenceImages = seedanceReferenceMode;
+  const showSeedanceFrames = isSeedance && !seedanceReferenceMode;
+  const hasSeedanceFrames = showSeedanceFrames && Boolean(resolvedFirstFrame || resolvedLastFrame);
+  const hasSeedanceReferenceImages = seedanceReferenceMode && resolvedReferences.length > 0;
   const showSeedanceReferenceMedia = isSeedance && !hasSeedanceFrames;
   const showGenericReferenceImages = !isVeo && !isSeedance;
   const model = node.videoModel || getVideoModelOptions(family)[0]?.value;
@@ -1077,6 +1088,7 @@ export function VideoToolbar({
         : normalizedSettings.resolution;
   const ratioValue = family === 'sora' ? normalizedSettings.orientation : normalizedSettings.ratio;
   const resolutionTitle = family === 'grok' ? '画质' : '分辨率';
+  const genericReferenceMax = getVideoReferenceImageMax(node);
 
   useEffect(() => {
     if (variant === 'modal' || !isSeedance) return undefined;
@@ -1139,7 +1151,7 @@ export function VideoToolbar({
     variant,
     isSeedance,
     node.id,
-    references.length,
+    resolvedReferences.length,
     referenceVideos.length,
     referenceAudios.length,
     hasSeedanceFrames,
@@ -1194,6 +1206,10 @@ export function VideoToolbar({
   }
 
   function applyVeoGenerationTypeChange(value) {
+    if (onVideoGenerationTypeChange) {
+      onVideoGenerationTypeChange(node.id, value);
+      return;
+    }
     const patch = { videoGenerationType: value, status: 'idle' };
     if (value === 'frame') {
       patch.referenceImages = [];
@@ -1202,6 +1218,39 @@ export function VideoToolbar({
       patch.videoLastFrame = null;
     }
     onUpdateNode(node.id, patch);
+  }
+
+  function removeVideoReferenceAt(index) {
+    const image = resolvedReferences[index];
+    if (!image) return;
+    if (image.source === 'connection' && image.linkId) {
+      onRemoveTextReference(image.linkId);
+      return;
+    }
+    const assetIndex = assetReferences.findIndex(
+      (item) =>
+        (image.id && item.id === image.id) ||
+        (image.url && (item.url === image.url || item.data === image.url))
+    );
+    if (assetIndex >= 0) {
+      onRemoveImageReference(node.id, assetIndex);
+    }
+  }
+
+  function clearResolvedFirstFrame() {
+    if (firstConnectionLinkId) {
+      onRemoveTextReference(firstConnectionLinkId);
+      return;
+    }
+    onRemoveVeoFrame(node.id, 'first');
+  }
+
+  function clearResolvedLastFrame() {
+    if (lastConnectionLinkId) {
+      onRemoveTextReference(lastConnectionLinkId);
+      return;
+    }
+    onRemoveVeoFrame(node.id, 'last');
   }
 
   function applyModelChange(value) {
@@ -1257,13 +1306,13 @@ export function VideoToolbar({
             {showSeedanceReferenceImages ? '参考图（满血版素材库）' : '参考图'}
           </span>
           <div className="image-reference-list">
-            {references.map((image, index) => (
+            {resolvedReferences.map((image, index) => (
               <ReferenceImageChip
                 key={image.id || image.url || index}
                 image={image}
                 index={index}
                 previewSrc={referencePreviewSrc(image)}
-                onRemove={() => onRemoveImageReference(node.id, index)}
+                onRemove={() => removeVideoReferenceAt(index)}
               />
             ))}
           </div>
@@ -1282,15 +1331,16 @@ export function VideoToolbar({
             }
             disabled={
               isRunning ||
-              (showVeoReferenceImages && references.length >= VEO_REFERENCE_IMAGE_MAX) ||
-              (showSeedanceReferenceImages && references.length >= SEEDANCE_REF_IMAGE_MAX)
+              (showVeoReferenceImages && resolvedReferences.length >= VEO_REFERENCE_IMAGE_MAX) ||
+              (showSeedanceReferenceImages && resolvedReferences.length >= SEEDANCE_REF_IMAGE_MAX) ||
+              (showGenericReferenceImages && resolvedReferences.length >= genericReferenceMax)
             }
             title={
               showVeoReferenceImages
                 ? `从资产库选择参考图（最多 ${VEO_REFERENCE_IMAGE_MAX} 张）`
                 : showSeedanceReferenceImages
                   ? `从满血版素材库选择参考图（最多 ${SEEDANCE_REF_IMAGE_MAX} 张）`
-                  : '从资产库选择参考图'
+                  : `从资产库选择参考图（最多 ${genericReferenceMax} 张）`
             }
           >
             <FolderOpen size={14} />
@@ -1302,7 +1352,7 @@ export function VideoToolbar({
         <ReferencePromptInput
           value={node.prompt || ''}
           onChange={(prompt) => onUpdateNode(node.id, { prompt, status: 'idle' })}
-          references={references}
+          references={resolvedReferences}
           resolvePreviewUrl={(image) => referencePreviewSrc(image)}
           placeholder="输入视频提示词"
           disabled={isRunning}
@@ -1396,22 +1446,22 @@ export function VideoToolbar({
         <div className="veo-frame-row">
           <VeoFrameSlot
             label="首帧"
-            image={node.videoFirstFrame}
+            image={resolvedFirstFrame}
             disabled={isRunning}
             onPick={() => onOpenAssetLibrary(node.id, 'veo-first')}
-            onClear={() => onRemoveVeoFrame(node.id, 'first')}
+            onClear={clearResolvedFirstFrame}
           />
           <VeoFrameSlot
             label="尾帧"
             optional
-            image={node.videoLastFrame}
-            disabled={isRunning || !node.videoFirstFrame}
-            blockedHint={!node.videoFirstFrame ? '请先选择首帧' : ''}
+            image={resolvedLastFrame}
+            disabled={isRunning || !resolvedFirstFrame}
+            blockedHint={!resolvedFirstFrame ? '请先选择首帧' : ''}
             onPick={() => {
-              if (!node.videoFirstFrame) return;
+              if (!resolvedFirstFrame) return;
               onOpenAssetLibrary(node.id, 'veo-last');
             }}
-            onClear={() => onRemoveVeoFrame(node.id, 'last')}
+            onClear={clearResolvedLastFrame}
           />
         </div>
       ) : null}
@@ -1426,22 +1476,22 @@ export function VideoToolbar({
           <div className="veo-frame-row seedance-frame-row">
             <VeoFrameSlot
               label="首帧"
-              image={node.videoFirstFrame}
+              image={resolvedFirstFrame}
               disabled={isRunning}
               onPick={() => onOpenAssetLibrary(node.id, 'seedance-first')}
-              onClear={() => onRemoveVeoFrame(node.id, 'first')}
+              onClear={clearResolvedFirstFrame}
             />
             <VeoFrameSlot
               label="尾帧"
               optional
-              image={node.videoLastFrame}
-              disabled={isRunning || !node.videoFirstFrame}
-              blockedHint={!node.videoFirstFrame ? '请先选择首帧' : ''}
+              image={resolvedLastFrame}
+              disabled={isRunning || !resolvedFirstFrame}
+              blockedHint={!resolvedFirstFrame ? '请先选择首帧' : ''}
               onPick={() => {
-                if (!node.videoFirstFrame) return;
+                if (!resolvedFirstFrame) return;
                 onOpenAssetLibrary(node.id, 'seedance-last');
               }}
-              onClear={() => onRemoveVeoFrame(node.id, 'last')}
+              onClear={clearResolvedLastFrame}
             />
           </div>
         </div>
@@ -1502,37 +1552,6 @@ export function VideoToolbar({
                 </button>
               </div>
             ))}
-          </div>
-        </div>
-      ) : null}
-      {hasImageInput ? (
-        <div className="image-reference-row">
-          <span className="image-reference-label">图片引用</span>
-          <div className="image-reference-list">
-            {imageInputLinks.map(({ linkId, node: imageNode }) => {
-              const previewUrl = getImageNodeOutputUrl(imageNode);
-              return (
-                <div className="image-reference-chip connection-image-chip" key={linkId}>
-                  {previewUrl ? (
-                    <img src={normalizeImageUrl(previewUrl)} alt={formatImageInputLabel(imageNode)} />
-                  ) : (
-                    <div className="connection-image-placeholder">
-                      <ImageIcon size={16} />
-                    </div>
-                  )}
-                  <span className="connection-image-label" title={formatImageInputLabel(imageNode)}>
-                    {formatImageInputLabel(imageNode)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveTextReference(linkId)}
-                    title="移除图片引用并断开连线"
-                  >
-                    <X size={11} />
-                  </button>
-                </div>
-              );
-            })}
           </div>
         </div>
       ) : null}
@@ -2079,6 +2098,7 @@ export function CanvasNode({
   onSyncAudioOutputLayout,
   onRemoveVeoFrame,
   onRemoveSeedanceMedia,
+  onVideoGenerationTypeChange,
   onPortPointerDown,
   onFinishLink,
 }) {
@@ -2416,6 +2436,7 @@ export function CanvasNode({
           onRemoveTextReference={onRemoveTextReference}
           onRemoveVeoFrame={onRemoveVeoFrame}
           onRemoveSeedanceMedia={onRemoveSeedanceMedia}
+          onVideoGenerationTypeChange={onVideoGenerationTypeChange}
           onUpdateNode={onUpdateNode}
           onOpenEnlargedSettings={onOpenEnlargedSettings}
         />

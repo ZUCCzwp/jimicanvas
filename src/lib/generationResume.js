@@ -461,6 +461,8 @@ export async function executeVideoGeneration(
     const videoUrl = await waitForVideoTask({
       token,
       taskId,
+      provider: node.taskProvider || provider,
+      queryModel: node.taskQueryModel || queryModel,
       onProgress: ({ status, progress }) => {
         updateNode(node.id, {
           taskStatus: status,

@@ -35,8 +35,10 @@ import {
   MIN_CANVAS_SCALE,
   normalizeImageModelSettings,
   inferVideoFamily,
+  getVideoReferenceImageMax,
   normalizeVideoModelSettings,
   VEO_REFERENCE_IMAGE_MAX,
+  VIDEO_FRAME_IMAGE_CONNECTION_MAX,
   SEEDANCE_REF_IMAGE_MAX,
   SEEDANCE_REF_VIDEO_MAX,
   SEEDANCE_REF_AUDIO_MAX,
@@ -69,7 +71,11 @@ import {
   resolveVideoPrompt,
   resolveAudioPrompt,
   resolveVideoReferenceImages,
+  resolveVideoGenerationFrames,
+  resolveVideoToolbarFrames,
+  resolveVideoToolbarReferences,
   resolveImageReferenceImages,
+  validateVideoImageConnection,
 } from './lib/connections';
 import { createSpeech, normalizeAudioUrl, filterAudioFiles, isAudioFile, isAudioAssetRecord } from './lib/audioApi';
 import {
@@ -1513,15 +1519,25 @@ function App() {
         const getNode = () => {
           const doc = documentsRef.current.find((item) => item.id === canvasId);
           const current = getNodeFromDocuments(canvasId, node.id) || node;
-          if (kind !== 'image') return current;
-          return {
-            ...current,
-            referenceImages: resolveImageReferenceImages(
-              current,
-              doc?.nodes || [],
-              doc?.connections || []
-            ),
-          };
+          const docNodes = doc?.nodes || [];
+          const docConnections = doc?.connections || [];
+          if (kind === 'image') {
+            return {
+              ...current,
+              referenceImages: resolveImageReferenceImages(current, docNodes, docConnections),
+            };
+          }
+          if (kind === 'video') {
+            const veoFrames = resolveVideoGenerationFrames(current, docNodes, docConnections);
+            return {
+              ...current,
+              prompt: resolveVideoPrompt(current, docNodes, docConnections),
+              referenceImages: resolveVideoReferenceImages(current, docNodes, docConnections),
+              videoFirstFrame: veoFrames.firstFrame,
+              videoLastFrame: veoFrames.lastFrame,
+            };
+          }
+          return current;
         };
         const updateNodeForCanvas = (nodeId, patch) => updateNodeInCanvas(canvasId, nodeId, patch);
 
@@ -1972,11 +1988,14 @@ function App() {
 
     try {
       const currentNode = getNodeFromDocuments(activeCanvasId, node.id) || node;
+      const veoFrames = resolveVideoGenerationFrames(currentNode, nodes, connections);
       await executeVideoGeneration(
         {
           ...currentNode,
           prompt: resolveVideoPrompt(currentNode, nodes, connections),
           referenceImages: resolveVideoReferenceImages(currentNode, nodes, connections),
+          videoFirstFrame: veoFrames.firstFrame,
+          videoLastFrame: veoFrames.lastFrame,
         },
         {
           token,
@@ -2127,8 +2146,13 @@ function App() {
     }
     if (pickMode === 'reference') {
       const isImageNode = node?.type === 'image';
-      const maxRef = isImageNode ? getImageReferenceMax(node?.imageModel) : VIDEO_GENERIC_REFERENCE_MAX;
-      const currentCount = Array.isArray(node?.referenceImages) ? node.referenceImages.length : 0;
+      const maxRef = isImageNode ? getImageReferenceMax(node?.imageModel) : getVideoReferenceImageMax(node);
+      const currentCount =
+        !isImageNode && node?.type === 'video'
+          ? resolveVideoToolbarReferences(node, getImageInputLinks(node.id, nodes, connections)).length
+          : Array.isArray(node?.referenceImages)
+            ? node.referenceImages.length
+            : 0;
       const remaining = Math.max(0, maxRef - currentCount);
       return {
         maxCount: Math.max(1, remaining),
@@ -2334,7 +2358,7 @@ function App() {
 
     const current = Array.isArray(node.referenceImages) ? node.referenceImages : [];
     const maxRef =
-      node?.type === 'image' ? getImageReferenceMax(node?.imageModel) : VIDEO_GENERIC_REFERENCE_MAX;
+      node?.type === 'image' ? getImageReferenceMax(node?.imageModel) : getVideoReferenceImageMax(node);
     return {
       ...node,
       referenceImages: [...current, ...normalized].slice(0, maxRef),
@@ -2350,7 +2374,7 @@ function App() {
     }
 
     const node = nodes.find((item) => item.id === nodeId);
-    if ((pickMode === 'veo-last' || pickMode === 'seedance-last') && !node?.videoFirstFrame) {
+    if ((pickMode === 'veo-last' || pickMode === 'seedance-last') && !hasResolvedVideoFirstFrame(node)) {
       return false;
     }
     const { maxCount } = getAssetPickerMeta(node, pickMode);
@@ -2452,9 +2476,19 @@ function App() {
     }));
   }
 
+  function hasResolvedVideoFirstFrame(node) {
+    if (!node) return false;
+    if (node.videoFirstFrame) return true;
+    const { firstFrame } = resolveVideoToolbarFrames(
+      node,
+      getImageInputLinks(node.id, nodes, connections)
+    );
+    return Boolean(firstFrame);
+  }
+
   function openAssetLibrary(nodeId, pickMode = 'reference') {
     const node = nodes.find((item) => item.id === nodeId);
-    if ((pickMode === 'veo-last' || pickMode === 'seedance-last') && !node?.videoFirstFrame) {
+    if ((pickMode === 'veo-last' || pickMode === 'seedance-last') && !hasResolvedVideoFirstFrame(node)) {
       return;
     }
     const meta = getAssetPickerMeta(node, pickMode);
@@ -2718,8 +2752,52 @@ function App() {
     clearLinkDraft();
   }
 
+  function trimVideoImageConnections(nodeId, maxCount) {
+    let removedCount = 0;
+    updateActiveCanvas((doc) => {
+      const imageLinks = getImageInputLinks(nodeId, doc.nodes, doc.connections);
+      if (imageLinks.length <= maxCount) return doc;
+      const removeLinkIds = new Set(imageLinks.slice(maxCount).map((item) => item.linkId));
+      removedCount = removeLinkIds.size;
+      return {
+        ...doc,
+        connections: doc.connections.filter((link) => !removeLinkIds.has(link.id)),
+      };
+    });
+    return removedCount;
+  }
+
+  function updateVideoGenerationType(nodeId, value) {
+    updateNode(nodeId, {
+      videoGenerationType: value,
+      status: 'idle',
+      ...(value === 'frame'
+        ? { referenceImages: [] }
+        : { videoFirstFrame: null, videoLastFrame: null }),
+    });
+
+    if (value === 'frame') {
+      const removed = trimVideoImageConnections(nodeId, VIDEO_FRAME_IMAGE_CONNECTION_MAX);
+      if (removed > 0) {
+        showCopyNotice(`首尾帧模式最多连接 ${VIDEO_FRAME_IMAGE_CONNECTION_MAX} 张图片，已保留前 ${VIDEO_FRAME_IMAGE_CONNECTION_MAX} 张`);
+      }
+    }
+  }
+
   function appendConnection(fromNodeId, toNodeId) {
     if (!fromNodeId || fromNodeId === toNodeId) return;
+
+    const fromNode = nodes.find((item) => item.id === fromNodeId);
+    const toNode = nodes.find((item) => item.id === toNodeId);
+
+    if (fromNode?.type === 'image' && toNode?.type === 'video') {
+      const existingLinks = getImageInputLinks(toNodeId, nodes, connections);
+      const validationError = validateVideoImageConnection(toNode, existingLinks);
+      if (validationError) {
+        showCopyNotice(validationError);
+        return;
+      }
+    }
 
     updateActiveCanvas((doc) => {
       const exists = doc.connections.some(
@@ -3185,6 +3263,7 @@ function App() {
           onRemoveTextReference={removeTextReference}
           onRemoveVeoFrame={removeVeoFrame}
           onRemoveSeedanceMedia={removeSeedanceMedia}
+          onVideoGenerationTypeChange={updateVideoGenerationType}
         />
       ) : null}
 
@@ -3477,6 +3556,7 @@ function App() {
                 onSyncAudioOutputLayout={syncAudioNodeOutputLayout}
                 onRemoveVeoFrame={removeVeoFrame}
                 onRemoveSeedanceMedia={removeSeedanceMedia}
+                onVideoGenerationTypeChange={updateVideoGenerationType}
                 onPortPointerDown={handlePortPointerDown}
                 onFinishLink={finishLink}
               />
