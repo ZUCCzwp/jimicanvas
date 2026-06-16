@@ -433,33 +433,40 @@ export async function executeVideoGeneration(
             : {},
       });
       taskId = created.taskId;
-      const provider = created.provider;
-      const queryModel = created.queryModel;
-      const veoSource = created.veoSource;
 
       updateNode(node.id, {
         status: 'running',
         videoTaskId: taskId,
-        taskProvider: provider,
-        taskQueryModel: queryModel,
-        taskVeoSource: veoSource,
-        videoTaskSource: veoSource || node.videoTaskSource,
+        taskProvider: created.provider,
+        taskQueryModel: created.queryModel,
+        taskVeoSource: created.veoSource,
+        videoTaskSource: created.veoSource || node.videoTaskSource,
         generationBatch: batch,
-        pendingTasks: [{ taskId, taskType: 'video', provider, queryModel, veoSource }],
+        pendingTasks: [
+          {
+            taskId,
+            taskType: 'video',
+            provider: created.provider,
+            queryModel: created.queryModel,
+            veoSource: created.veoSource,
+          },
+        ],
       });
       node = {
         ...node,
         videoTaskId: taskId,
-        taskProvider: provider,
-        taskQueryModel: queryModel,
-        taskVeoSource: veoSource,
+        taskProvider: created.provider,
+        taskQueryModel: created.queryModel,
+        taskVeoSource: created.veoSource,
         status: 'running',
         generationBatch: batch,
       };
       if (onPersist) onPersist();
     }
 
-    const activeProvider = node.taskProvider || provider;
+    const activeProvider =
+      node.taskProvider || node.pendingTasks?.[0]?.provider || family;
+    const activeQueryModel = node.taskQueryModel || node.pendingTasks?.[0]?.queryModel;
     const waitVideoTask =
       activeProvider === 'omni' ? waitForVideoTaskViaSSE : waitForVideoTask;
 
@@ -467,7 +474,7 @@ export async function executeVideoGeneration(
       token,
       taskId,
       provider: activeProvider,
-      queryModel: node.taskQueryModel || queryModel,
+      queryModel: activeQueryModel,
       onProgress: ({ status, progress }) => {
         updateNode(node.id, {
           taskStatus: status,
