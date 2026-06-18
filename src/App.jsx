@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Sparkles, Plus } from 'lucide-react';
+import { Loader2, Sparkles, Plus, Upload } from 'lucide-react';
 import { AssetPickerModal } from './components/AssetPickerModal';
 import { SeedanceAssetPickerModal } from './components/SeedanceAssetPickerModal';
 import { ImagePreviewModal } from './components/ImagePreviewModal';
@@ -176,6 +176,7 @@ function App() {
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [isStageDragOver, setIsStageDragOver] = useState(false);
   const [importError, setImportError] = useState('');
   const [copyNotice, setCopyNotice] = useState('');
   const [runningNodeId, setRunningNodeId] = useState(null);
@@ -213,6 +214,7 @@ function App() {
   const resizeRef = useRef(null);
   const panRef = useRef(null);
   const marqueeRef = useRef(null);
+  const stageDragCounterRef = useRef(0);
   const spaceKeyRef = useRef(false);
   const cloudMetaVersionRef = useRef(0);
   const cloudCanvasVersionsRef = useRef({});
@@ -1081,7 +1083,25 @@ function App() {
     setEnlargedTextEdit(null);
   }
 
-  async function uploadAndCreateMultipleNodes(files) {
+  function hasMediaFilesInDataTransfer(dataTransfer) {
+    if (!dataTransfer) return false;
+    const types = Array.from(dataTransfer.types || []);
+    return types.includes('Files');
+  }
+
+  function extractMediaFilesFromDataTransfer(dataTransfer) {
+    return Array.from(dataTransfer?.files || []).filter((file) => {
+      if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+        return true;
+      }
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+      const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'heif'];
+      const videoExts = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v'];
+      return imageExts.includes(ext) || videoExts.includes(ext);
+    });
+  }
+
+  async function uploadAndCreateMultipleNodes(files, dropPoint) {
     const token = getStoredChatToken();
     if (!token) {
       const requested = getOrRequestToken({ onSaved: refreshUserQuota });
@@ -1094,12 +1114,16 @@ function App() {
     showCopyNotice(`正在上传 ${fileList.length} 个文件...`);
 
     const rect = stageRef.current?.getBoundingClientRect();
-    const centerX = rect
-      ? (rect.width / 2 - viewportOffset.x) / canvasScale - DEFAULT_NODE_WIDTH / 2
-      : 220;
-    const centerY = rect
-      ? (rect.height / 2 - viewportOffset.y) / canvasScale - DEFAULT_NODE_HEIGHT / 2
-      : 160;
+    const centerX = dropPoint
+      ? dropPoint.x - DEFAULT_NODE_WIDTH / 2
+      : rect
+        ? (rect.width / 2 - viewportOffset.x) / canvasScale - DEFAULT_NODE_WIDTH / 2
+        : 220;
+    const centerY = dropPoint
+      ? dropPoint.y - DEFAULT_NODE_HEIGHT / 2
+      : rect
+        ? (rect.height / 2 - viewportOffset.y) / canvasScale - DEFAULT_NODE_HEIGHT / 2
+        : 160;
 
     const uploadPromises = fileList.map(async (file, index) => {
       const isImage = file.type.startsWith('image/');
@@ -3096,6 +3120,43 @@ function App() {
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
+  function handleStageDragEnter(event) {
+    if (!canvasReady || !hasMediaFilesInDataTransfer(event.dataTransfer)) return;
+    event.preventDefault();
+    stageDragCounterRef.current += 1;
+    setIsStageDragOver(true);
+  }
+
+  function handleStageDragOver(event) {
+    if (!canvasReady || !hasMediaFilesInDataTransfer(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  }
+
+  function handleStageDragLeave() {
+    stageDragCounterRef.current = Math.max(0, stageDragCounterRef.current - 1);
+    if (stageDragCounterRef.current === 0) {
+      setIsStageDragOver(false);
+    }
+  }
+
+  function handleStageDrop(event) {
+    event.preventDefault();
+    stageDragCounterRef.current = 0;
+    setIsStageDragOver(false);
+
+    if (!canvasReady) return;
+
+    const files = extractMediaFilesFromDataTransfer(event.dataTransfer);
+    if (files.length === 0) {
+      showCopyNotice('仅支持拖拽图片或视频文件');
+      return;
+    }
+
+    const dropPoint = getStagePoint(event);
+    uploadAndCreateMultipleNodes(files, dropPoint);
+  }
+
   function handleStageDoubleClick(event) {
     if (!isStageBackgroundTarget(event)) return;
 
@@ -3456,7 +3517,7 @@ function App() {
         />
 
         <section
-          className={`stage ${linkFromNodeId ? 'link-mode' : ''} ${isPanning ? 'is-panning' : ''} ${isResizing ? 'is-resizing' : ''} ${selectionMarquee ? 'is-marquee-selecting' : ''} ${!canvasReady ? 'is-hydrating' : ''}`}
+          className={`stage ${linkFromNodeId ? 'link-mode' : ''} ${isPanning ? 'is-panning' : ''} ${isResizing ? 'is-resizing' : ''} ${selectionMarquee ? 'is-marquee-selecting' : ''} ${isStageDragOver ? 'is-file-drag-over' : ''} ${!canvasReady ? 'is-hydrating' : ''}`}
           data-background={canvasBackground}
           ref={stageRef}
           style={{
@@ -3469,11 +3530,22 @@ function App() {
           onPointerUp={handleStagePointerUp}
           onPointerDown={handleStagePointerDown}
           onDoubleClick={handleStageDoubleClick}
+          onDragEnter={handleStageDragEnter}
+          onDragOver={handleStageDragOver}
+          onDragLeave={handleStageDragLeave}
+          onDrop={handleStageDrop}
         >
           {!canvasReady ? (
             <div className="canvas-hydrate-overlay" aria-live="polite" aria-busy="true">
               <Loader2 size={28} className="spin-icon" />
               <span>正在同步画布…</span>
+            </div>
+          ) : null}
+
+          {isStageDragOver ? (
+            <div className="stage-file-drop-hint" aria-hidden="true">
+              <Upload size={28} strokeWidth={1.5} />
+              <span>释放以创建图片/视频节点</span>
             </div>
           ) : null}
 
@@ -3483,7 +3555,7 @@ function App() {
                 <Plus size={24} strokeWidth={1.5} />
               </div>
               <p className="canvas-empty-state-title">双击画布开始创作</p>
-              <p className="canvas-empty-state-desc">或使用左侧面板添加节点</p>
+              <p className="canvas-empty-state-desc">或拖拽图片/视频到画布，或使用左侧面板添加节点</p>
             </div>
           ) : null}
 
