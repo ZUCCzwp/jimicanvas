@@ -2053,11 +2053,9 @@ button {
 
 .veo-frame-preview img {
   display: block;
-  width: 72px;
-  height: 40px;
-  max-width: 72px;
-  max-height: 40px;
-  object-fit: cover;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .veo-frame-preview button {
@@ -2166,9 +2164,10 @@ button {
 
 .seedance-frame-row .veo-frame-preview img {
   width: 100%;
-  height: 48px;
+  height: 100%;
   max-width: none;
-  max-height: 48px;
+  max-height: none;
+  object-fit: contain;
 }
 
 .seedance-media-section {
@@ -5415,10 +5414,10 @@ html[data-theme='light'] .workflow-template-icon.icon-layers {
   top: 50%;
   transform: translateY(-50%);
   z-index: 3;
-  width: 20px;
-  height: 20px;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  border: 2.5px solid var(--port-border);
+  border: 3px solid var(--port-border);
   border-radius: 999px;
   display: grid;
   place-items: center;
@@ -5442,8 +5441,8 @@ html[data-theme='light'] .workflow-template-icon.icon-layers {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 9px;
-  height: 2px;
+  width: 11px;
+  height: 2.5px;
   border-radius: 999px;
   background: currentColor;
   transform: translate(-50%, -50%);
@@ -5455,11 +5454,11 @@ html[data-theme='light'] .workflow-template-icon.icon-layers {
 }
 
 .port.input {
-  left: -28px;
+  left: -31px;
 }
 
 .port.output {
-  right: -28px;
+  right: -31px;
 }
 
 .port:hover {
@@ -7804,4 +7803,38 @@ textarea,
 .video-output-thumb:hover .video-frame-extract-actions {
   opacity: 1;
   pointer-events: auto;
+}
+
+.dock-item-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dock-tooltip {
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  white-space: nowrap;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--surface-glass);
+  border: 1px solid var(--border-subtle);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(-8px);
+  transition: opacity 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 100;
+}
+
+.dock-item-wrapper:hover .dock-tooltip {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%) translateX(0);
 }
