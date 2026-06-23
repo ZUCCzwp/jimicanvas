@@ -2567,7 +2567,7 @@ function App() {
       const result = await getSd2ManxueAssetList({
         token,
         page: 1,
-        pageSize: 48,
+        pageSize: 1000,
         mediaType,
         status,
       });
@@ -2647,7 +2647,7 @@ function App() {
         ? await getSd2ManxueAssetList({
             token,
             page: 1,
-            pageSize: 36,
+            pageSize: 1000,
             mediaType,
             status: 'Active',
           })
@@ -2655,7 +2655,7 @@ function App() {
             token,
             source: assetSource,
             page: 1,
-            pageSize: 36,
+            pageSize: 1000,
             mediaType: mediaType === 'audio' ? 'image' : mediaType,
           });
       setAssetPicker((current) => ({

@@ -77,6 +77,7 @@ function isLocalAudioAsset(item) {
 function getOneMonthDateRange() {
   const now = new Date();
   const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const end = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 1 day buffer to prevent clock skew / timezone mismatch hiding new uploads
   const format = (date) => {
     return new Intl.DateTimeFormat('sv-SE', {
       timeZone: 'Asia/Shanghai',
@@ -89,7 +90,7 @@ function getOneMonthDateRange() {
       hour12: false,
     }).format(date);
   };
-  return { start: format(start), end: format(now) };
+  return { start: format(start), end: format(end) };
 }
 
 function dataUrlToInlineData(dataUrl) {
@@ -232,6 +233,7 @@ export async function getAssetList({
     const params = new URLSearchParams({
       page: String(page),
       page_size: String(pageSize),
+      pageSize: String(pageSize),
     });
     const data = await requestJson(`/api/imageTask/list?${params.toString()}`, { token });
     const list = data?.list || [];
@@ -253,6 +255,7 @@ export async function getAssetList({
   const params = new URLSearchParams({
     page: String(page),
     page_size: String(pageSize),
+    pageSize: String(pageSize),
     media_type: mediaType,
     start_time: start,
     end_time: end,
