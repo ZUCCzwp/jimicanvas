@@ -4176,10 +4176,54 @@ html[data-theme='light'] .workflow-template-icon.icon-layers {
   backdrop-filter: none;
 }
 
-.node-settings-toolbar-modal .reference-prompt-editor,
-.node-settings-toolbar-modal .node-prompt-input {
-  min-height: 120px;
-  max-height: 280px;
+.node-settings-toolbar-modal .modal-two-columns {
+  display: flex;
+  gap: 20px;
+  width: 100%;
+}
+
+.node-settings-toolbar-modal .modal-left-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.node-settings-toolbar-modal .modal-right-column {
+  width: 380px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.node-settings-toolbar-modal .modal-left-column .reference-prompt-editor,
+.node-settings-toolbar-modal .modal-left-column .node-prompt-input {
+  min-height: 200px;
+  max-height: none;
+}
+
+.node-settings-toolbar-modal .modal-left-column .node-prompt-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.node-settings-toolbar-modal .modal-left-column .node-prompt-wrap textarea {
+  flex: 1;
+  min-height: 200px;
+}
+
+.node-settings-toolbar-modal .modal-left-column .reference-prompt-input-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.node-settings-toolbar-modal .modal-left-column .reference-prompt-input-container textarea {
+  flex: 1;
+  min-height: 200px;
 }
 
 .node-settings-toolbar-modal .image-reference-row-top .image-reference-list {
