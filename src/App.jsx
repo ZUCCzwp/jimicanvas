@@ -142,6 +142,51 @@ import {
   createWorkflowTemplateDocument,
 } from './lib/workflowTemplates';
 
+async function extractVideoFrame(videoUrl, position) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.src = videoUrl;
+    video.crossOrigin = 'anonymous';
+    video.muted = true;
+    video.playsInline = true;
+    
+    const timeoutId = setTimeout(() => {
+      video.onerror = null;
+      video.onloadedmetadata = null;
+      video.onseeked = null;
+      reject(new Error('加载视频超时，请重试'));
+    }, 10000);
+
+    video.onloadedmetadata = () => {
+      if (position === 'first') {
+        video.currentTime = 0;
+      } else {
+        video.currentTime = Math.max(0, video.duration - 0.05);
+      }
+    };
+    
+    video.onseeked = () => {
+      clearTimeout(timeoutId);
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/png');
+        resolve(dataUrl);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    
+    video.onerror = () => {
+      clearTimeout(timeoutId);
+      reject(new Error('视频加载失败，提取帧失败'));
+    };
+  });
+}
+
 function App() {
   const { theme, toggleTheme } = useTheme();
   const needsCloudHydrate = useMemo(() => Boolean(getStoredChatToken()), []);
@@ -1259,6 +1304,53 @@ function App() {
       showCopyNotice(list.length > 1 ? `已开始下载 ${list.length} 张图片` : '图片下载已开始');
     } catch (error) {
       showCopyNotice(error?.message || '图片下载失败');
+    }
+  }
+
+  async function handleExtractVideoFrame(nodeId, videoUrl, position) {
+    if (!videoUrl) {
+      showCopyNotice('该节点没有生成的视频结果');
+      return;
+    }
+    const targetNode = nodes.find((n) => n.id === nodeId);
+    if (!targetNode) return;
+
+    const positionText = position === 'first' ? '首帧' : '尾帧';
+    showCopyNotice(`正在截取视频${positionText}…`);
+
+    try {
+      const dataUrl = await extractVideoFrame(normalizeVideoUrl(videoUrl), position);
+      
+      const targetX = targetNode.x + targetNode.width + 48;
+      const targetY = targetNode.y;
+      
+      const newNode = createNode('image', targetX, targetY);
+      newNode.title = `${targetNode.title || '视频'}_${positionText}`;
+      newNode.content = dataUrl;
+      newNode.images = [dataUrl];
+      newNode.imageCount = 1;
+      newNode.prompt = targetNode.prompt;
+      newNode.isEntrance = true;
+      
+      updateActiveCanvas((doc) => ({
+        ...doc,
+        nodes: [...doc.nodes, newNode],
+      }));
+      setSelectedNodeIds([newNode.id]);
+      setSelectedConnectionId(null);
+
+      setTimeout(() => {
+        updateActiveCanvas((doc) => ({
+          ...doc,
+          nodes: doc.nodes.map((n) =>
+            n.id === newNode.id ? { ...n, isEntrance: false } : n
+          ),
+        }));
+      }, 1000);
+      
+      showCopyNotice(`已成功截取${positionText}并生成图片节点`);
+    } catch (error) {
+      showCopyNotice(error instanceof Error ? error.message : '截取视频帧失败，请重试');
     }
   }
 
@@ -3648,6 +3740,7 @@ function App() {
                 onVideoGenerationTypeChange={updateVideoGenerationType}
                 onPortPointerDown={handlePortPointerDown}
                 onFinishLink={finishLink}
+                onExtractVideoFrame={handleExtractVideoFrame}
               />
             ))}
           </div>

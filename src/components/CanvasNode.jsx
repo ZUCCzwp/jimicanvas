@@ -432,6 +432,7 @@ function VideoBody({
   onOpenAssetLibrary,
   onUploadVideoOutput,
   onSyncOutputLayout,
+  onExtractVideoFrame,
 }) {
   const displayVideo = getVideoDisplayUrl(node);
   const showDemoBadge = isDefaultDemoMediaUrl(displayVideo, DEFAULT_VIDEO_URL);
@@ -599,6 +600,32 @@ function VideoBody({
             onLoadedMetadata={handleVideoLoadedMetadata}
             onEnded={stopHoverPreview}
           />
+          <div className="video-frame-extract-actions" onPointerDown={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="image-output-action-button"
+              title="截取视频第一帧为图片节点"
+              onClick={(event) => {
+                event.stopPropagation();
+                onExtractVideoFrame?.(node.id, displayVideo, 'first');
+              }}
+            >
+              <Scissors size={11} />
+              <span>截首帧</span>
+            </button>
+            <button
+              type="button"
+              className="image-output-action-button"
+              title="截取视频最后一帧为图片节点"
+              onClick={(event) => {
+                event.stopPropagation();
+                onExtractVideoFrame?.(node.id, displayVideo, 'last');
+              }}
+            >
+              <Scissors size={11} />
+              <span>截尾帧</span>
+            </button>
+          </div>
         </div>
       ) : (
         <div className="image-empty">
@@ -2442,6 +2469,7 @@ export function CanvasNode({
   onVideoGenerationTypeChange,
   onPortPointerDown,
   onFinishLink,
+  onExtractVideoFrame,
 }) {
   const imageDisplayImages = node.type === 'image' ? getImageDisplayImages(node) : [];
   const canExplodeImageOutputs =
@@ -2734,6 +2762,7 @@ export function CanvasNode({
             onOpenAssetLibrary={onOpenAssetLibrary}
             onUploadVideoOutput={onUploadVideoOutput}
             onSyncOutputLayout={onSyncVideoOutputLayout}
+            onExtractVideoFrame={onExtractVideoFrame}
           />
         )}
       </div>

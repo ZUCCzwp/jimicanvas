@@ -982,7 +982,7 @@ button {
 
 .stage[data-background='dots'] {
   background-image:
-    radial-gradient(circle, var(--stage-grid-dot) 1.5px, transparent 1.5px),
+    radial-gradient(circle, var(--stage-grid-dot) 1.2px, transparent 1.2px),
     radial-gradient(circle at 20% 20%, var(--stage-glow-1), transparent 24%),
     radial-gradient(circle at 80% 30%, var(--stage-glow-2), transparent 28%);
   background-size:
@@ -5703,7 +5703,7 @@ html[data-theme='light'] .workflow-template-icon.icon-layers {
 }
 
 .canvas-background-preview-dots {
-  background-image: radial-gradient(circle, var(--stage-grid-dot) 1.5px, transparent 1.5px);
+  background-image: radial-gradient(circle, var(--stage-grid-dot) 1.2px, transparent 1.2px);
   background-size: 8px 8px;
 }
 
@@ -7787,5 +7787,21 @@ textarea,
   cursor: crosshair !important;
 }
 
+.video-frame-extract-actions {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
 
-
+.video-output-thumb:hover .video-frame-extract-actions {
+  opacity: 1;
+  pointer-events: auto;
+}

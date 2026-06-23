@@ -831,7 +831,7 @@
 
 [data-theme='black'] .stage[data-background='dots'] {
   background-image:
-    radial-gradient(circle, var(--stage-grid-dot) 1.5px, transparent 1.5px),
+    radial-gradient(circle, var(--stage-grid-dot) 1.2px, transparent 1.2px),
     radial-gradient(ellipse 90% 60% at 50% 0%, var(--stage-glow-1), transparent 55%),
     radial-gradient(ellipse 70% 50% at 85% 100%, var(--stage-glow-2), transparent 50%);
   background-size:
