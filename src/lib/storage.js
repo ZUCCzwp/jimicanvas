@@ -249,10 +249,28 @@ export function writeStorage(documents) {
   try {
     const next = JSON.stringify(sanitizeDocumentsForPersist(documents));
     const existing = window.localStorage.getItem(STORAGE_KEY);
+    
     if (existing) {
-      window.localStorage.setItem(STORAGE_BACKUP_KEY, existing);
+      try {
+        window.localStorage.setItem(STORAGE_BACKUP_KEY, existing);
+      } catch (backupError) {
+        console.warn('[storage] Failed to write backup storage:', backupError);
+        try {
+          window.localStorage.removeItem(STORAGE_BACKUP_KEY);
+        } catch (_) {}
+      }
     }
-    window.localStorage.setItem(STORAGE_KEY, next);
+
+    try {
+      window.localStorage.setItem(STORAGE_KEY, next);
+    } catch (primaryError) {
+      console.warn('[storage] Failed to write primary storage, retrying without backup:', primaryError);
+      try {
+        window.localStorage.removeItem(STORAGE_BACKUP_KEY);
+      } catch (_) {}
+      window.localStorage.setItem(STORAGE_KEY, next);
+    }
+    
     return { ok: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : '保存失败';
