@@ -16,6 +16,7 @@ import {
   Trash2,
   X,
   Scissors,
+  Check,
 } from 'lucide-react';
 import { getNoteContentStyleCss } from '../lib/noteContentStyle';
 import {
@@ -433,6 +434,8 @@ function VideoBody({
   onUploadVideoOutput,
   onSyncOutputLayout,
   onExtractVideoFrame,
+  onExtractVideoClip,
+  onExtractVideoAudio,
 }) {
   const displayVideo = getVideoDisplayUrl(node);
   const showDemoBadge = isDefaultDemoMediaUrl(displayVideo, DEFAULT_VIDEO_URL);
@@ -440,6 +443,86 @@ function VideoBody({
   const videoRef = useRef(null);
   const hoverPreviewRef = useRef(false);
   const outputFileInputRef = useRef(null);
+
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [isClipping, setIsClipping] = useState(false);
+  const [isExtractingAudio, setIsExtractingAudio] = useState(false);
+  const [clipStart, setClipStart] = useState(0);
+  const [clipEnd, setClipEnd] = useState(10);
+  const trackRef = useRef(null);
+
+  const handlePointerDown = (event, type) => {
+    event.stopPropagation();
+    event.preventDefault();
+    const track = trackRef.current;
+    if (!track) return;
+    const rect = track.getBoundingClientRect();
+    const duration = videoDuration || 10;
+
+    const handlePointerMove = (moveEvent) => {
+      const offsetX = moveEvent.clientX - rect.left;
+      const percentage = Math.min(1, Math.max(0, offsetX / rect.width));
+      const targetTime = percentage * duration;
+
+      if (type === 'start') {
+        const nextStart = Math.min(targetTime, clipEnd - 0.5);
+        setClipStart(nextStart);
+        if (videoRef.current) {
+          videoRef.current.currentTime = nextStart;
+        }
+      } else {
+        const nextEnd = Math.max(targetTime, clipStart + 0.5);
+        setClipEnd(nextEnd);
+        if (videoRef.current) {
+          videoRef.current.currentTime = nextEnd;
+        }
+      }
+    };
+
+    const handlePointerUp = () => {
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+    };
+
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
+  };
+
+  function handleConfirmClip() {
+    onExtractVideoClip?.(node.id, displayVideo, clipStart, clipEnd);
+    setIsClipping(false);
+  }
+
+  async function handleExtractAudio(event) {
+    event.stopPropagation();
+    event.preventDefault();
+    if (isExtractingAudio || !onExtractVideoAudio) return;
+
+    hoverPreviewRef.current = false;
+    videoRef.current?.pause();
+
+    let seedAudioContext = null;
+    try {
+      seedAudioContext = new AudioContext();
+      if (seedAudioContext.state === 'suspended') {
+        void seedAudioContext.resume();
+      }
+    } catch {
+      seedAudioContext = null;
+    }
+
+    setIsExtractingAudio(true);
+    try {
+      await onExtractVideoAudio(node.id, displayVideo, {
+        audioContext: seedAudioContext,
+      });
+    } finally {
+      if (seedAudioContext && seedAudioContext.state !== 'closed') {
+        void seedAudioContext.close();
+      }
+      setIsExtractingAudio(false);
+    }
+  }
 
   useVideoOutputLayout(node, displayVideo, onSyncOutputLayout);
 
@@ -475,6 +558,8 @@ function VideoBody({
 
   function handleVideoLoadedMetadata(event) {
     const video = event.currentTarget;
+    setVideoDuration(video.duration || 0);
+    setClipEnd(video.duration || 10);
     const aspectWidth = video.videoWidth;
     const aspectHeight = video.videoHeight;
     if (!aspectWidth || !aspectHeight) return;
@@ -581,10 +666,12 @@ function VideoBody({
         <div
           className="video-output-thumb"
           onPointerEnter={() => {
+            if (isClipping) return;
             hoverPreviewRef.current = true;
             startHoverPreview();
           }}
           onPointerLeave={() => {
+            if (isClipping) return;
             hoverPreviewRef.current = false;
             stopHoverPreview();
           }}
@@ -600,32 +687,141 @@ function VideoBody({
             onLoadedMetadata={handleVideoLoadedMetadata}
             onEnded={stopHoverPreview}
           />
-          <div className="video-frame-extract-actions" onPointerDown={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              className="image-output-action-button"
-              title="截取视频第一帧为图片节点"
-              onClick={(event) => {
-                event.stopPropagation();
-                onExtractVideoFrame?.(node.id, displayVideo, 'first');
-              }}
+          {!isClipping && (
+            <div
+              className={`video-frame-extract-actions ${isExtractingAudio ? 'is-active' : ''}`}
+              onPointerDown={(e) => e.stopPropagation()}
             >
-              <Scissors size={11} />
-              <span>截首帧</span>
-            </button>
-            <button
-              type="button"
-              className="image-output-action-button"
-              title="截取视频最后一帧为图片节点"
-              onClick={(event) => {
-                event.stopPropagation();
-                onExtractVideoFrame?.(node.id, displayVideo, 'last');
-              }}
-            >
-              <Scissors size={11} />
-              <span>截尾帧</span>
-            </button>
-          </div>
+              <button
+                type="button"
+                className="image-output-action-button"
+                title="截取视频第一帧为图片节点"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onExtractVideoFrame?.(node.id, displayVideo, 'first');
+                }}
+              >
+                <ImageIcon size={11} />
+                <span>截首帧</span>
+              </button>
+              <button
+                type="button"
+                className="image-output-action-button"
+                title="截取视频最后一帧为图片节点"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onExtractVideoFrame?.(node.id, displayVideo, 'last');
+                }}
+              >
+                <ImageIcon size={11} />
+                <span>截尾帧</span>
+              </button>
+              <button
+                type="button"
+                className="image-output-action-button"
+                title="剪辑视频片段"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setIsClipping(true);
+                  videoRef.current?.pause();
+                }}
+              >
+                <Scissors size={11} />
+                <span>剪辑</span>
+              </button>
+              <button
+                type="button"
+                className="image-output-action-button"
+                title="分离视频为音频节点和无声画面节点"
+                disabled={isExtractingAudio}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  event.preventDefault();
+                }}
+                onClick={handleExtractAudio}
+              >
+                {isExtractingAudio ? <LoaderCircle size={11} className="spin" /> : <Headphones size={11} />}
+                <span>{isExtractingAudio ? '分离中' : '分离音视频'}</span>
+              </button>
+            </div>
+          )}
+
+          {isExtractingAudio ? (
+            <div className="video-audio-extract-overlay" onPointerDown={(event) => event.stopPropagation()}>
+              <LoaderCircle size={18} className="spin-icon" />
+              <span>正在分离音频和画面…</span>
+            </div>
+          ) : null}
+
+          {isClipping && (
+            <div className="video-clip-overlay" onPointerDown={(e) => e.stopPropagation()}>
+              <button className="video-clip-btn cancel" onClick={() => setIsClipping(false)} title="取消">
+                <X size={14} />
+              </button>
+              
+              <div className="video-clip-timeline-wrapper">
+                <div className="video-clip-timeline-frames">
+                  {Array.from({ length: 8 }).map((_, i) => {
+                    const duration = videoDuration || 10;
+                    const t = (i + 0.5) * (duration / 8);
+                    return (
+                      <div key={i} className="video-clip-frame-thumb">
+                        <video
+                          src={`${normalizeVideoUrl(displayVideo)}#t=${t.toFixed(2)}`}
+                          preload="metadata"
+                          muted
+                          playsInline
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div 
+                  className="video-clip-timeline-mask left-mask"
+                  style={{ width: `${(clipStart / (videoDuration || 10)) * 100}%` }}
+                />
+                <div 
+                  className="video-clip-timeline-mask right-mask"
+                  style={{ left: `${(clipEnd / (videoDuration || 10)) * 100}%`, right: 0 }}
+                />
+
+                <div className="video-clip-timeline-track" ref={trackRef}>
+                  <div 
+                    className="video-clip-timeline-selection"
+                    style={{
+                      left: `${(clipStart / (videoDuration || 10)) * 100}%`,
+                      width: `${((clipEnd - clipStart) / (videoDuration || 10)) * 100}%`
+                    }}
+                  />
+                  
+                  <div 
+                    className="video-clip-handle left-handle" 
+                    style={{ left: `${(clipStart / (videoDuration || 10)) * 100}%` }}
+                    onPointerDown={(e) => handlePointerDown(e, 'start')}
+                  >
+                    <div className="handle-bar" />
+                  </div>
+                  
+                  <div 
+                    className="video-clip-handle right-handle" 
+                    style={{ left: `${(clipEnd / (videoDuration || 10)) * 100}%` }}
+                    onPointerDown={(e) => handlePointerDown(e, 'end')}
+                  >
+                    <div className="handle-bar" />
+                  </div>
+
+                  <div className="video-clip-duration-badge">
+                    {(clipEnd - clipStart).toFixed(1)}s
+                  </div>
+                </div>
+              </div>
+              
+              <button className="video-clip-btn confirm" onClick={handleConfirmClip} title="确定">
+                <Check size={14} />
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="image-empty">
@@ -2470,6 +2666,8 @@ export function CanvasNode({
   onPortPointerDown,
   onFinishLink,
   onExtractVideoFrame,
+  onExtractVideoClip,
+  onExtractVideoAudio,
 }) {
   const imageDisplayImages = node.type === 'image' ? getImageDisplayImages(node) : [];
   const canExplodeImageOutputs =
@@ -2763,6 +2961,8 @@ export function CanvasNode({
             onUploadVideoOutput={onUploadVideoOutput}
             onSyncOutputLayout={onSyncVideoOutputLayout}
             onExtractVideoFrame={onExtractVideoFrame}
+            onExtractVideoClip={onExtractVideoClip}
+            onExtractVideoAudio={onExtractVideoAudio}
           />
         )}
       </div>

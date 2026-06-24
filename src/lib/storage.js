@@ -169,6 +169,13 @@ function sanitizeReferenceAsset(asset) {
   };
 }
 
+function stripLocalMediaValue(value, fallback = '') {
+  const str = String(value || '').trim();
+  if (!str) return fallback;
+  if (str.startsWith('data:') || str.startsWith('blob:')) return fallback;
+  return str;
+}
+
 function sanitizeNode(node) {
   if (!node || typeof node !== 'object') return node;
   const next = { ...node };
@@ -197,10 +204,7 @@ function sanitizeNode(node) {
     }
     if (next.content) {
       const contentUrl = sanitizeMediaUrl(next.content, normalizeImageUrl);
-      next.content = contentUrl || next.content;
-      if (String(next.content).startsWith('data:')) {
-        next.content = next.images?.[0] || '';
-      }
+      next.content = contentUrl || stripLocalMediaValue(next.content, next.images?.[0] || '');
     }
   }
 
@@ -212,14 +216,17 @@ function sanitizeNode(node) {
     }
     if (next.content) {
       const contentUrl = sanitizeMediaUrl(next.content, normalizeVideoUrl);
-      next.content = contentUrl || next.content;
+      next.content = contentUrl || stripLocalMediaValue(next.content, next.videos?.[0] || '');
     }
   }
 
-  if (next.type === 'audio' && next.audioUrl) {
-    next.audioUrl = sanitizeMediaUrl(next.audioUrl, normalizeAudioUrl);
+  if (next.type === 'audio') {
+    if (next.audioUrl) {
+      next.audioUrl = sanitizeMediaUrl(next.audioUrl, normalizeAudioUrl);
+    }
     if (next.content) {
-      next.content = sanitizeMediaUrl(next.content, normalizeAudioUrl) || next.content;
+      const contentUrl = sanitizeMediaUrl(next.content, normalizeAudioUrl);
+      next.content = contentUrl || stripLocalMediaValue(next.content, next.audioUrl || '');
     }
   }
 

@@ -4765,6 +4765,7 @@ html[data-theme='light'] .workflow-template-icon.icon-layers {
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .video-output-thumb video {
@@ -7793,6 +7794,9 @@ textarea,
   transform: translateX(-50%);
   z-index: 5;
   display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: calc(100% - 16px);
   align-items: center;
   gap: 6px;
   opacity: 0;
@@ -7800,9 +7804,27 @@ textarea,
   transition: opacity 0.2s ease;
 }
 
-.video-output-thumb:hover .video-frame-extract-actions {
+.video-output-thumb:hover .video-frame-extract-actions,
+.video-frame-extract-actions.is-active {
   opacity: 1;
   pointer-events: auto;
+}
+
+.video-audio-extract-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-strong);
+  background: rgba(8, 10, 16, 0.58);
+  backdrop-filter: blur(4px);
+  font-size: 12px;
+  font-weight: 500;
+  pointer-events: none;
 }
 
 .dock-item-wrapper {
@@ -7837,4 +7859,194 @@ textarea,
   opacity: 1;
   pointer-events: auto;
   transform: translateY(-50%) translateX(0);
+}
+
+/* Video Clip Overlay */
+.video-clip-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 52px;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  border-top: 1.5px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  gap: 12px;
+  z-index: 20;
+}
+
+.video-clip-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.video-clip-btn.cancel {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.video-clip-btn.cancel:hover {
+  background: rgba(255, 255, 255, 0.22);
+  transform: scale(1.05);
+}
+
+.video-clip-btn.confirm {
+  background: #ffffff;
+  color: #000000;
+}
+
+.video-clip-btn.confirm:hover {
+  background: rgba(255, 255, 255, 0.9);
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.35);
+}
+
+.video-clip-timeline-wrapper {
+  flex: 1;
+  height: 32px;
+  position: relative;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+/* Film strip look */
+.video-clip-timeline-wrapper::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  opacity: 0.12;
+  background-image: linear-gradient(90deg, transparent 50%, rgba(255, 255, 255, 0.2) 50%);
+  background-size: 14px 100%;
+  pointer-events: none;
+}
+
+.video-clip-timeline-track {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.video-clip-timeline-selection {
+  position: absolute;
+  top: -1.5px;
+  bottom: -1.5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-top: 2px solid #ffffff;
+  border-bottom: 2px solid #ffffff;
+  box-sizing: border-box;
+}
+
+.video-clip-handle {
+  position: absolute;
+  top: -1.5px;
+  bottom: -1.5px;
+  width: 10px;
+  background: #ffffff;
+  cursor: ew-resize;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+}
+
+.video-clip-handle.left-handle {
+  border-radius: 4px 0 0 4px;
+}
+
+.video-clip-handle.right-handle {
+  border-radius: 0 4px 4px 0;
+}
+
+.video-clip-handle .handle-bar {
+  width: 2px;
+  height: 10px;
+  background: #a1a1aa;
+  border-radius: 1px;
+}
+
+.video-clip-duration-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 5;
+  white-space: nowrap;
+}
+
+/* Timeline filmstrip frames */
+.video-clip-timeline-frames {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  overflow: hidden;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.video-clip-frame-thumb {
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  border-right: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.video-clip-frame-thumb:last-child {
+  border-right: none;
+}
+
+.video-clip-frame-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Left & Right dimming masks */
+.video-clip-timeline-mask {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.video-clip-timeline-mask.left-mask {
+  left: 0;
+}
+
+.video-clip-timeline-mask.right-mask {
+  /* position is dynamically set by React styled left */
 }

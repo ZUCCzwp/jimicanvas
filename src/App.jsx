@@ -108,6 +108,18 @@ import { buildStructuredTranslateInstruction, formatStructuredPromptResult } fro
 import { buildImageNodeLayoutPatch, collectImageNodeOutputUrls, computeSplitImageNodePositions, filterRealImageOutputs, formatCellAspectRatio, resolveImageOutputLayout } from './lib/imageNodeLayout';
 import { buildVideoNodeLayoutPatch } from './lib/videoNodeLayout';
 import {
+  countLocalMediaInDocuments,
+  documentsMediaSignature,
+  persistBlobAsset,
+  persistDocumentsMedia,
+} from './lib/mediaPersistence';
+import {
+  blobToDataUrl,
+  buildExtractedAudioFilename,
+  buildExtractedVideoFilename,
+  extractVideoAudioAndPicture,
+} from './lib/videoAudio';
+import {
   executeImageGeneration,
   executeVideoGeneration,
   isNodeActivelyRunning,
@@ -283,6 +295,8 @@ function App() {
   const recoveryStartedRef = useRef(false);
   const pendingUrlAppliedRef = useRef(false);
   const documentsRef = useRef(documents);
+  const mediaPersistTimerRef = useRef(null);
+  const mediaPersistSignatureRef = useRef('');
   const activeCanvasIdRef = useRef(activeCanvasId);
 
   useEffect(() => {
@@ -585,17 +599,61 @@ function App() {
 
   useEffect(() => {
     if (documents.length === 0) return undefined;
-    const result = writeStorage(sanitizeDocumentsForPersist(documents));
+
+    const sanitized = sanitizeDocumentsForPersist(documents);
+    const result = writeStorage(sanitized);
     if (!result.ok) {
       setStorageNotice(
-        '画布保存到浏览器失败，存储空间可能已满。请尽快导出 JSON，或删除节点里过大的本地图片后再试。'
+        '画布保存到浏览器失败，存储空间可能已满。请尽快导出 JSON，或删除节点里过大的本地媒体后再试。'
       );
       return undefined;
     }
+
     if (storageNotice.startsWith('画布保存到浏览器失败')) {
       setStorageNotice('');
     }
-    return undefined;
+
+    const localMediaCount = countLocalMediaInDocuments(documents);
+    const token = getStoredChatToken();
+    if (localMediaCount > 0 && !token) {
+      setStorageNotice('检测到未上传的本地媒体，登录后会自动上传到云端，本地仅保存链接');
+    }
+
+    if (!token || localMediaCount === 0) {
+      return undefined;
+    }
+
+    const signature = documentsMediaSignature(documents);
+    if (signature === mediaPersistSignatureRef.current) {
+      return undefined;
+    }
+
+    if (mediaPersistTimerRef.current) {
+      clearTimeout(mediaPersistTimerRef.current);
+    }
+
+    mediaPersistTimerRef.current = window.setTimeout(async () => {
+      try {
+        const { documents: persisted, uploadedCount } = await persistDocumentsMedia(
+          documentsRef.current,
+          { token, uploadAsset }
+        );
+        mediaPersistSignatureRef.current = documentsMediaSignature(persisted);
+        if (uploadedCount > 0) {
+          setDocuments(persisted);
+          writeStorage(sanitizeDocumentsForPersist(persisted));
+          showCopyNotice(`已上传 ${uploadedCount} 个本地媒体到云端`);
+        }
+      } catch (error) {
+        console.warn('[mediaPersist]', error);
+      }
+    }, 1200);
+
+    return () => {
+      if (mediaPersistTimerRef.current) {
+        clearTimeout(mediaPersistTimerRef.current);
+      }
+    };
   }, [documents]);
 
   useEffect(() => {
@@ -1320,14 +1378,27 @@ function App() {
 
     try {
       const dataUrl = await extractVideoFrame(normalizeVideoUrl(videoUrl), position);
+      const token = getOrRequestToken({ onSaved: refreshUserQuota });
+      let imageUrl = dataUrl;
+
+      if (token) {
+        const frameBlob = await fetch(dataUrl).then((response) => response.blob());
+        imageUrl = await persistBlobAsset(frameBlob, `video_frame_${position}.png`, {
+          token,
+          uploadAsset,
+          normalizer: normalizeImageUrl,
+        });
+      } else {
+        showCopyNotice(`已截取${positionText}，登录后将自动上传并在本地仅存链接`);
+      }
       
       const targetX = targetNode.x + targetNode.width + 48;
       const targetY = targetNode.y;
       
       const newNode = createNode('image', targetX, targetY);
       newNode.title = `${targetNode.title || '视频'}_${positionText}`;
-      newNode.content = dataUrl;
-      newNode.images = [dataUrl];
+      newNode.content = imageUrl;
+      newNode.images = [imageUrl];
       newNode.imageCount = 1;
       newNode.prompt = targetNode.prompt;
       newNode.isEntrance = true;
@@ -1351,6 +1422,180 @@ function App() {
       showCopyNotice(`已成功截取${positionText}并生成图片节点`);
     } catch (error) {
       showCopyNotice(error instanceof Error ? error.message : '截取视频帧失败，请重试');
+    }
+  }
+
+  function handleExtractVideoClip(nodeId, videoUrl, startTime, endTime) {
+    if (!videoUrl) {
+      showCopyNotice('该节点没有生成的视频结果');
+      return;
+    }
+    const targetNode = nodes.find((n) => n.id === nodeId);
+    if (!targetNode) return;
+
+    try {
+      const cleanUrl = videoUrl.split('#')[0];
+      const clipUrl = `${cleanUrl}#t=${startTime.toFixed(2)},${endTime.toFixed(2)}`;
+
+      const targetX = targetNode.x + targetNode.width + 48;
+      const targetY = targetNode.y;
+
+      const newNode = createNode('video', targetX, targetY);
+      newNode.title = `${targetNode.title || '视频'}_剪辑`;
+      newNode.prompt = targetNode.prompt || '';
+      newNode.content = clipUrl;
+      newNode.videos = [clipUrl];
+      newNode.videoFamily = targetNode.videoFamily;
+      newNode.videoModel = targetNode.videoModel;
+      newNode.videoRoute = targetNode.videoRoute;
+      newNode.videoOrientation = targetNode.videoOrientation;
+      newNode.videoRatio = targetNode.videoRatio;
+      newNode.videoSize = targetNode.videoSize;
+      newNode.videoResolution = targetNode.videoResolution;
+      newNode.videoQuality = targetNode.videoQuality;
+      newNode.videoCount = targetNode.videoCount;
+      newNode.videoGenerationType = targetNode.videoGenerationType;
+
+      newNode.width = targetNode.width;
+      newNode.height = targetNode.height;
+      newNode.outputAspectCss = targetNode.outputAspectCss;
+      newNode.videoDuration = Number((endTime - startTime).toFixed(1));
+      newNode.isEntrance = true;
+
+      updateActiveCanvas((doc) => ({
+        ...doc,
+        nodes: [...doc.nodes, newNode],
+      }));
+      setSelectedNodeIds([newNode.id]);
+      setSelectedConnectionId(null);
+
+      setTimeout(() => {
+        updateActiveCanvas((doc) => ({
+          ...doc,
+          nodes: doc.nodes.map((n) =>
+            n.id === newNode.id ? { ...n, isEntrance: false } : n
+          ),
+        }));
+      }, 1000);
+
+      showCopyNotice('已生成剪辑片段的视频节点');
+    } catch (error) {
+      showCopyNotice(error instanceof Error ? error.message : '剪辑视频失败，请重试');
+    }
+  }
+
+  async function handleExtractVideoAudio(nodeId, videoUrl, options = {}) {
+    if (!videoUrl) {
+      showCopyNotice('该节点没有生成的视频结果');
+      return;
+    }
+    const targetNode = nodes.find((n) => n.id === nodeId);
+    if (!targetNode) {
+      showCopyNotice('未找到视频节点');
+      return;
+    }
+
+    showCopyNotice('正在分离音频和画面…');
+
+    try {
+      const { audioBlob, videoBlob } = await extractVideoAudioAndPicture(
+        normalizeVideoUrl(videoUrl),
+        options
+      );
+
+      if (audioBlob.size < 512) {
+        throw new Error('提取到的音频无效，请确认视频包含音轨');
+      }
+
+      const token = getOrRequestToken({ onSaved: refreshUserQuota });
+      let audioUrl = '';
+      let videoOutputUrl = normalizeVideoUrl(String(videoUrl).split('#')[0]);
+
+      if (token) {
+        audioUrl = await persistBlobAsset(audioBlob, buildExtractedAudioFilename(audioBlob.type), {
+          token,
+          uploadAsset,
+          normalizer: normalizeAudioUrl,
+        });
+        if (videoBlob && videoBlob.size > 512) {
+          videoOutputUrl = await persistBlobAsset(
+            videoBlob,
+            buildExtractedVideoFilename(videoBlob.type),
+            {
+              token,
+              uploadAsset,
+              normalizer: normalizeVideoUrl,
+            }
+          );
+        }
+      } else {
+        audioUrl = normalizeAudioUrl(await blobToDataUrl(audioBlob));
+        if (videoBlob && videoBlob.size > 512) {
+          const extractedVideoUrl = normalizeVideoUrl(await blobToDataUrl(videoBlob));
+          if (extractedVideoUrl) {
+            videoOutputUrl = extractedVideoUrl;
+          }
+        }
+        showCopyNotice('音视频已分离，登录后将自动上传并在本地仅存链接');
+      }
+
+      if (!audioUrl) {
+        throw new Error('音频分离失败，请重试');
+      }
+
+      const targetX = targetNode.x + targetNode.width + 48;
+      const targetY = targetNode.y;
+      const stackGap = 24;
+
+      const audioNode = createNode('audio', targetX, targetY);
+      audioNode.title = `${targetNode.title || '视频'}_音频`;
+      audioNode.prompt = targetNode.prompt || '';
+      audioNode.audioUrl = audioUrl;
+      audioNode.content = audioUrl;
+      audioNode.isEntrance = true;
+
+      const videoNode = createNode('video', targetX, targetY + audioNode.height + stackGap);
+      videoNode.title = `${targetNode.title || '视频'}_画面`;
+      videoNode.prompt = targetNode.prompt || '';
+      videoNode.content = videoOutputUrl;
+      videoNode.videos = [videoOutputUrl];
+      videoNode.videoFamily = targetNode.videoFamily;
+      videoNode.videoModel = targetNode.videoModel;
+      videoNode.videoRoute = targetNode.videoRoute;
+      videoNode.videoOrientation = targetNode.videoOrientation;
+      videoNode.videoRatio = targetNode.videoRatio;
+      videoNode.videoSize = targetNode.videoSize;
+      videoNode.videoResolution = targetNode.videoResolution;
+      videoNode.videoQuality = targetNode.videoQuality;
+      videoNode.videoCount = targetNode.videoCount;
+      videoNode.videoGenerationType = targetNode.videoGenerationType;
+      videoNode.width = targetNode.width;
+      videoNode.height = targetNode.height;
+      videoNode.outputAspectCss = targetNode.outputAspectCss;
+      videoNode.videoDuration = targetNode.videoDuration;
+      videoNode.isEntrance = true;
+
+      updateActiveCanvas((doc) => ({
+        ...doc,
+        nodes: [...doc.nodes, audioNode, videoNode],
+      }));
+      setSelectedNodeIds([audioNode.id, videoNode.id]);
+      setSelectedConnectionId(null);
+
+      setTimeout(() => {
+        updateActiveCanvas((doc) => ({
+          ...doc,
+          nodes: doc.nodes.map((n) =>
+            n.id === audioNode.id || n.id === videoNode.id
+              ? { ...n, isEntrance: false }
+              : n
+          ),
+        }));
+      }, 1000);
+
+      showCopyNotice('已成功分离音频和画面');
+    } catch (error) {
+      showCopyNotice(error instanceof Error ? error.message : '音视频分离失败，请重试');
     }
   }
 
@@ -3741,6 +3986,8 @@ function App() {
                 onPortPointerDown={handlePortPointerDown}
                 onFinishLink={finishLink}
                 onExtractVideoFrame={handleExtractVideoFrame}
+                onExtractVideoClip={handleExtractVideoClip}
+                onExtractVideoAudio={handleExtractVideoAudio}
               />
             ))}
           </div>
