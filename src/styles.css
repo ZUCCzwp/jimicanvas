@@ -1915,6 +1915,23 @@ button {
   gap: 6px;
 }
 
+.settings-options-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-options-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.settings-options-row > .option-segment,
+.settings-options-row > .video-model-fixed {
+  min-width: 0;
+}
+
 .option-segment {
   display: flex;
   flex-direction: column;
@@ -4319,7 +4336,34 @@ html[data-theme='light'] .workflow-template-icon.icon-layers {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+}
+
+.node-settings-toolbar-modal .settings-options-stack {
+  gap: 8px;
+}
+
+.node-settings-toolbar-modal .settings-options-row {
+  gap: 6px;
+}
+
+.node-settings-toolbar-modal .option-segment {
+  gap: 5px;
+}
+
+.node-settings-toolbar-modal .option-segment-control {
+  min-height: 40px;
+  padding: 5px;
+}
+
+.node-settings-toolbar-modal .option-segment-button {
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.toolbar-settings-popover .settings-options-stack,
+.toolbar-settings-inline .settings-options-stack {
+  gap: 8px;
 }
 
 .node-settings-toolbar-modal .modal-left-column .reference-prompt-editor,
@@ -6036,6 +6080,10 @@ html[data-theme='light'] .workflow-template-icon.icon-layers {
   }
 
   .image-options-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-options-row {
     grid-template-columns: minmax(0, 1fr);
   }
 

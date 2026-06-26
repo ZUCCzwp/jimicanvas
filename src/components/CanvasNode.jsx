@@ -1556,6 +1556,108 @@ export function VideoToolbar({
   }
 
   const showResolutionControl = resolutionOptions.length > 0;
+  const shareRatioDurationRow = ratioOptions.length <= 3 && durationOptions.length <= 3;
+
+  const ratioSegment = (
+    <OptionSegment
+      title="宽高比"
+      value={ratioValue}
+      options={ratioOptions}
+      onChange={(value) => {
+        if (family === 'sora') {
+          const size = defaultSoraSize(value);
+          onUpdateNode(node.id, {
+            videoOrientation: value,
+            videoSize: size,
+            ...patchVideoLayout({ videoOrientation: value, videoSize: size }),
+          });
+          return;
+        }
+        onUpdateNode(node.id, {
+          videoRatio: value,
+          ...patchVideoLayout({ videoRatio: value }),
+        });
+      }}
+      renderIcon={(option) => <RatioIcon value={ratioIconValue(family, option.value)} />}
+    />
+  );
+
+  const durationSegment = (
+    <OptionSegment
+      title="时长"
+      value={normalizedSettings.duration}
+      options={durationOptions}
+      onChange={(value) => onUpdateNode(node.id, { videoDuration: value })}
+    />
+  );
+
+  const videoSettingsPanels = (
+    <div className="settings-options-stack">
+      <OptionSegment
+        title="系列"
+        value={family}
+        options={VIDEO_FAMILY_OPTIONS}
+        onChange={applyFamilyChange}
+      />
+      <div className="settings-options-row">
+        {modelOptions.length > 1 ? (
+          <OptionSegment
+            title="模型"
+            value={normalizedSettings.model}
+            options={modelOptions}
+            onChange={applyModelChange}
+          />
+        ) : isSeedance ? (
+          <div className="option-segment video-model-fixed" title="Seedance 2.0 满血版">
+            <span className="option-segment-title">模型</span>
+            <div className="video-model-fixed-panel">
+              <span className="video-model-fixed-badge">满血版</span>
+              <span className="video-model-fixed-value">Seedance 2.0</span>
+            </div>
+          </div>
+        ) : null}
+        {showResolutionControl ? (
+          <OptionSegment
+            title={resolutionTitle}
+            value={resolutionValue}
+            options={resolutionOptions}
+            onChange={(value) => {
+              if (family === 'grok') {
+                onUpdateNode(node.id, { videoQuality: value });
+                return;
+              }
+              onUpdateNode(node.id, { videoResolution: value });
+            }}
+          />
+        ) : null}
+        <OptionSegment
+          title="生成次数"
+          value={normalizedSettings.count}
+          options={countOptions.map((option) => ({ ...option, label: `${option.value}次` }))}
+          onChange={(value) => onUpdateNode(node.id, { videoCount: Number(value) })}
+        />
+      </div>
+      {isVeo ? (
+        <OptionSegment
+          title="生成类型"
+          value={normalizedSettings.generationType || 'frame'}
+          options={VEO_GENERATION_TYPE_OPTIONS}
+          onChange={applyVeoGenerationTypeChange}
+        />
+      ) : null}
+      {shareRatioDurationRow ? (
+        <div className="settings-options-row">
+          {ratioSegment}
+          {durationSegment}
+        </div>
+      ) : (
+        <>
+          {ratioSegment}
+          {durationSegment}
+        </>
+      )}
+    </div>
+  );
 
   if (variant === 'modal') {
     return (
@@ -1664,81 +1766,7 @@ export function VideoToolbar({
             ) : null}
           </div>
           <div className="modal-right-column">
-            <OptionSegment
-              title="系列"
-              value={family}
-              options={VIDEO_FAMILY_OPTIONS}
-              onChange={applyFamilyChange}
-            />
-            <div className="image-options-row">
-              {modelOptions.length > 1 ? (
-                <OptionSegment
-                  title="模型"
-                  value={normalizedSettings.model}
-                  options={modelOptions}
-                  onChange={applyModelChange}
-                />
-              ) : isSeedance ? (
-                <div className="option-segment video-model-fixed" title="Seedance 2.0 满血版">
-                  <span className="option-segment-title">模型</span>
-                  <div className="video-model-fixed-panel">
-                    <span className="video-model-fixed-badge">满血版</span>
-                    <span className="video-model-fixed-value">Seedance 2.0</span>
-                  </div>
-                </div>
-              ) : null}
-              {showResolutionControl ? (
-                <OptionSegment
-                  title={resolutionTitle}
-                  value={resolutionValue}
-                  options={resolutionOptions}
-                  onChange={(value) => {
-                    if (family === 'grok') {
-                      onUpdateNode(node.id, { videoQuality: value });
-                      return;
-                    }
-                    onUpdateNode(node.id, { videoResolution: value });
-                  }}
-                />
-              ) : null}
-            </div>
-            <div className="image-options-row">
-              <OptionSegment
-                title="宽高比"
-                value={ratioValue}
-                options={ratioOptions}
-                onChange={(value) => {
-                  if (family === 'sora') {
-                    const size = defaultSoraSize(value);
-                    onUpdateNode(node.id, {
-                      videoOrientation: value,
-                      videoSize: size,
-                      ...patchVideoLayout({ videoOrientation: value, videoSize: size }),
-                    });
-                    return;
-                  }
-                  onUpdateNode(node.id, {
-                    videoRatio: value,
-                    ...patchVideoLayout({ videoRatio: value }),
-                  });
-                }}
-                renderIcon={(option) => <RatioIcon value={ratioIconValue(family, option.value)} />}
-              />
-              <OptionSegment
-                title="时长"
-                value={normalizedSettings.duration}
-                options={durationOptions}
-                onChange={(value) => onUpdateNode(node.id, { videoDuration: value })}
-              />
-            </div>
-            {isVeo ? (
-              <OptionSegment
-                title="生成类型"
-                value={normalizedSettings.generationType || 'frame'}
-                options={VEO_GENERATION_TYPE_OPTIONS}
-                onChange={applyVeoGenerationTypeChange}
-              />
-            ) : null}
+            {videoSettingsPanels}
             {isVeo && veoGenerationType === 'frame' ? (
               <div className="veo-frame-row">
                 <VeoFrameSlot
@@ -1794,12 +1822,6 @@ export function VideoToolbar({
               </div>
             ) : null}
 
-            <OptionSegment
-              title="生成次数"
-              value={normalizedSettings.count}
-              options={countOptions.map((option) => ({ ...option, label: `${option.value}次` }))}
-              onChange={(value) => onUpdateNode(node.id, { videoCount: Number(value) })}
-            />
             <div className="node-bottom-actions image-bottom-actions">
               {pricingList && (
                 <span className="estimated-cost-hint">
@@ -1839,93 +1861,7 @@ export function VideoToolbar({
   ].filter(Boolean);
   const summaryText = summaryParts.join(' | ') || '设置';
 
-  const settingsContent = (
-    <>
-      <OptionSegment
-        title="系列"
-        value={family}
-        options={VIDEO_FAMILY_OPTIONS}
-        onChange={applyFamilyChange}
-      />
-      <div className="image-options-row">
-        {modelOptions.length > 1 ? (
-          <OptionSegment
-            title="模型"
-            value={normalizedSettings.model}
-            options={modelOptions}
-            onChange={applyModelChange}
-          />
-        ) : isSeedance ? (
-          <div className="option-segment video-model-fixed" title="Seedance 2.0 满血版">
-            <span className="option-segment-title">模型</span>
-            <div className="video-model-fixed-panel">
-              <span className="video-model-fixed-badge">满血版</span>
-              <span className="video-model-fixed-value">Seedance 2.0</span>
-            </div>
-          </div>
-        ) : null}
-        {showResolutionControl ? (
-          <OptionSegment
-            title={resolutionTitle}
-            value={resolutionValue}
-            options={resolutionOptions}
-            onChange={(value) => {
-              if (family === 'grok') {
-                onUpdateNode(node.id, { videoQuality: value });
-                return;
-              }
-              onUpdateNode(node.id, { videoResolution: value });
-            }}
-          />
-        ) : null}
-      </div>
-      <div className="image-options-row">
-        <OptionSegment
-          title="宽高比"
-          value={ratioValue}
-          options={ratioOptions}
-          onChange={(value) => {
-            if (family === 'sora') {
-              const size = defaultSoraSize(value);
-              onUpdateNode(node.id, {
-                videoOrientation: value,
-                videoSize: size,
-                ...patchVideoLayout({ videoOrientation: value, videoSize: size }),
-              });
-              return;
-            }
-            onUpdateNode(node.id, {
-              videoRatio: value,
-              ...patchVideoLayout({ videoRatio: value }),
-            });
-          }}
-          renderIcon={(option) => <RatioIcon value={ratioIconValue(family, option.value)} />}
-        />
-        <OptionSegment
-          title="时长"
-          value={normalizedSettings.duration}
-          options={durationOptions}
-          onChange={(value) => onUpdateNode(node.id, { videoDuration: value })}
-        />
-      </div>
-      <div className="image-options-row">
-        {isVeo ? (
-          <OptionSegment
-            title="生成类型"
-            value={normalizedSettings.generationType || 'frame'}
-            options={VEO_GENERATION_TYPE_OPTIONS}
-            onChange={applyVeoGenerationTypeChange}
-          />
-        ) : null}
-        <OptionSegment
-          title="生成次数"
-          value={normalizedSettings.count}
-          options={countOptions.map((option) => ({ ...option, label: `${option.value}次` }))}
-          onChange={(value) => onUpdateNode(node.id, { videoCount: Number(value) })}
-        />
-      </div>
-    </>
-  );
+  const settingsContent = videoSettingsPanels;
 
 
   const showRefImageBtn = showVeoReferenceImages || showGenericReferenceImages;
@@ -2367,8 +2303,8 @@ export function ImageToolbar({
   const summaryText = summaryParts.join(' | ') || '设置';
 
   const settingsContent = (
-    <>
-      <div className="image-options-row">
+    <div className="settings-options-stack">
+      <div className="settings-options-row">
         <OptionSegment
           title="模型"
           value={model}
@@ -2408,6 +2344,16 @@ export function ImageToolbar({
             onChange={(value) => onUpdateNode(node.id, { imageQuality: value, status: 'idle' })}
           />
         ) : null}
+        <OptionSegment
+          title="生成数量"
+          value={normalizedSettings.count}
+          options={countOptions.map((option) => ({ ...option, label: `${option.value}张` }))}
+          onChange={(value) =>
+            onUpdateNode(node.id, {
+              imageCount: Number(value),
+            })
+          }
+        />
       </div>
       <OptionSegment
         title="尺寸"
@@ -2421,17 +2367,7 @@ export function ImageToolbar({
         }
         renderIcon={(option) => <RatioIcon value={option.value} />}
       />
-      <OptionSegment
-        title="生成数量"
-        value={normalizedSettings.count}
-        options={countOptions.map((option) => ({ ...option, label: `${option.value}张` }))}
-        onChange={(value) =>
-          onUpdateNode(node.id, {
-            imageCount: Number(value),
-          })
-        }
-      />
-    </>
+    </div>
   );
 
   const extraActions = (
