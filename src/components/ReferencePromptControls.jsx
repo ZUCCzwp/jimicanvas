@@ -52,6 +52,7 @@ export function ReferencePromptInput({
   placeholder = '输入提示词',
   disabled = false,
   wrapClassName = 'node-prompt-wrap reference-mention-wrap',
+  extraActions,
 }) {
   const editorRef = useRef(null);
   const [mention, setMention] = useState(null);
@@ -219,6 +220,7 @@ export function ReferencePromptInput({
         onKeyUp={handleEditorKeyUp}
         onMouseUp={handleEditorMouseUp}
       />
+      {extraActions && <div className="prompt-editor-actions">{extraActions}</div>}
       {mention && mentionOptions.length > 0 ? (
         <div className="reference-mention-dropdown" role="listbox">
           {mentionOptions.map((option, optionIndex) => (

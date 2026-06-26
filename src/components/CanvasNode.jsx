@@ -17,6 +17,7 @@ import {
   X,
   Scissors,
   Check,
+  Sparkles,
 } from 'lucide-react';
 import { getNoteContentStyleCss } from '../lib/noteContentStyle';
 import {
@@ -83,6 +84,8 @@ import {
 } from '../lib/imageNodeLayout';
 import { buildVideoNodeLayoutPatch } from '../lib/videoNodeLayout';
 import { normalizeImageUrl } from '../lib/imageApi';
+import { calculateEstimatedCost } from '../lib/pricing';
+import JimicoinIcon from './JimicoinIcon';
 import { CustomSelect } from './CustomSelect';
 import { NodeGenerationState } from './NodeGenerationState';
 import { ReferenceImageChip, ReferencePromptInput } from './ReferencePromptControls';
@@ -696,43 +699,47 @@ function VideoBody({
                 type="button"
                 className="image-output-action-button"
                 title="截取视频第一帧为图片节点"
+                data-tooltip="截首帧"
                 onClick={(event) => {
                   event.stopPropagation();
                   onExtractVideoFrame?.(node.id, displayVideo, 'first');
                 }}
               >
-                <ImageIcon size={11} />
+                <ImageIcon size={13} />
                 <span>截首帧</span>
               </button>
               <button
                 type="button"
                 className="image-output-action-button"
                 title="截取视频最后一帧为图片节点"
+                data-tooltip="截尾帧"
                 onClick={(event) => {
                   event.stopPropagation();
                   onExtractVideoFrame?.(node.id, displayVideo, 'last');
                 }}
               >
-                <ImageIcon size={11} />
+                <ImageIcon size={13} />
                 <span>截尾帧</span>
               </button>
               <button
                 type="button"
                 className="image-output-action-button"
                 title="剪辑视频片段"
+                data-tooltip="剪辑"
                 onClick={(event) => {
                   event.stopPropagation();
                   setIsClipping(true);
                   videoRef.current?.pause();
                 }}
               >
-                <Scissors size={11} />
+                <Scissors size={13} />
                 <span>剪辑</span>
               </button>
               <button
                 type="button"
                 className="image-output-action-button"
                 title="分离视频为音频节点和无声画面节点"
+                data-tooltip={isExtractingAudio ? '分离中' : '分离音视频'}
                 disabled={isExtractingAudio}
                 onPointerDown={(event) => {
                   event.stopPropagation();
@@ -740,7 +747,7 @@ function VideoBody({
                 }}
                 onClick={handleExtractAudio}
               >
-                {isExtractingAudio ? <LoaderCircle size={11} className="spin" /> : <Headphones size={11} />}
+                {isExtractingAudio ? <LoaderCircle size={13} className="spin" /> : <Headphones size={13} />}
                 <span>{isExtractingAudio ? '分离中' : '分离音视频'}</span>
               </button>
             </div>
@@ -1153,26 +1160,24 @@ function SeedanceMediaPanel({
   return (
     <div className={`seedance-media-panel ${isBlocked ? 'is-blocked' : ''}`}>
       <div className="seedance-media-panel-header">
-        <Icon size={14} />
+        <Icon size={13} />
         <span className="seedance-media-panel-title">{label}</span>
         <span className="seedance-optional-tag">可选</span>
-        <span className="seedance-media-count">
-          {items.length}/{maxCount}
-        </span>
+        <span className="seedance-media-count">{items.length}/{maxCount}</span>
+        <button
+          type="button"
+          className="seedance-pick-btn"
+          onClick={onPick}
+          disabled={isRunning || disabled || items.length >= maxCount}
+          title={
+            disabledHint ||
+            (items.length >= maxCount ? `最多 ${maxCount} 个` : `从满血版素材库选择${label}`)
+          }
+        >
+          <FolderOpen size={12} />
+          素材库
+        </button>
       </div>
-      <button
-        type="button"
-        className="seedance-pick-btn"
-        onClick={onPick}
-        disabled={isRunning || disabled || items.length >= maxCount}
-        title={
-          disabledHint ||
-          (items.length >= maxCount ? `最多 ${maxCount} 个` : `从满血版素材库选择${label}`)
-        }
-      >
-        <FolderOpen size={14} />
-        从素材库选择
-      </button>
       {items.length > 0 ? (
         <div className={`seedance-media-preview-list ${mediaType === 'audio' ? 'is-audio' : ''}`}>
           {items.map((item, index) => (
@@ -1188,7 +1193,7 @@ function SeedanceMediaPanel({
           ))}
         </div>
       ) : (
-        <div className="seedance-media-empty">暂未选择{label}</div>
+        <div className="seedance-media-empty">暂未选择</div>
       )}
       {isBlocked ? <p className="seedance-media-hint">{disabledHint}</p> : null}
     </div>
@@ -1259,6 +1264,7 @@ export function VideoToolbar({
   isTranslating,
   textInputLinks = [],
   imageInputLinks = [],
+  videoInputLinks = [],
   onRunVideoGeneration,
   onOpenAssetLibrary,
   onRemoveImageReference,
@@ -1269,8 +1275,28 @@ export function VideoToolbar({
   onOpenEnlargedSettings,
   onVideoGenerationTypeChange,
   onPreviewImage,
+  pricingList,
+  userProfile,
 }) {
   const toolbarRef = useRef(null);
+  const [showSettingsPopover, setShowSettingsPopover] = useState(false);
+  const popoverRef = useRef(null);
+
+  useEffect(() => {
+    if (!showSettingsPopover) return;
+    const handleOutsideClick = (event) => {
+      if (popoverRef.current && !popoverRef.current.contains(event.target)) {
+        setShowSettingsPopover(false);
+      }
+    };
+    const timer = setTimeout(() => {
+      document.addEventListener('click', handleOutsideClick);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('click', handleOutsideClick);
+    };
+  }, [showSettingsPopover]);
   const hasTextInput = textInputLinks.length > 0;
   const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
   const resolvedReferences = resolveVideoToolbarReferences(node, imageInputLinks);
@@ -1325,6 +1351,8 @@ export function VideoToolbar({
   const resolutionTitle = family === 'grok' ? '画质' : '分辨率';
   const genericReferenceMax = getVideoReferenceImageMax(node);
   const referencePreviewUrls = getReferencePreviewUrls(resolvedReferences);
+  const hasVideoRefs = videoInputLinks.length > 0;
+  const videoCost = pricingList ? calculateEstimatedCost(pricingList, node, userProfile, { hasVideoRefs }) : 0;
 
   function previewReferenceAt(index) {
     const targetUrl = referencePreviewSrc(resolvedReferences[index]);
@@ -1765,37 +1793,7 @@ export function VideoToolbar({
                 </div>
               </div>
             ) : null}
-            {showSeedanceReferenceMedia ? (
-              <div className="seedance-section seedance-media-section">
-                <div className="seedance-section-title">参考视频 / 音频</div>
-                <div className="seedance-media-row">
-                  <SeedanceMediaPanel
-                    label="参考视频"
-                    icon={Film}
-                    mediaType="video"
-                    items={referenceVideos}
-                    maxCount={SEEDANCE_REF_VIDEO_MAX}
-                    disabled={hasSeedanceFrames}
-                    disabledHint={hasSeedanceFrames ? '已选首尾帧，不可添加参考视频' : ''}
-                    isRunning={isRunning}
-                    onPick={() => onOpenAssetLibrary(node.id, 'seedance-ref-video')}
-                    onRemove={(index) => onRemoveSeedanceMedia(node.id, 'video', index)}
-                  />
-                  <SeedanceMediaPanel
-                    label="参考音频"
-                    icon={Headphones}
-                    mediaType="audio"
-                    items={referenceAudios}
-                    maxCount={SEEDANCE_REF_AUDIO_MAX}
-                    disabled={hasSeedanceFrames}
-                    disabledHint={hasSeedanceFrames ? '已选首尾帧，不可添加参考音频' : ''}
-                    isRunning={isRunning}
-                    onPick={() => onOpenAssetLibrary(node.id, 'seedance-ref-audio')}
-                    onRemove={(index) => onRemoveSeedanceMedia(node.id, 'audio', index)}
-                  />
-                </div>
-              </div>
-            ) : null}
+
             <OptionSegment
               title="生成次数"
               value={normalizedSettings.count}
@@ -1803,6 +1801,11 @@ export function VideoToolbar({
               onChange={(value) => onUpdateNode(node.id, { videoCount: Number(value) })}
             />
             <div className="node-bottom-actions image-bottom-actions">
+              {pricingList && (
+                <span className="estimated-cost-hint">
+                  预估消耗: <JimicoinIcon size={14} /> {videoCost.toFixed(4)}
+                </span>
+              )}
               <button
                 className="icon-button"
                 onClick={() => onRunVideoGeneration(node, 'translate')}
@@ -1828,92 +1831,16 @@ export function VideoToolbar({
     );
   }
 
-  return (
-    <div
-      ref={toolbarRef}
-      className={`node-bottom-toolbar image-toolbar video-toolbar ${isSeedance ? 'video-toolbar-seedance' : ''} ${variant === 'modal' ? 'node-settings-toolbar-modal' : ''}`}
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      {variant === 'dock' && onOpenEnlargedSettings ? (
-        <div className="node-toolbar-header">
-          <span className="node-toolbar-header-title">视频设置</span>
-          <NodeEnlargeButton title="放大编辑设置" onClick={onOpenEnlargedSettings} />
-        </div>
-      ) : null}
-      {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages ? (
-        <div
-          className={`image-reference-row image-reference-row-top ${showSeedanceReferenceImages ? 'seedance-reference-row' : ''}`}
-        >
-          <span className="image-reference-label">
-            {showSeedanceReferenceImages ? '参考图（满血版素材库）' : '参考图'}
-          </span>
-          <div className="image-reference-list">
-            {resolvedReferences.map((image, index) => (
-              <ReferenceImageChip
-                key={image.id || image.url || index}
-                image={image}
-                index={index}
-                previewSrc={referencePreviewSrc(image)}
-                onPreview={
-                  onPreviewImage && referencePreviewSrc(image)
-                    ? () => previewReferenceAt(index)
-                    : undefined
-                }
-                onRemove={() => removeVideoReferenceAt(index)}
-              />
-            ))}
-          </div>
-          <button
-            type="button"
-            className="prompt-asset-button prompt-asset-button--inline"
-            onClick={() =>
-              onOpenAssetLibrary(
-                node.id,
-                showVeoReferenceImages
-                  ? 'veo-reference'
-                  : showSeedanceReferenceImages
-                    ? 'seedance-reference'
-                    : 'reference'
-              )
-            }
-            disabled={
-              isRunning ||
-              (showVeoReferenceImages && resolvedReferences.length >= VEO_REFERENCE_IMAGE_MAX) ||
-              (showSeedanceReferenceImages && resolvedReferences.length >= SEEDANCE_REF_IMAGE_MAX) ||
-              (showGenericReferenceImages && resolvedReferences.length >= genericReferenceMax)
-            }
-            title={
-              showVeoReferenceImages
-                ? `从资产库选择参考图（最多 ${VEO_REFERENCE_IMAGE_MAX} 张）`
-                : showSeedanceReferenceImages
-                  ? `从满血版素材库选择参考图（最多 ${SEEDANCE_REF_IMAGE_MAX} 张）`
-                  : `从资产库选择参考图（最多 ${genericReferenceMax} 张）`
-            }
-          >
-            <FolderOpen size={14} />
-            资产库
-          </button>
-        </div>
-      ) : null}
-      {showVeoReferenceImages || showSeedanceReferenceImages || showGenericReferenceImages ? (
-        <ReferencePromptInput
-          value={node.prompt || ''}
-          onChange={(prompt) => onUpdateNode(node.id, { prompt, status: 'idle' })}
-          references={resolvedReferences}
-          resolvePreviewUrl={(image) => referencePreviewSrc(image)}
-          placeholder="输入视频提示词"
-          disabled={isRunning}
-        />
-      ) : (
-        <div className="node-prompt-wrap node-prompt-wrap--plain">
-          <textarea
-            className="node-prompt-input"
-            value={node.prompt || ''}
-            onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
-            placeholder="输入视频提示词"
-          />
-        </div>
-      )}
+  const durationLabel = node.videoDuration ? `${node.videoDuration}s` : '';
+  const summaryParts = [
+    durationLabel,
+    ratioValue,
+    resolutionValue
+  ].filter(Boolean);
+  const summaryText = summaryParts.join(' | ') || '设置';
+
+  const settingsContent = (
+    <>
       <OptionSegment
         title="系列"
         value={family}
@@ -1981,14 +1908,312 @@ export function VideoToolbar({
           onChange={(value) => onUpdateNode(node.id, { videoDuration: value })}
         />
       </div>
-      {isVeo ? (
+      <div className="image-options-row">
+        {isVeo ? (
+          <OptionSegment
+            title="生成类型"
+            value={normalizedSettings.generationType || 'frame'}
+            options={VEO_GENERATION_TYPE_OPTIONS}
+            onChange={applyVeoGenerationTypeChange}
+          />
+        ) : null}
         <OptionSegment
-          title="生成类型"
-          value={normalizedSettings.generationType || 'frame'}
-          options={VEO_GENERATION_TYPE_OPTIONS}
-          onChange={applyVeoGenerationTypeChange}
+          title="生成次数"
+          value={normalizedSettings.count}
+          options={countOptions.map((option) => ({ ...option, label: `${option.value}次` }))}
+          onChange={(value) => onUpdateNode(node.id, { videoCount: Number(value) })}
         />
+      </div>
+    </>
+  );
+
+
+  const showRefImageBtn = showVeoReferenceImages || showGenericReferenceImages;
+  const maxRefImageCount = showVeoReferenceImages ? VEO_REFERENCE_IMAGE_MAX : genericReferenceMax;
+
+  const extraActions = (
+    <>
+      {showRefImageBtn && (
+        <button
+          type="button"
+          className="prompt-asset-button"
+          onClick={() =>
+            onOpenAssetLibrary(
+              node.id,
+              showVeoReferenceImages ? 'veo-reference' : 'reference'
+            )
+          }
+          disabled={
+            isRunning ||
+            (showVeoReferenceImages && resolvedReferences.length >= VEO_REFERENCE_IMAGE_MAX) ||
+            (showGenericReferenceImages && resolvedReferences.length >= genericReferenceMax)
+          }
+          title={
+            showVeoReferenceImages
+              ? `从资产库选择参考图（最多 ${VEO_REFERENCE_IMAGE_MAX} 张）`
+              : `从资产库选择参考图（最多 ${genericReferenceMax} 张）`
+          }
+        >
+          <FolderOpen size={14} />
+        </button>
+      )}
+      {variant === 'dock' && onOpenEnlargedSettings ? (
+        <NodeEnlargeButton title="放大编辑设置" onClick={onOpenEnlargedSettings} />
       ) : null}
+    </>
+  );
+
+  return (
+    <div
+      ref={toolbarRef}
+      className={`node-bottom-toolbar image-toolbar video-toolbar ${isSeedance ? 'video-toolbar-seedance' : ''} ${variant === 'modal' ? 'node-settings-toolbar-modal' : ''}`}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      {variant === 'dock' ? (
+        resolvedReferences.length > 0 && !isSeedance ? (
+          <div className="image-reference-row image-reference-row-top image-reference-row-chips-only">
+            <div className="image-reference-list">
+              {resolvedReferences.map((image, index) => {
+                const isConnection = image.source === 'connection';
+                const assetIndex = isConnection
+                  ? -1
+                  : assetReferences.findIndex((ref) => ref.id === image.id);
+
+                return (
+                  <ReferenceImageChip
+                    key={image.id || image.url || index}
+                    image={image}
+                    index={index}
+                    previewSrc={referencePreviewSrc(image)}
+                    onPreview={() => previewReferenceAt(index)}
+                    onRemove={() => {
+                      if (isConnection) {
+                        onRemoveImageReference(image.linkId);
+                      } else if (assetIndex >= 0) {
+                        const nextRefs = [...assetReferences];
+                        nextRefs.splice(assetIndex, 1);
+                        onUpdateNode(node.id, { referenceImages: nextRefs });
+                      }
+                    }}
+                    removeTitle={isConnection ? '移除图片引用并断开连线' : '移除参考图'}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        ) : isSeedance ? (
+          <>
+            {showSeedanceFrames ? (
+              <div className="seedance-above-prompt">
+                <div className="seedance-above-row">
+                  <VeoFrameSlot
+                    label="首帧"
+                    image={resolvedFirstFrame}
+                    disabled={isRunning}
+                    onPick={() => onOpenAssetLibrary(node.id, 'seedance-first')}
+                    onClear={clearResolvedFirstFrame}
+                  />
+                  <VeoFrameSlot
+                    label="尾帧"
+                    optional
+                    image={resolvedLastFrame}
+                    disabled={isRunning || !resolvedFirstFrame}
+                    blockedHint={!resolvedFirstFrame ? '请先选择首帧' : ''}
+                    onPick={() => {
+                      if (!resolvedFirstFrame) return;
+                      onOpenAssetLibrary(node.id, 'seedance-last');
+                    }}
+                    onClear={clearResolvedLastFrame}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {seedanceReferenceMode ? (
+              <div className="seedance-above-prompt">
+                <div className="seedance-above-row">
+                  <VeoFrameSlot
+                    label="参考图"
+                    image={resolvedReferences[0]}
+                    disabled={isRunning}
+                    onPick={() => onOpenAssetLibrary(node.id, 'seedance-reference')}
+                    onClear={() => onUpdateNode(node.id, { referenceImages: [] })}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="seedance-above-prompt">
+                <div className="seedance-above-row">
+                  <VeoFrameSlot
+                    label="参考图"
+                    image={undefined}
+                    disabled={isRunning}
+                    onPick={() => onOpenAssetLibrary(node.id, 'seedance-reference')}
+                    onClear={() => {}}
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        ) : null
+      ) : (
+        isSeedance ? (
+          <div className="seedance-section seedance-first-frame-select">
+            <div className="seedance-section-title">参考图</div>
+            <VeoFrameSlot
+              label="参考图"
+              image={resolvedReferences[0]}
+              disabled={isRunning}
+              onPick={() => onOpenAssetLibrary(node.id, 'seedance-reference')}
+              onClear={() => onUpdateNode(node.id, { referenceImages: [] })}
+            />
+          </div>
+        ) : showGenericReferenceImages ? (
+          <div className="image-reference-row image-reference-row-top">
+            <span className="image-reference-label">参考图</span>
+            <div className="image-reference-list">
+              {resolvedReferences.map((image, index) => {
+                const isConnection = image.source === 'connection';
+                const assetIndex = isConnection
+                  ? -1
+                  : assetReferences.findIndex((ref) => ref.id === image.id);
+
+                return (
+                  <ReferenceImageChip
+                    key={image.id || image.url || index}
+                    image={image}
+                    index={index}
+                    previewSrc={referencePreviewSrc(image)}
+                    onPreview={() => previewReferenceAt(index)}
+                    onRemove={() => {
+                      if (isConnection) {
+                        onRemoveImageReference(image.linkId);
+                      } else if (assetIndex >= 0) {
+                        const nextRefs = [...assetReferences];
+                        nextRefs.splice(assetIndex, 1);
+                        onUpdateNode(node.id, { referenceImages: nextRefs });
+                      }
+                    }}
+                    removeTitle={isConnection ? '移除图片引用并断开连线' : '移除参考图'}
+                  />
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              className="prompt-asset-button prompt-asset-button--inline"
+              onClick={() => onOpenAssetLibrary(node.id, 'reference')}
+              disabled={isRunning || resolvedReferences.length >= genericReferenceMax}
+              title={`从资产库选择参考图（最多 ${genericReferenceMax} 张，支持多选）`}
+            >
+              <FolderOpen size={14} />
+              参考图
+            </button>
+          </div>
+        ) : showVeoReferenceImages ? (
+          <div className="image-reference-row image-reference-row-top">
+            <span className="image-reference-label">参考图</span>
+            <div className="image-reference-list">
+              {resolvedReferences.map((image, index) => {
+                const isConnection = image.source === 'connection';
+                const assetIndex = isConnection
+                  ? -1
+                  : assetReferences.findIndex((ref) => ref.id === image.id);
+
+                return (
+                  <ReferenceImageChip
+                    key={image.id || image.url || index}
+                    image={image}
+                    index={index}
+                    previewSrc={referencePreviewSrc(image)}
+                    onPreview={() => previewReferenceAt(index)}
+                    onRemove={() => {
+                      if (isConnection) {
+                        onRemoveImageReference(image.linkId);
+                      } else if (assetIndex >= 0) {
+                        const nextRefs = [...assetReferences];
+                        nextRefs.splice(assetIndex, 1);
+                        onUpdateNode(node.id, { referenceImages: nextRefs });
+                      }
+                    }}
+                    removeTitle={isConnection ? '移除图片引用并断开连线' : '移除参考图'}
+                  />
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              className="prompt-asset-button prompt-asset-button--inline"
+              onClick={() => onOpenAssetLibrary(node.id, 'reference')}
+              disabled={isRunning || resolvedReferences.length >= VEO_REFERENCE_IMAGE_MAX}
+              title={`从资产库选择参考图（最多 ${VEO_REFERENCE_IMAGE_MAX} 张，支持多选）`}
+            >
+              <FolderOpen size={14} />
+              参考图
+            </button>
+          </div>
+        ) : null
+      )}
+      {hasTextInput ? (
+        <div className="image-reference-row">
+          <span className="image-reference-label">文本引用</span>
+          <div className="image-reference-list">
+            {textInputLinks.map(({ linkId, node: textNode }) => (
+              <div className="text-reference-chip" key={linkId}>
+                <FileText size={14} />
+                <span className="text-reference-preview" title={getTextInputPreview(textNode) || '空文本'}>
+                  {formatTextInputLabel(textNode)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onRemoveTextReference(linkId)}
+                  title="移除文本引用并断开连线"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {family !== 'seedance' && family !== 'sora' ? (
+        <ReferencePromptInput
+          value={node.prompt || ''}
+          onChange={(prompt) => onUpdateNode(node.id, { prompt, status: 'idle' })}
+          references={resolvedReferences}
+          resolvePreviewUrl={referencePreviewSrc}
+          placeholder="输入视频提示词，回车换行；支持 @ 引用参考图"
+          disabled={isRunning}
+          extraActions={extraActions}
+        />
+      ) : (
+        <div className="node-prompt-wrap node-prompt-wrap--plain">
+          <textarea
+            className="node-prompt-input"
+            value={node.prompt || ''}
+            onChange={(event) => onUpdateNode(node.id, { prompt: event.target.value, status: 'idle' })}
+            placeholder="输入视频提示词"
+          />
+          {extraActions && <div className="prompt-editor-actions">{extraActions}</div>}
+        </div>
+      )}
+
+      {variant === 'modal' ? (
+        settingsContent
+      ) : isSeedance ? (
+        showSettingsPopover && (
+          <div className="toolbar-settings-inline" ref={popoverRef}>
+            {settingsContent}
+          </div>
+        )
+      ) : (
+        showSettingsPopover && (
+          <div className="toolbar-settings-popover" ref={popoverRef}>
+            {settingsContent}
+          </div>
+        )
+      )}
+
       {isVeo && veoGenerationType === 'frame' ? (
         <div className="veo-frame-row">
           <VeoFrameSlot
@@ -2012,97 +2237,30 @@ export function VideoToolbar({
           />
         </div>
       ) : null}
-      {isSeedance ? (
-        <p className="video-manxue-hint">
-          参考图与首尾帧互斥；已选首尾帧时不可添加参考视频/音频。素材需从满血版素材库选择。
-        </p>
-      ) : null}
-      {showSeedanceFrames ? (
-        <div className="seedance-section">
-          <div className="seedance-section-title">首尾帧</div>
-          <div className="veo-frame-row seedance-frame-row">
-            <VeoFrameSlot
-              label="首帧"
-              image={resolvedFirstFrame}
-              disabled={isRunning}
-              onPick={() => onOpenAssetLibrary(node.id, 'seedance-first')}
-              onClear={clearResolvedFirstFrame}
-            />
-            <VeoFrameSlot
-              label="尾帧"
-              optional
-              image={resolvedLastFrame}
-              disabled={isRunning || !resolvedFirstFrame}
-              blockedHint={!resolvedFirstFrame ? '请先选择首帧' : ''}
-              onPick={() => {
-                if (!resolvedFirstFrame) return;
-                onOpenAssetLibrary(node.id, 'seedance-last');
-              }}
-              onClear={clearResolvedLastFrame}
-            />
-          </div>
-        </div>
-      ) : null}
-      {showSeedanceReferenceMedia ? (
-        <div className="seedance-section seedance-media-section">
-          <div className="seedance-section-title">参考视频 / 音频</div>
-          <div className="seedance-media-row">
-            <SeedanceMediaPanel
-              label="参考视频"
-              icon={Film}
-              mediaType="video"
-              items={referenceVideos}
-              maxCount={SEEDANCE_REF_VIDEO_MAX}
-              disabled={hasSeedanceFrames}
-              disabledHint={hasSeedanceFrames ? '已选首尾帧，不可添加参考视频' : ''}
-              isRunning={isRunning}
-              onPick={() => onOpenAssetLibrary(node.id, 'seedance-ref-video')}
-              onRemove={(index) => onRemoveSeedanceMedia(node.id, 'video', index)}
-            />
-            <SeedanceMediaPanel
-              label="参考音频"
-              icon={Headphones}
-              mediaType="audio"
-              items={referenceAudios}
-              maxCount={SEEDANCE_REF_AUDIO_MAX}
-              disabled={hasSeedanceFrames}
-              disabledHint={hasSeedanceFrames ? '已选首尾帧，不可添加参考音频' : ''}
-              isRunning={isRunning}
-              onPick={() => onOpenAssetLibrary(node.id, 'seedance-ref-audio')}
-              onRemove={(index) => onRemoveSeedanceMedia(node.id, 'audio', index)}
-            />
-          </div>
-        </div>
-      ) : null}
-      <OptionSegment
-        title="生成次数"
-        value={normalizedSettings.count}
-        options={countOptions.map((option) => ({ ...option, label: `${option.value}次` }))}
-        onChange={(value) => onUpdateNode(node.id, { videoCount: Number(value) })}
-      />
-      {hasTextInput ? (
-        <div className="image-reference-row">
-          <span className="image-reference-label">文本引用</span>
-          <div className="image-reference-list">
-            {textInputLinks.map(({ linkId, node: textNode }) => (
-              <div className="text-reference-chip" key={linkId}>
-                <FileText size={14} />
-                <span className="text-reference-preview" title={getTextInputPreview(textNode) || '空文本'}>
-                  {formatTextInputLabel(textNode)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onRemoveTextReference(linkId)}
-                  title="移除文本引用并断开连线"
-                >
-                  <X size={11} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
+
+
+
       <div className="node-bottom-actions image-bottom-actions">
+        {variant !== 'modal' && (
+          <button
+            type="button"
+            className={`icon-button settings-trigger-btn ${showSettingsPopover ? 'active' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowSettingsPopover(!showSettingsPopover);
+            }}
+            title="参数设置"
+          >
+            <Film size={14} />
+            <span>{summaryText}</span>
+          </button>
+        )}
+
+        {pricingList && (
+          <span className="estimated-cost-hint">
+            预估消耗: <JimicoinIcon size={14} /> {videoCost.toFixed(4)}
+          </span>
+        )}
         <button
           className="icon-button"
           onClick={() => onRunVideoGeneration(node, 'translate')}
@@ -2140,7 +2298,28 @@ export function ImageToolbar({
   onUpdateNode,
   onOpenEnlargedSettings,
   onPreviewImage,
+  pricingList,
+  userProfile,
 }) {
+  const [showSettingsPopover, setShowSettingsPopover] = useState(false);
+  const popoverRef = useRef(null);
+
+  useEffect(() => {
+    if (!showSettingsPopover) return;
+    const handleOutsideClick = (event) => {
+      if (popoverRef.current && !popoverRef.current.contains(event.target)) {
+        setShowSettingsPopover(false);
+      }
+    };
+    const timer = setTimeout(() => {
+      document.addEventListener('click', handleOutsideClick);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('click', handleOutsideClick);
+    };
+  }, [showSettingsPopover]);
+
   const hasTextInput = textInputLinks.length > 0;
   const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
   const assetReferences = Array.isArray(node.referenceImages) ? node.referenceImages : [];
@@ -2160,10 +2339,8 @@ export function ImageToolbar({
   });
   const displayImages = getImageDisplayImages(node);
   const hasOutputImages = displayImages.length > 0;
-  const referencePreviewUrls = getReferencePreviewUrls(resolvedReferences, (image) =>
-    normalizeImageUrl(image.url || image.data)
-  );
-  const resolveImageReferencePreview = (image) => normalizeImageUrl(image.url || image.data);
+  const referencePreviewUrls = getReferencePreviewUrls(resolvedReferences, referencePreviewSrc);
+  const resolveImageReferencePreview = referencePreviewSrc;
 
   function previewReferenceAt(index) {
     const targetUrl = resolveImageReferencePreview(resolvedReferences[index]);
@@ -2180,74 +2357,17 @@ export function ImageToolbar({
     });
   }
 
-  return (
-    <div
-      className={`node-bottom-toolbar image-toolbar ${variant === 'modal' ? 'node-settings-toolbar-modal' : ''}`}
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      {variant === 'dock' && onOpenEnlargedSettings ? (
-        <div className="node-toolbar-header">
-          <span className="node-toolbar-header-title">图片设置</span>
-          <NodeEnlargeButton title="放大编辑设置" onClick={onOpenEnlargedSettings} />
-        </div>
-      ) : null}
-      <div className="image-reference-row image-reference-row-top">
-        <span className="image-reference-label">参考图</span>
-        <div className="image-reference-list">
-          {resolvedReferences.map((image, index) => {
-            const isConnection = image.source === 'connection';
-            const assetIndex = isConnection
-              ? -1
-              : assetReferences.findIndex(
-                  (item) =>
-                    (image.id && item.id === image.id) ||
-                    (image.url && (item.url === image.url || item.data === image.url))
-                );
+  const modelLabel = model.replace(/^gpt-image-/, 'GPT-').toUpperCase();
+  const summaryParts = [
+    modelLabel,
+    normalizedSettings.resolution,
+    normalizedSettings.ratio,
+    normalizedSettings.count ? `${normalizedSettings.count}张` : ''
+  ].filter(Boolean);
+  const summaryText = summaryParts.join(' | ') || '设置';
 
-            const previewSrc = normalizeImageUrl(image.url || image.data);
-
-            return (
-              <ReferenceImageChip
-                key={image.id || image.url || index}
-                image={image}
-                index={index}
-                previewSrc={previewSrc}
-                onPreview={
-                  onPreviewImage && previewSrc ? () => previewReferenceAt(index) : undefined
-                }
-                onRemove={() => {
-                  if (isConnection) {
-                    onRemoveTextReference(image.linkId);
-                    return;
-                  }
-                  if (assetIndex >= 0) {
-                    onRemoveImageReference(node.id, assetIndex);
-                  }
-                }}
-                removeTitle={isConnection ? '移除图片引用并断开连线' : '移除参考图'}
-              />
-            );
-          })}
-        </div>
-        <button
-          type="button"
-          className="prompt-asset-button prompt-asset-button--inline"
-          onClick={() => onOpenAssetLibrary(node.id, 'reference')}
-          disabled={isRunning || resolvedReferences.length >= maxReferenceCount}
-          title={`从资产库选择参考图（最多 ${maxReferenceCount} 张，支持多选）`}
-        >
-          <FolderOpen size={14} />
-          参考图
-        </button>
-      </div>
-      <ReferencePromptInput
-        value={node.prompt || ''}
-        onChange={(prompt) => onUpdateNode(node.id, { prompt, status: 'idle' })}
-        references={resolvedReferences}
-        resolvePreviewUrl={(image) => normalizeImageUrl(image.url || image.data)}
-        placeholder="输入图片提示词"
-        disabled={isRunning}
-      />
+  const settingsContent = (
+    <>
       <div className="image-options-row">
         <OptionSegment
           title="模型"
@@ -2311,6 +2431,83 @@ export function ImageToolbar({
           })
         }
       />
+    </>
+  );
+
+  const extraActions = (
+    <>
+      <button
+        type="button"
+        className="prompt-asset-button"
+        onClick={() => onOpenAssetLibrary(node.id, 'reference')}
+        disabled={isRunning || resolvedReferences.length >= maxReferenceCount}
+        title={`从资产库选择参考图（最多 ${maxReferenceCount} 张，支持多选）`}
+      >
+        <FolderOpen size={14} />
+      </button>
+      {variant === 'dock' && onOpenEnlargedSettings ? (
+        <NodeEnlargeButton title="放大编辑设置" onClick={onOpenEnlargedSettings} />
+      ) : null}
+    </>
+  );
+
+  return (
+    <div
+      className={`node-bottom-toolbar image-toolbar ${variant === 'modal' ? 'node-settings-toolbar-modal' : ''}`}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      {resolvedReferences.length > 0 ? (
+        <div className="image-reference-row image-reference-row-top image-reference-row-chips-only">
+          <div className="image-reference-list">
+            {resolvedReferences.map((image, index) => {
+              const isConnection = image.source === 'connection';
+              const assetIndex = isConnection
+                ? -1
+                : assetReferences.findIndex((ref) => ref.id === image.id);
+
+              return (
+                <ReferenceImageChip
+                  key={image.id || image.url || index}
+                  image={image}
+                  index={index}
+                  previewSrc={resolveImageReferencePreview(image)}
+                  onPreview={() => previewReferenceAt(index)}
+                  onRemove={() => {
+                    if (isConnection) {
+                      onRemoveImageReference(image.linkId);
+                    } else if (assetIndex >= 0) {
+                      const nextRefs = [...assetReferences];
+                      nextRefs.splice(assetIndex, 1);
+                      onUpdateNode(node.id, { referenceImages: nextRefs });
+                    }
+                  }}
+                  removeTitle={isConnection ? '移除图片引用并断开连线' : '移除参考图'}
+                />
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      <ReferencePromptInput
+        value={node.prompt || ''}
+        onChange={(prompt) => onUpdateNode(node.id, { prompt, status: 'idle' })}
+        references={resolvedReferences}
+        resolvePreviewUrl={referencePreviewSrc}
+        placeholder="输入图片提示词"
+        disabled={isRunning}
+        extraActions={extraActions}
+      />
+
+      {variant === 'modal' ? (
+        settingsContent
+      ) : (
+        showSettingsPopover && (
+          <div className="toolbar-settings-popover" ref={popoverRef}>
+            {settingsContent}
+          </div>
+        )
+      )}
+
       {hasTextInput ? (
         <div className="image-reference-row">
           <span className="image-reference-label">文本引用</span>
@@ -2334,6 +2531,26 @@ export function ImageToolbar({
         </div>
       ) : null}
       <div className="node-bottom-actions image-bottom-actions">
+        {variant !== 'modal' && (
+          <button
+            type="button"
+            className={`icon-button settings-trigger-btn ${showSettingsPopover ? 'active' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowSettingsPopover(!showSettingsPopover);
+            }}
+            title="参数设置"
+          >
+            <Sparkles size={14} />
+            <span>{summaryText}</span>
+          </button>
+        )}
+
+        {pricingList && (
+          <span className="estimated-cost-hint">
+            预估消耗: <JimicoinIcon size={14} /> {calculateEstimatedCost(pricingList, node, userProfile).toFixed(4)}
+          </span>
+        )}
         <button
           className="icon-button"
           onClick={() => onRunImageGeneration(node, 'translate')}
@@ -2365,6 +2582,8 @@ function AudioToolbar({
   onRunAudioGeneration,
   onRemoveTextReference,
   onUpdateNode,
+  pricingList,
+  userProfile,
 }) {
   const hasTextInput = textInputLinks.length > 0;
   const isPromptEmpty = !String(node.prompt || '').trim() && !hasTextInput;
@@ -2423,6 +2642,11 @@ function AudioToolbar({
         </div>
       ) : null}
       <div className="node-bottom-actions image-bottom-actions">
+        {pricingList && (
+          <span className="estimated-cost-hint">
+            预估消耗: <JimicoinIcon size={14} /> {calculateEstimatedCost(pricingList, node, userProfile).toFixed(4)}
+          </span>
+        )}
         <button
           className="icon-button"
           onClick={() => onRunAudioGeneration(node, 'translate')}
@@ -2631,6 +2855,8 @@ export function CanvasNode({
   videoInputLinks = [],
   isInputsHighlighted = false,
   linkFromNodeId,
+  pricingList,
+  userProfile,
   onSelectNode,
   onClearConnectionSelection,
   onBeginDrag,
@@ -2993,6 +3219,8 @@ export function CanvasNode({
           onUpdateNode={onUpdateNode}
           onOpenEnlargedSettings={onOpenEnlargedSettings}
           onPreviewImage={onPreviewImage}
+          pricingList={pricingList}
+          userProfile={userProfile}
         />
       ) : node.type === 'video' && showToolbar ? (
         <VideoToolbar
@@ -3001,6 +3229,7 @@ export function CanvasNode({
           isTranslating={isTranslating}
           textInputLinks={textInputLinks}
           imageInputLinks={imageInputLinks}
+          videoInputLinks={videoInputLinks}
           onRunVideoGeneration={onRunVideoGeneration}
           onOpenAssetLibrary={onOpenAssetLibrary}
           onRemoveImageReference={onRemoveImageReference}
@@ -3011,6 +3240,8 @@ export function CanvasNode({
           onUpdateNode={onUpdateNode}
           onOpenEnlargedSettings={onOpenEnlargedSettings}
           onPreviewImage={onPreviewImage}
+          pricingList={pricingList}
+          userProfile={userProfile}
         />
       ) : node.type === 'audio' && showToolbar ? (
         <AudioToolbar
@@ -3021,6 +3252,8 @@ export function CanvasNode({
           onRunAudioGeneration={onRunAudioGeneration}
           onRemoveTextReference={onRemoveTextReference}
           onUpdateNode={onUpdateNode}
+          pricingList={pricingList}
+          userProfile={userProfile}
         />
       ) : null}
 

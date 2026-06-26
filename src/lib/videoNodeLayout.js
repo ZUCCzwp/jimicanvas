@@ -40,6 +40,7 @@ export function buildVideoNodeLayoutPatch(node = {}, aspectOverride = null) {
     imageCount: 1,
     aspectWidth: aspect.width,
     aspectHeight: aspect.height,
+    baseWidth: 200,
   });
 }
 

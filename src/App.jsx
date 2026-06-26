@@ -21,6 +21,7 @@ import { RechargeModal } from './components/RechargeModal';
 import { Topbar } from './components/Topbar';
 import { WorkflowTemplateModal } from './components/WorkflowTemplateModal';
 import { useTheme } from './hooks/useTheme';
+import JimicoinIcon from './components/JimicoinIcon';
 import { navigateToCanvasHome } from './lib/appNavigation';
 import { normalizeCanvasBackground } from './lib/canvasBackground';
 import { isEditableKeyboardTarget } from './lib/keyboardShortcuts';
@@ -90,7 +91,8 @@ import {
 import { getOrRequestToken, getStoredChatToken, runChatCompletion } from './lib/chatApi';
 import { sseManager } from './lib/sseManager';
 import { isBackendInCooldown } from './lib/jimiaigoApi';
-import { fetchUserInfo } from './lib/userApi';
+import { fetchUserInfo, fetchPricingList } from './lib/userApi';
+import { calculateEstimatedCost } from './lib/pricing';
 import { fetchSiteConfig, getDefaultSiteSettings } from './lib/siteApi';
 import {
   buildImageDownloadFilename,
@@ -287,6 +289,8 @@ function App() {
     percentage: null,
     profile: null,
   }));
+  const [pricingList, setPricingList] = useState(null);
+  const [pendingTaskConfirm, setPendingTaskConfirm] = useState(null);
   const [showRechargeModal, setShowRechargeModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [deleteConfirmLoading, setDeleteConfirmLoading] = useState(false);
@@ -341,6 +345,12 @@ function App() {
         percentage: info.percentage,
         profile: info.profile || null,
       });
+      try {
+        const pricing = await fetchPricingList(token);
+        setPricingList(pricing);
+      } catch (err) {
+        console.warn('Failed to fetch pricing list:', err);
+      }
     } catch {
       setUserQuota((prev) => ({
         ...prev,
@@ -2253,7 +2263,7 @@ function App() {
     }
   }
 
-  async function runImageGeneration(node, mode = 'generate') {
+  async function runImageGenerationActual(node, mode = 'generate') {
     const promptText = resolveImagePrompt(node, nodes, connections);
     if (!promptText) {
       updateNode(node.id, { content: '图片提示词不能为空，请填写提示词或连接文本节点', status: 'error' });
@@ -2325,7 +2335,32 @@ function App() {
     }
   }
 
-  async function runVideoGeneration(node, mode = 'generate') {
+  async function runImageGeneration(node, mode = 'generate') {
+    const promptText = resolveImagePrompt(node, nodes, connections);
+    if (!promptText) {
+      updateNode(node.id, { content: '图片提示词不能为空，请填写提示词或连接文本节点', status: 'error' });
+      return;
+    }
+    const token = getOrRequestToken({ onSaved: refreshUserQuota });
+    if (!token) {
+      updateNode(node.id, { content: '缺少 token', status: 'error' });
+      return;
+    }
+
+    if (mode === 'translate') {
+      return runImageGenerationActual(node, mode);
+    }
+
+    const cost = calculateEstimatedCost(pricingList, node, userQuota.profile);
+    setPendingTaskConfirm({
+      type: 'image',
+      node,
+      mode,
+      estimatedCost: cost
+    });
+  }
+
+  async function runVideoGenerationActual(node, mode = 'generate') {
     const promptText = resolveVideoPrompt(node, nodes, connections);
     if (!promptText) {
       updateNode(node.id, { content: '视频提示词不能为空，请填写提示词或连接文本节点', status: 'error' });
@@ -2401,7 +2436,33 @@ function App() {
     }
   }
 
-  async function runAudioGeneration(node, mode = 'generate') {
+  async function runVideoGeneration(node, mode = 'generate') {
+    const promptText = resolveVideoPrompt(node, nodes, connections);
+    if (!promptText) {
+      updateNode(node.id, { content: '视频提示词不能为空，请填写提示词或连接文本节点', status: 'error' });
+      return;
+    }
+    const token = getOrRequestToken({ onSaved: refreshUserQuota });
+    if (!token) {
+      updateNode(node.id, { content: '缺少 token', status: 'error' });
+      return;
+    }
+
+    if (mode === 'translate') {
+      return runVideoGenerationActual(node, mode);
+    }
+
+    const hasVideoRefs = getVideoInputLinks(node.id, nodes, connections).length > 0;
+    const cost = calculateEstimatedCost(pricingList, node, userQuota.profile, { hasVideoRefs });
+    setPendingTaskConfirm({
+      type: 'video',
+      node,
+      mode,
+      estimatedCost: cost
+    });
+  }
+
+  async function runAudioGenerationActual(node, mode = 'generate') {
     const promptText = resolveAudioPrompt(node, nodes, connections);
     if (!promptText) {
       updateNode(node.id, { content: '合成文本不能为空，请填写文本或连接文本节点', status: 'error' });
@@ -2457,6 +2518,44 @@ function App() {
     } finally {
       setRunningNodeId(null);
       refreshUserQuota();
+    }
+  }
+
+  async function runAudioGeneration(node, mode = 'generate') {
+    const promptText = resolveAudioPrompt(node, nodes, connections);
+    if (!promptText) {
+      updateNode(node.id, { content: '合成文本不能为空，请填写文本或连接文本节点', status: 'error' });
+      return;
+    }
+    const token = getOrRequestToken({ onSaved: refreshUserQuota });
+    if (!token) {
+      updateNode(node.id, { content: '缺少 token', status: 'error' });
+      return;
+    }
+
+    if (mode === 'translate') {
+      return runAudioGenerationActual(node, mode);
+    }
+
+    const cost = calculateEstimatedCost(pricingList, node, userQuota.profile);
+    setPendingTaskConfirm({
+      type: 'audio',
+      node,
+      mode,
+      estimatedCost: cost
+    });
+  }
+
+  async function handleConfirmPendingTask() {
+    if (!pendingTaskConfirm) return;
+    const { type, node, mode } = pendingTaskConfirm;
+    setPendingTaskConfirm(null);
+    if (type === 'image') {
+      await runImageGenerationActual(node, mode);
+    } else if (type === 'video') {
+      await runVideoGenerationActual(node, mode);
+    } else if (type === 'audio') {
+      await runAudioGenerationActual(node, mode);
     }
   }
 
@@ -3608,6 +3707,91 @@ function App() {
     event.target.value = '';
   }
 
+  function renderPendingTaskDetails(pending) {
+    if (!pending) return null;
+    const { type, node } = pending;
+    
+    let typeName = '';
+    let modelName = '';
+    let params = [];
+    let promptText = '';
+    let promptLabel = '提示词';
+
+    if (type === 'image') {
+      typeName = '图片生成';
+      modelName = node.imageModel || 'gpt-image-2';
+      params = [
+        `比例: ${node.imageRatio || '1:1'}`,
+        `分辨率: ${node.imageResolution || '1k'}`,
+        `数量: ${node.imageCount || 1}张`,
+      ];
+      if (node.imageQuality) {
+        params.push(`画质: ${node.imageQuality}`);
+      }
+      promptText = resolveImagePrompt(node, nodes, connections);
+      promptLabel = '生成提示词';
+    } else if (type === 'video') {
+      typeName = '视频生成';
+      const family = inferVideoFamily(node);
+      modelName = node.videoModel || (family === 'sora' ? 'sora2-gz-sp' : '');
+      params = [
+        `比例: ${node.videoRatio || node.videoOrientation || '16:9'}`,
+        `分辨率: ${node.videoResolution || '720p'}`,
+        `时长: ${node.videoDuration || '8'}秒`,
+        `数量: ${node.videoCount || 1}次`,
+      ];
+      promptText = resolveVideoPrompt(node, nodes, connections);
+      promptLabel = '生成提示词';
+    } else if (type === 'audio') {
+      typeName = '语音合成';
+      modelName = node.audioModel || 'gpt-4o-mini-tts';
+      params = [
+        `音色: ${node.audioVoice || 'alloy'}`,
+        `语速: ${node.audioSpeed || 1}x`,
+      ];
+      promptText = resolveAudioPrompt(node, nodes, connections);
+      promptLabel = '合成文本';
+    }
+
+    const truncatedPrompt = promptText && promptText.length > 80 
+      ? promptText.substring(0, 80) + '...'
+      : promptText;
+
+    return (
+      <div className="task-confirm-details">
+        <p className="task-confirm-warning-text">
+          确定要提交此任务吗？预估会扣除相应额度：
+        </p>
+        <div className="task-details-grid">
+          <div className="task-details-row">
+            <span className="task-details-label">任务类型</span>
+            <span className="task-details-value">{typeName}</span>
+          </div>
+          <div className="task-details-row">
+            <span className="task-details-label">使用模型</span>
+            <span className="task-details-value task-details-model">{modelName}</span>
+          </div>
+          <div className="task-details-row">
+            <span className="task-details-label">生成参数</span>
+            <span className="task-details-value">{params.join(' · ')}</span>
+          </div>
+          {truncatedPrompt && (
+            <div className="task-details-row">
+              <span className="task-details-label">{promptLabel}</span>
+              <span className="task-details-value task-details-prompt">{truncatedPrompt}</span>
+            </div>
+          )}
+          <div className="task-details-row highlight">
+            <span className="task-details-label" style={{ fontWeight: 600 }}>预估消耗</span>
+            <span className="task-details-value task-details-cost" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <JimicoinIcon size={16} /> {pending.estimatedCost.toFixed(4)}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <input ref={fileInputRef} type="file" accept="application/json" hidden onChange={handleImport} />
@@ -3664,8 +3848,11 @@ function App() {
           nodeType={enlargedSettingsNodeType}
           textInputLinks={getTextInputLinks(enlargedSettingsNode.id, nodes, connections)}
           imageInputLinks={getImageInputLinks(enlargedSettingsNode.id, nodes, connections)}
+          videoInputLinks={getVideoInputLinks(enlargedSettingsNode.id, nodes, connections)}
           isRunning={isNodeActivelyRunning(enlargedSettingsNode, runningNodeId)}
           isTranslating={translatingNodeId === enlargedSettingsNode.id}
+          pricingList={pricingList}
+          userProfile={userQuota.profile}
           onUpdateNode={updateNode}
           onClose={closeEnlargedNodeSettings}
           onRunImageGeneration={runImageGeneration}
@@ -3728,6 +3915,17 @@ function App() {
         onCancel={() => {
           if (!deleteConfirmLoading) setDeleteConfirm(null);
         }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingTaskConfirm)}
+        title="确认提交生成任务"
+        message={renderPendingTaskDetails(pendingTaskConfirm)}
+        confirmLabel="确定"
+        cancelLabel="取消"
+        variant="warning"
+        onConfirm={handleConfirmPendingTask}
+        onCancel={() => setPendingTaskConfirm(null)}
       />
 
       {showRechargeModal ? (
@@ -3949,6 +4147,8 @@ function App() {
                 }
                 isInputsHighlighted={inputHighlightNodeId === node.id}
                 linkFromNodeId={linkFromNodeId}
+                pricingList={pricingList}
+                userProfile={userQuota.profile}
                 onSelectNode={selectNode}
                 onClearConnectionSelection={() => setSelectedConnectionId(null)}
                 onBeginDrag={beginDrag}

@@ -152,3 +152,12 @@ export async function fetchUserInfo(token) {
     profile: data,
   };
 }
+
+export async function fetchPricingList(token) {
+  return requestJimiaigo('/api/pricing/list', {
+    token,
+    method: 'GET',
+    fallback: '获取价格配置失败',
+  });
+}
+

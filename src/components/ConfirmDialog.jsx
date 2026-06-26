@@ -53,9 +53,9 @@ export function ConfirmDialog({
           </button>
         </header>
 
-        <p id="confirm-dialog-message" className="confirm-dialog-message">
+        <div id="confirm-dialog-message" className="confirm-dialog-message">
           {message}
-        </p>
+        </div>
 
         <footer className="confirm-dialog-footer">
           <button type="button" className="confirm-dialog-btn" onClick={onCancel} disabled={loading}>
