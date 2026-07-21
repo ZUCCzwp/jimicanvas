@@ -7,14 +7,24 @@ import {
   redeemCode,
 } from '../lib/chargeApi';
 import { formatBalanceAmount } from '../lib/userApi';
+import {
+  baseCoinFromPrice,
+  computeJimicoinCreditGrant,
+  formatCoinDisplay,
+  isFoundingMember,
+} from '../lib/vip-plan-display';
 
 const MIN_AMOUNT = 7.3;
 const STEP_AMOUNT = 7.3;
 
-function estimateQuota(amount) {
+function estimateQuota(amount, user) {
   const n = Number(amount);
   if (!Number.isFinite(n) || n <= 0) return '0.0000';
-  return (n / MIN_AMOUNT).toFixed(4);
+  const baseCoin = baseCoinFromPrice(n);
+  const { grantCoin } = computeJimicoinCreditGrant(baseCoin, {
+    foundingDiscount: isFoundingMember(user),
+  });
+  return formatCoinDisplay(grantCoin);
 }
 
 function normalizeAmount(value) {
@@ -37,6 +47,8 @@ export function RechargeModal({ isOpen, onClose, onSuccess, user }) {
   const pollingRef = useRef(null);
 
   const onlineAmount = payMethod === 'alipay' ? alipayAmount : wechatAmount;
+
+  const foundingMember = isFoundingMember(user);
 
   const availableBalance = useMemo(() => {
     const totalCoin = Number(user?.payment?.jimicoin || user?.payment?.balance || 0);
@@ -360,7 +372,7 @@ export function RechargeModal({ isOpen, onClose, onSuccess, user }) {
             <aside className="recharge-modal-side">
               {mode === 'online' ? (
                 <div className="recharge-side-card is-highlight">
-                  预计兑换额度：<strong>{estimateQuota(onlineAmount)}</strong>
+                  预计兑换额度：<strong>{estimateQuota(onlineAmount, user)}</strong>
                 </div>
               ) : null}
 
@@ -388,6 +400,11 @@ export function RechargeModal({ isOpen, onClose, onSuccess, user }) {
                 <p className="recharge-side-label">说明</p>
                 <ul>
                   <li>兑换比例：7.3 CNY = 1 额度。</li>
+                  {foundingMember ? (
+                    <li>创始会员充值吉米币享 9 折（不叠加阶梯加赠）。</li>
+                  ) : (
+                    <li>充值金额越高，阶梯加赠越多。</li>
+                  )}
                   <li>支付成功后系统将自动刷新余额。</li>
                   <li>如遇问题，请联系客服。</li>
                 </ul>

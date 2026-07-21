@@ -7,9 +7,6 @@ export function getUserPriceType(profile) {
   if (profile.is_proxy_subordinate) {
     return 'proxy_sub';
   }
-  if (profile.vip_info?.is_founding_member || profile.vip_info?.vip_type === 'founding') {
-    return 'member';
-  }
   return 'standard';
 }
 
@@ -21,18 +18,11 @@ export function calculateCost(pricingList, modelName, profile) {
   const status = getUserPriceType(profile);
   const price = parseFloat(p.price) || 0;
   const proxyPrice = parseFloat(p.proxy_price) || 0;
-  const memberPrice = parseFloat(p.member_price) || 0;
 
   if (status === 'agent_self' || status === 'proxy_sub') {
     return proxyPrice > 0 ? proxyPrice : price;
   }
-  if (status === 'member') {
-    const discounted = Math.round(price * 0.85 * 10000) / 10000;
-    if (memberPrice > 0 && memberPrice < discounted) {
-      return memberPrice;
-    }
-    return discounted;
-  }
+  // 创始会员 / 月付 / 年付 / 普通用户：消费统一走标准价
   return price;
 }
 
